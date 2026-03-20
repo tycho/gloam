@@ -352,6 +352,8 @@ fn generated_header_does_not_contain_removed_compat_enums_in_core() {
         .args([
             "--api",
             "gl:core=3.3",
+            "--extensions",
+            "",
             "--out-path",
             dir.path().to_str().unwrap(),
             "c",
@@ -366,5 +368,33 @@ fn generated_header_does_not_contain_removed_compat_enums_in_core() {
     assert!(
         !header.contains("GL_QUADS "),
         "GL_QUADS should be absent in core profile"
+    );
+}
+
+#[test]
+fn removed_enums_readded_by_extensions() {
+    // In core profile, deprecated constants like GL_QUADS get removed, *except* when they're
+    // required by extensions.
+    let dir = TempDir::new().unwrap();
+    gloam()
+        .args([
+            "--api",
+            "gl:core=3.3",
+            "--extensions",
+            "GL_ARB_tessellation_shader",
+            "--out-path",
+            dir.path().to_str().unwrap(),
+            "c",
+        ])
+        .assert()
+        .success();
+
+    let header =
+        std::fs::read_to_string(dir.path().join("include").join("gloam").join("gl.h")).unwrap();
+
+    // GL_QUADS is removed in core profile — it must not appear.
+    assert!(
+        header.contains("GL_QUADS "),
+        "GL_QUADS should be in core profile with GL_ARB_tessellation_shader"
     );
 }

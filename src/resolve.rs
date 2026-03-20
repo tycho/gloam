@@ -315,6 +315,9 @@ fn resolve_feature_set(
                 }
                 req_types.extend(require.types.iter().cloned());
                 req_enums.extend(require.enums.iter().cloned());
+                for e in &require.enums {
+                    removed_enums.remove(e.as_str());
+                }
                 for cmd in &require.commands {
                     // Core commands already in req_commands stay there.
                     if !req_commands.contains_key(cmd.as_str()) {
