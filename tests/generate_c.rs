@@ -24,7 +24,7 @@ fn try_compile_c(out: &Path) {
     let c_file = match std::fs::read_dir(&src_dir).ok().and_then(|mut d| {
         d.find(|e| {
             e.as_ref()
-                .map_or(false, |e| e.path().extension() == Some("c".as_ref()))
+                .is_ok_and(|e| e.path().extension() == Some("c".as_ref()))
         })
     }) {
         Some(Ok(entry)) => entry.path(),
@@ -61,17 +61,16 @@ fn try_compile_c(out: &Path) {
 }
 
 fn find_cc() -> Option<&'static str> {
-    for candidate in &["cc", "gcc", "clang"] {
-        if Command::new(candidate)
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
-            return Some(candidate);
-        }
-    }
-    None
+    ["cc", "gcc", "clang"]
+        .iter()
+        .find(|&candidate| {
+            Command::new(candidate)
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        })
+        .map(|v| v as _)
 }
 
 fn assert_c_output_exists(out: &Path, stem: &str) {
