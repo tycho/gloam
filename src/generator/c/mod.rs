@@ -53,7 +53,12 @@ pub fn generate(fs: &FeatureSet, args: &CArgs, out: &Path, use_fetch: bool) -> R
     // them.  This catches implicit dependencies like vulkan_video_codecs_common.h
     // which are #include'd by other vk_video headers but never declared in the
     // XML spec.
-    let mut queue: Vec<String> = fs.required_headers.clone();
+    //
+    // xxhash.h is always needed by the generated .c (extension hash search).
+    // It is not spec-derived so it is not in fs.required_headers.
+    let mut queue: Vec<String> = std::iter::once("xxhash.h".to_string())
+        .chain(fs.required_headers.iter().cloned())
+        .collect();
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     while let Some(hdr_path) = queue.pop() {
