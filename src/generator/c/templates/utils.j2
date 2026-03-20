@@ -1,0 +1,96 @@
+{#-
+  gloam C generator — shared macros.
+  Import with: {% import "utils.j2" as u with context %}
+-#}
+
+{#- Context struct type name, from the precomputed field on FeatureSet. -#}
+{%- macro ctx_type() -%}{{ fs.context_name }}{%- endmacro -%}
+
+{#- "GloamGLContext *context" with an optional suffix (e.g. ", " for mid-param-list). -#}
+{%- macro ctx_arg(suffix="") -%}
+{{ ctx_type() }} *context{{ suffix }}
+{%- endmacro -%}
+
+{#-
+  Open a platform-protection #if block for an extension's protect list.
+  `protects` is a Vec<String> of platform macros, e.g. ["VK_USE_PLATFORM_WIN32_KHR"].
+  Emits nothing when the list is empty.
+-#}
+{%- macro protect_begin(protects) -%}
+{%- if protects | length > 0 %}
+#if {% for p in protects %}defined({{ p }}){% if not loop.last %} || {% endif %}{% endfor %}
+{% endif -%}
+{%- endmacro -%}
+
+{%- macro protect_end(protects) -%}
+{%- if protects | length > 0 -%}
+#endif
+{% endif -%}
+{%- endmacro -%}
+
+{#-
+  Platform-protection guards for a single command (Option<String> protect field).
+-#}
+{%- macro cmd_protect_begin(cmd) -%}
+{%- if cmd.protect %}
+#ifdef {{ cmd.protect }}
+{% endif -%}
+{%- endmacro -%}
+
+{%- macro cmd_protect_end(cmd) -%}
+{%- if cmd.protect %}
+#endif /* {{ cmd.protect }} */
+{% endif -%}
+{%- endmacro -%}
+
+{#-
+  Extra load-function parameters specific to each spec, placed before
+  the final GloamLoadFunc argument.  For GL/Vulkan these are empty.
+  Always ends with ", " when non-empty so it can sit between ctx_arg and
+  the getProcAddr param without producing a double-comma.
+-#}
+{%- macro extra_load_params(spec) -%}
+{%- if spec == "egl" %}, EGLDisplay display{%- endif -%}
+{%- if spec == "glx" %}, Display *display, int screen{%- endif -%}
+{%- if spec == "wgl" %}, HDC hdc{%- endif -%}
+{%- endmacro -%}
+
+{#- Matching arguments to forward on internal calls. -#}
+{%- macro extra_load_args(spec) -%}
+{%- if spec == "egl" %}, display{%- endif -%}
+{%- if spec == "glx" %}, display, screen{%- endif -%}
+{%- if spec == "wgl" %}, hdc{%- endif -%}
+{%- endmacro -%}
+
+{#-
+  Vulkan getProcAddr parameter type.  For non-Vulkan specs this is a plain
+  GloamLoadFunc.  Placed last in the parameter list.
+-#}
+{%- macro get_proc_param(spec) -%}
+{%- if spec == "vk" -%}
+PFN_vkGetInstanceProcAddr getProcAddr
+{%- else -%}
+GloamLoadFunc getProcAddr
+{%- endif -%}
+{%- endmacro -%}
+
+{#- Extra Vulkan instance/device arguments. -#}
+{%- macro vk_load_params() -%}
+{%- if fs.spec_name == "vk" %}VkInstance instance, VkPhysicalDevice physical_device, VkDevice device, {% endif -%}
+{%- endmacro -%}
+
+{%- macro vk_load_args() -%}
+{%- if fs.spec_name == "vk" %}instance, physical_device, device, {% endif -%}
+{%- endmacro -%}
+
+{#-
+  Emit a single system-header conflict guard: if the given macro is already
+  defined, issue a hard error; otherwise define it to 1.
+  Usage: {{ u.header_error("__gl_h_", "OpenGL (gl.h)", "gl") }}
+-#}
+{%- macro header_error(guard_macro, header_name, api) -%}
+#ifdef {{ guard_macro }}
+  #error {{ header_name }} header already included (API: {{ api }}), remove previous include!
+#endif
+#define {{ guard_macro }} 1
+{%- endmacro -%}

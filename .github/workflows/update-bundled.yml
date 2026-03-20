@@ -1,0 +1,51 @@
+name: Update bundled XML and headers
+
+on:
+  schedule:
+    # Every Monday at 05:00 UTC.
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Fetch and validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Fetch bundled files
+        run: ./scripts/fetch_bundled.sh
+
+      - name: Build with updated files
+        # This is the primary validity check: include_str! will fail at
+        # compile time if any fetched file is empty or missing.
+        run: cargo build --release
+
+      - name: Run test suite against updated files
+        run: cargo test --release
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          add-paths: bundled/
+          commit-message: "chore: update bundled XML specs and headers"
+          title: "chore: update bundled XML specs and headers"
+          body: |
+            Automated weekly refresh of `bundled/xml/` and `bundled/headers/`
+            from upstream Khronos and ANGLE sources.
+
+            The build and test suite passed against the new files before this
+            PR was opened.
+          branch: update-bundled-xml
+          delete-branch: true
+          labels: dependencies

@@ -1,0 +1,484 @@
+{% import "utils.j2" as u with context %}
+{#- Built-in platform loader.  Only included when --loader is passed. -#}
+{% include "library.j2" %}
+{% if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
+/* ---- GL / GLES built-in loader ----------------------------------------- */
+
+/* Transient userptr: set for the duration of a gloamLoaderLoad*Context call.
+   Holds the library handle and — for desktop GL — the correctly-typed
+   platform proc-addr function pointer so that the calling convention is
+   always right.  Only valid between entry and return; never accessed
+   concurrently. */
+struct gloam_gl_load_userptr {
+    void *handle;
+#if defined(_WIN32) || defined(__CYGWIN__)
+    /* wglGetProcAddress is WINAPI (__stdcall); must not be called through a
+       plain cdecl function pointer. */
+    GloamAPIProc (WINAPI *wgl_get_proc)(const char *);
+#elif !defined(__APPLE__) && !defined(__HAIKU__)
+    GloamAPIProc (*glx_get_proc)(const char *);
+#endif
+};
+static struct gloam_gl_load_userptr gloam_gl_load_state;
+
+/* GL desktop adapter — matches GloamLoadFunc (__cdecl), dispatches through
+   the correctly-typed platform proc-addr pointer stored in the userptr. */
+static GloamAPIProc gloam_gl_get_proc(const char *name) {
+    GloamAPIProc result = NULL;
+    struct gloam_gl_load_userptr *u = &gloam_gl_load_state;
+    if (!u->handle) return NULL;
+#if defined(__APPLE__) || defined(__HAIKU__)
+    result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+#elif defined(_WIN32) || defined(__CYGWIN__)
+    if (u->wgl_get_proc) result = u->wgl_get_proc(name);
+    if (!result)         result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+#else
+    if (u->glx_get_proc) result = u->glx_get_proc(name);
+    if (!result)         result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+#endif
+    return result;
+}
+
+/* GLES adapter: all symbols (including extensions) are exported directly from
+   the GLES library so plain dlsym is sufficient — no platform indirection. */
+static GloamAPIProc gloam_gles_get_proc(const char *name) {
+    struct gloam_gl_load_userptr *u = &gloam_gl_load_state;
+    if (!u->handle) return NULL;
+    return (GloamAPIProc)gloam_dlsym(u->handle, name);
+}
+
+{%- for api in fs.apis %}
+
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+    int did_open = 0, version;
+{% if api in ["gles1", "gles2"] %}
+    static const char * const kLibNames[] = {
+#if defined(__APPLE__)
+        "libGLESv2.dylib",
+#elif defined(_WIN32) || defined(__CYGWIN__)
+        "GLESv2.dll", "libGLESv2.dll",
+#else
+        "libGLESv2.so.2", "libGLESv2.so",
+#endif
+    };
+{% else %}
+    static const char * const kLibNames[] = {
+#if defined(__APPLE__)
+        "../Frameworks/OpenGL.framework/OpenGL",
+        "/Library/Frameworks/OpenGL.framework/OpenGL",
+        "/System/Library/Frameworks/OpenGL.framework/OpenGL",
+        "/System/Library/Frameworks/OpenGL.framework/Versions/Current/OpenGL",
+#elif defined(_WIN32) || defined(__CYGWIN__)
+        "opengl32.dll",
+#else
+#  if defined(__CYGWIN__)
+        "libGL-1.so",
+#  endif
+        "libGL.so.1",
+        "libGL.so",
+#endif
+    };
+{% endif %}
+    if (!context->gloam_loader_handle) {
+        context->gloam_loader_handle = gloam_open_library(
+            kLibNames, GLOAM_ARRAYSIZE(kLibNames));
+        did_open = 1;
+    }
+    if (!context->gloam_loader_handle) return 0;
+
+    gloam_gl_load_state.handle = context->gloam_loader_handle;
+#if defined(_WIN32) || defined(__CYGWIN__)
+    gloam_gl_load_state.wgl_get_proc =
+        (GloamAPIProc (WINAPI *)(const char *))
+            gloam_dlsym(context->gloam_loader_handle, "wglGetProcAddress");
+#elif !defined(__APPLE__) && !defined(__HAIKU__)
+    gloam_gl_load_state.glx_get_proc =
+        (GloamAPIProc (*)(const char *))
+            gloam_dlsym(context->gloam_loader_handle, "glXGetProcAddressARB");
+#endif
+
+{% if api in ["gles1", "gles2"] %}
+    version = gloamLoad{{ api | api_display }}Context(context, gloam_gles_get_proc);
+{% else %}
+    version = gloamLoad{{ api | api_display }}Context(context, gloam_gl_get_proc);
+{% endif %}
+    gloam_gl_load_state.handle = NULL;
+    if (!version && did_open) {
+        gloam_dlclose(context->gloam_loader_handle);
+        context->gloam_loader_handle = NULL;
+    }
+    return version;
+}
+
+int gloamLoaderLoad{{ api | api_display }}(void) {
+    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+
+void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+    if (context->gloam_loader_handle) {
+        gloam_dlclose(context->gloam_loader_handle);
+        context->gloam_loader_handle = NULL;
+    }
+    gloamLoaderReset{{ api | api_display }}Context(context);
+}
+
+void gloamLoaderUnload{{ api | api_display }}(void) {
+    gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+
+void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+    memset(context, 0, sizeof(*context));
+}
+
+void gloamLoaderReset{{ api | api_display }}(void) {
+    gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+{%- endfor %}
+{% elif fs.spec_name == "egl" %}
+/* ---- EGL built-in loader ------------------------------------------------ */
+
+static const char * const gloam_egl_lib_names[] = {
+#if defined(__APPLE__)
+    "libEGL.dylib",
+#elif defined(_WIN32) || defined(__CYGWIN__)
+    "libEGL.dll", "EGL.dll",
+#else
+    "libEGL.so.1", "libEGL.so",
+#endif
+};
+
+/* eglGetProcAddress has its own calling convention (declared in EGL headers as
+   PFNEGLGETPROCADDRESSPROC).  Store it with the correct type so the call always
+   uses the right convention, even when the default differs (e.g. Win32). */
+struct gloam_egl_load_userptr {
+    void *handle;
+    PFNEGLGETPROCADDRESSPROC get_proc_address;
+};
+static struct gloam_egl_load_userptr gloam_egl_load_state;
+
+static GloamAPIProc gloam_egl_get_proc(const char *name) {
+    struct gloam_egl_load_userptr *u = &gloam_egl_load_state;
+    GloamAPIProc result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+    if (!result && u->get_proc_address)
+        result = u->get_proc_address(name);
+    return result;
+}
+
+{% for api in fs.apis %}
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display) {
+    int did_open = 0, version;
+    if (!context->gloam_loader_handle) {
+        context->gloam_loader_handle = gloam_open_library(
+            gloam_egl_lib_names, GLOAM_ARRAYSIZE(gloam_egl_lib_names));
+        did_open = 1;
+    }
+    if (!context->gloam_loader_handle) return 0;
+
+    gloam_egl_load_state.handle = context->gloam_loader_handle;
+    gloam_egl_load_state.get_proc_address =
+        (PFNEGLGETPROCADDRESSPROC)gloam_dlsym(context->gloam_loader_handle, "eglGetProcAddress");
+    if (!gloam_egl_load_state.get_proc_address) {
+        if (did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+        return 0;
+    }
+
+    version = gloamLoad{{ api | api_display }}Context(context, display, gloam_egl_get_proc);
+    gloam_egl_load_state.handle = NULL;
+    if (!version && did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+    return version;
+}
+
+int gloamLoaderLoad{{ api | api_display }}(EGLDisplay display) {
+    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, display);
+}
+
+void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+    if (context->gloam_loader_handle) {
+        gloam_dlclose(context->gloam_loader_handle);
+        context->gloam_loader_handle = NULL;
+    }
+    gloamLoaderReset{{ api | api_display }}Context(context);
+}
+
+void gloamLoaderUnload{{ api | api_display }}(void) {
+    gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+
+void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+    memset(context, 0, sizeof(*context));
+}
+
+void gloamLoaderReset{{ api | api_display }}(void) {
+    gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+{%- endfor %}
+{%- elif fs.spec_name == "glx" %}
+/* ---- GLX built-in loader ------------------------------------------------ */
+
+static const char * const gloam_glx_lib_names[] = {
+#if defined(__CYGWIN__)
+    "libGL-1.so",
+#endif
+    "libGL.so.1", "libGL.so",
+};
+
+/* glXGetProcAddressARB returns __GLXextFuncPtr = void(*)(void); store with the
+   correct function-pointer type so the call goes through the right ABI. */
+struct gloam_glx_load_userptr {
+    void *handle;
+    GloamAPIProc (*get_proc_address)(const char *);
+};
+static struct gloam_glx_load_userptr gloam_glx_load_state;
+
+static GloamAPIProc gloam_glx_get_proc(const char *name) {
+    struct gloam_glx_load_userptr *u = &gloam_glx_load_state;
+    GloamAPIProc result = NULL;
+    if (u->get_proc_address) result = u->get_proc_address(name);
+    if (!result)              result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+    return result;
+}
+
+{%- for api in fs.apis %}
+
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *display, int screen) {
+    int did_open = 0, version;
+    if (!context->gloam_loader_handle) {
+        context->gloam_loader_handle = gloam_open_library(
+            gloam_glx_lib_names, GLOAM_ARRAYSIZE(gloam_glx_lib_names));
+        did_open = 1;
+    }
+    if (!context->gloam_loader_handle) return 0;
+
+    gloam_glx_load_state.handle = context->gloam_loader_handle;
+    gloam_glx_load_state.get_proc_address =
+        (GloamAPIProc (*)(const char *))
+            gloam_dlsym(context->gloam_loader_handle, "glXGetProcAddressARB");
+    if (!gloam_glx_load_state.get_proc_address) {
+        if (did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+        return 0;
+    }
+
+    version = gloamLoad{{ api | api_display }}Context(context, display, screen, gloam_glx_get_proc);
+    gloam_glx_load_state.handle = NULL;
+    if (!version && did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+    return version;
+}
+
+int gloamLoaderLoad{{ api | api_display }}(Display *display, int screen) {
+    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, display, screen);
+}
+
+void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+    if (context->gloam_loader_handle) {
+        gloam_dlclose(context->gloam_loader_handle);
+        context->gloam_loader_handle = NULL;
+    }
+    gloamLoaderReset{{ api | api_display }}Context(context);
+}
+
+void gloamLoaderUnload{{ api | api_display }}(void) {
+    gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+
+void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+    memset(context, 0, sizeof(*context));
+}
+
+void gloamLoaderReset{{ api | api_display }}(void) {
+    gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+{%- endfor %}
+{% elif fs.spec_name == "wgl" %}
+/* ---- WGL built-in loader ------------------------------------------------ */
+
+static const char * const gloam_wgl_lib_names[] = { "opengl32.dll" };
+
+/* wglGetProcAddress is WINAPI (__stdcall); must not be stored or called through
+   a plain cdecl pointer.  Store with the correct type in a userptr struct. */
+struct gloam_wgl_load_userptr {
+    void *handle;
+    GloamAPIProc (WINAPI *wgl_get_proc)(const char *);
+};
+static struct gloam_wgl_load_userptr gloam_wgl_load_state;
+
+static GloamAPIProc gloam_wgl_get_proc(const char *name) {
+    struct gloam_wgl_load_userptr *u = &gloam_wgl_load_state;
+    GloamAPIProc result = NULL;
+    if (u->wgl_get_proc) result = u->wgl_get_proc(name);
+    if (!result)         result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+    return result;
+}
+
+{%- for api in fs.apis %}
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc) {
+    int did_open = 0, version;
+    if (!context->gloam_loader_handle) {
+        context->gloam_loader_handle = gloam_open_library(
+            gloam_wgl_lib_names, GLOAM_ARRAYSIZE(gloam_wgl_lib_names));
+        did_open = 1;
+    }
+    if (!context->gloam_loader_handle) return 0;
+
+    gloam_wgl_load_state.handle = context->gloam_loader_handle;
+    gloam_wgl_load_state.wgl_get_proc =
+        (GloamAPIProc (WINAPI *)(const char *))
+            gloam_dlsym(context->gloam_loader_handle, "wglGetProcAddress");
+    if (!gloam_wgl_load_state.wgl_get_proc) {
+        if (did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+        return 0;
+    }
+
+    version = gloamLoad{{ api | api_display }}Context(context, hdc, gloam_wgl_get_proc);
+    gloam_wgl_load_state.handle = NULL;
+    if (!version && did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+    return version;
+}
+
+int gloamLoaderLoad{{ api | api_display }}(HDC hdc) {
+    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, hdc);
+}
+
+void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+    if (context->gloam_loader_handle) {
+        gloam_dlclose(context->gloam_loader_handle);
+        context->gloam_loader_handle = NULL;
+    }
+    gloamLoaderReset{{ api | api_display }}Context(context);
+}
+
+void gloamLoaderUnload{{ api | api_display }}(void) {
+    gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+
+void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+    memset(context, 0, sizeof(*context));
+}
+
+void gloamLoaderReset{{ api | api_display }}(void) {
+    gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+{%- endfor %}
+{% elif fs.spec_name == "vk" %}
+/* ---- Vulkan built-in loader --------------------------------------------- */
+
+static const char * const gloam_vk_lib_names[] = {
+#if defined(__APPLE__)
+    "libvulkan.dylib", "libvulkan.1.dylib", "libMoltenVK.dylib",
+#elif defined(_WIN32) || defined(__CYGWIN__)
+    "vulkan-1.dll",
+#else
+    "libvulkan.so.1", "libvulkan.so",
+#endif
+};
+
+/* The built-in loader threads instance and device handles through this struct
+   so that a single scope-aware callback can serve all dispatch paths. */
+struct gloam_vk_userptr {
+    void *lib_handle;
+    VkInstance instance;
+    VkDevice   device;
+    PFN_vkGetInstanceProcAddr get_instance_proc_addr;
+    PFN_vkGetDeviceProcAddr   get_device_proc_addr;
+};
+
+static GloamAPIProc gloam_vk_get_proc(void *vuserptr, const char *name, GloamCommandScope scope) {
+    struct gloam_vk_userptr *u = (struct gloam_vk_userptr *)vuserptr;
+    switch (scope) {
+    case GloamCommandScopeUnknown:
+        return (GloamAPIProc)gloam_dlsym(u->lib_handle, name);
+    case GloamCommandScopeGlobal:
+        return (GloamAPIProc)u->get_instance_proc_addr(NULL, name);
+    case GloamCommandScopeInstance:
+        if (u->instance != NULL)
+            return (GloamAPIProc)u->get_instance_proc_addr(u->instance, name);
+        return NULL;
+    case GloamCommandScopeDevice:
+        if (u->device != NULL)
+            return (GloamAPIProc)u->get_device_proc_addr(u->device, name);
+        return NULL;
+    }
+    return NULL;
+}
+
+/* gloamLoaderLoadVulkanContext
+ *
+ * Opens the Vulkan library into context->gloam_loader_handle if it is not
+ * already set, then delegates to gloamLoadVulkanContextUserPtr.  Follows the
+ * same additive multi-call contract as the underlying load function.
+ *
+ * Caller-managed handle pattern:
+ *   context->gloam_loader_handle = my_vk_handle;   // pre-populate
+ *   gloamLoaderLoadVulkanContext(context, ...);    // dlopen skipped
+ *   // ... later, during cleanup:
+ *   context->gloam_loader_handle = NULL;            // relinquish ownership
+ *   gloamLoaderUnloadVulkanContext(context);       // won't dlclose
+ */
+int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance,
+                                  VkPhysicalDevice physical_device, VkDevice device) {
+    struct gloam_vk_userptr userptr;
+    int did_open = 0;
+    int version;
+    void *handle;
+
+    if (!context->gloam_loader_handle) {
+        context->gloam_loader_handle = gloam_open_library(
+            gloam_vk_lib_names, GLOAM_ARRAYSIZE(gloam_vk_lib_names));
+        did_open = 1;
+    }
+
+    handle = context->gloam_loader_handle;
+    if (!handle) return 0;
+
+    userptr.lib_handle             = handle;
+    userptr.instance               = instance;
+    userptr.device                 = device;
+    userptr.get_instance_proc_addr =
+        (PFN_vkGetInstanceProcAddr)gloam_dlsym(handle, "vkGetInstanceProcAddr");
+    userptr.get_device_proc_addr   =
+        (PFN_vkGetDeviceProcAddr)gloam_dlsym(handle, "vkGetDeviceProcAddr");
+
+    if (!userptr.get_instance_proc_addr) {
+        if (did_open) {
+            gloam_dlclose(handle);
+            context->gloam_loader_handle = NULL;
+        }
+        return 0;
+    }
+
+    version = gloamLoadVulkanContextUserPtr(context, instance, physical_device, device,
+                                             gloam_vk_get_proc, &userptr);
+    if (!version && did_open) {
+        gloam_dlclose(handle);
+        context->gloam_loader_handle = NULL;
+    }
+    return version;
+}
+
+int gloamLoaderLoadVulkan(VkInstance instance, VkPhysicalDevice physical_device,
+                           VkDevice device) {
+    return gloamLoaderLoadVulkanContext(&gloam_vk_context, instance,
+                                        physical_device, device);
+}
+
+/* Close the library handle (if set) then zero all context state. */
+void gloamLoaderUnloadVulkanContext({{ u.ctx_arg() }}) {
+    if (context->gloam_loader_handle) {
+        gloam_dlclose(context->gloam_loader_handle);
+        context->gloam_loader_handle = NULL;
+    }
+    gloamLoaderResetVulkanContext(context);
+}
+
+void gloamLoaderUnloadVulkan(void) {
+    gloamLoaderUnloadVulkanContext(&gloam_vk_context);
+}
+
+/* Zero all context state without touching the library handle. */
+void gloamLoaderResetVulkanContext({{ u.ctx_arg() }}) {
+    memset(context, 0, sizeof(*context));
+}
+
+void gloamLoaderResetVulkan(void) {
+    gloamLoaderResetVulkanContext(&gloam_vk_context);
+}
+{% endif %}

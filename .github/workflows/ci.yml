@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: Build, lint, audit, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Build first — catches template include_str! failures and compile errors
+      # before running the slower test step.
+      - name: Build
+        run: cargo build --release
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Integration tests invoke the binary and compile the generated C.
+      # gcc is pre-installed on ubuntu-latest.
+      - name: Test
+        run: cargo test --release

@@ -1,0 +1,53 @@
+{% if fs.extensions | length > 0 %}
+#ifndef GLOAM_IMPL_HASHSEARCH_C_
+#define GLOAM_IMPL_HASHSEARCH_C_
+
+/* gloam_sort_hashes — in-place Shellsort on a uint64_t array.
+ *
+ * Ciura (2001) gap sequence.  Gaps larger than n are skipped at runtime so
+ * small arrays (< 10 extensions) take only a couple of passes.  No heap
+ * allocation; code size is ~80 bytes on x86-64.
+ */
+GLOAM_NO_INLINE static void gloam_sort_hashes(uint64_t *a, size_t n) {
+    static const size_t kGaps[] = { 701, 301, 132, 57, 23, 10, 4, 1 };
+    size_t gi = 0;
+    if (!a || n < 2) return;
+    /* Skip gaps that are larger than the array. */
+    while (gi < GLOAM_ARRAYSIZE(kGaps) && kGaps[gi] >= n) ++gi;
+    for (; gi < GLOAM_ARRAYSIZE(kGaps); ++gi) {
+        size_t gap = kGaps[gi], i;
+        for (i = gap; i < n; ++i) {
+            uint64_t v = a[i];
+            size_t j = i;
+            while (j >= gap && a[j - gap] > v) {
+                a[j] = a[j - gap];
+                j -= gap;
+            }
+            a[j] = v;
+        }
+    }
+}
+
+/* gloam_hash_search — binary search for `target` in a sorted uint64_t array.
+ * Returns 1 if found, 0 otherwise.
+ */
+GLOAM_NO_INLINE static int gloam_hash_search(const uint64_t *arr, uint32_t size, uint64_t target) {
+    int32_t lo = 0, hi = (int32_t)size - 1;
+    while (lo <= hi) {
+        int32_t mid = lo + (hi - lo) / 2;
+        if (arr[mid] == target) return 1;
+        if (arr[mid] < target)  lo = mid + 1;
+        else                    hi = mid - 1;
+    }
+    return 0;
+}
+
+/* gloam_hash_string — hash a NUL-terminated string with XXH3-64.
+ * The same algorithm is used at generator time to pre-bake kExtHashes[],
+ * guaranteeing that driver-reported names and the embedded table match.
+ */
+GLOAM_NO_INLINE static uint64_t gloam_hash_string(const char *str, size_t length) {
+    return XXH3_64bits(str, length);
+}
+#endif /* GLOAM_IMPL_HASHSEARCH_C_ */
+{% endif %}
