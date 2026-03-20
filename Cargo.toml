@@ -1,6 +1,6 @@
 [package]
 name           = "gloam"
-version        = "0.1.1"
+version        = "0.1.2"
 edition        = "2024"
 description    = "Loader generator for Vulkan, OpenGL, OpenGL ES, EGL, GLX, and WGL"
 license        = "MIT OR Apache-2.0"
