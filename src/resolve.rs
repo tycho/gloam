@@ -477,6 +477,22 @@ fn resolve_feature_set(
     // handle) are also treated as seeds for the expansion.
     if is_vulkan {
         let type_names: HashSet<&str> = raw.types.iter().map(|t| t.name.as_str()).collect();
+
+        // Seed req_types with parameter and return types from all selected commands.
+        // This catches types that are only referenced as command parameters rather
+        // than being explicitly listed in <require><type> blocks — e.g.
+        // VkViewportSwizzleNV appears only as a parameter of vkCmdSetViewportSwizzleNV,
+        // which VK_EXT_shader_object pulls in without also selecting VK_NV_viewport_swizzle.
+        for &cmd_name in &all_cmd_names {
+            if let Some(raw_cmd) = raw.commands.get(cmd_name) {
+                for param in &raw_cmd.params {
+                    if !param.type_name.is_empty() {
+                        req_types.insert(param.type_name.clone());
+                    }
+                }
+            }
+        }
+
         loop {
             let mut added = false;
             for t in &raw.types {
