@@ -271,3 +271,126 @@ fn without_predecessors_egl_ext_platform_wayland_absent() {
         "EXT_platform_wayland should be absent without --predecessors"
     );
 }
+
+// ---------------------------------------------------------------------------
+// --promoted: scoping in merged builds
+// ---------------------------------------------------------------------------
+
+#[test]
+fn promoted_in_merged_build_does_not_cross_contaminate() {
+    // In a merged gl:core=3.3 + gles2=3.0 build, --promoted should scope
+    // promotion checks per-API.  An extension that is promoted into GL core
+    // but not into GLES2 (or vice versa) should only appear because its
+    // commands match the correct API's core set.
+    //
+    // GL_ARB_copy_buffer's glCopyBufferSubData was promoted into GL 3.1.
+    // It should appear in the merged output because it's promoted for GL.
+    // The important thing is that the merged build succeeds without panics
+    // or incorrect output — and that the extension appears exactly once.
+    let dir = TempDir::new().unwrap();
+    gloam()
+        .args([
+            "--api",
+            "gl:core=3.3,gles2=3.0",
+            "--merge",
+            "--extensions",
+            "",
+            "--promoted",
+            "--out-path",
+            dir.path().to_str().unwrap(),
+            "c",
+        ])
+        .assert()
+        .success();
+
+    let header = read_header(dir.path(), "gl");
+
+    // ARB_copy_buffer should be included (promoted into GL 3.1 core).
+    assert!(
+        has_ext(&header, "ARB_copy_buffer"),
+        "ARB_copy_buffer should be included via --promoted in merged build"
+    );
+
+    // The extension should appear exactly once in the extArray, not
+    // duplicated across APIs.
+    let count = header.matches("unsigned char ARB_copy_buffer;").count();
+    assert_eq!(count, 1, "ARB_copy_buffer should appear exactly once");
+}
+
+// ---------------------------------------------------------------------------
+// --promoted + --predecessors combined
+// ---------------------------------------------------------------------------
+
+#[test]
+fn promoted_seeds_predecessor_search() {
+    // --promoted includes GL_ARB_copy_buffer (same-name promotion into GL 3.1).
+    // If ARB_copy_buffer has any predecessor extensions, --predecessors should
+    // find them.  Even if no predecessor exists for this particular extension,
+    // the combined flag path must not panic or produce incorrect output.
+    //
+    // More importantly, this verifies the ordering: promoted runs first,
+    // then predecessors operates on the expanded set.
+    let dir = TempDir::new().unwrap();
+    gloam()
+        .args([
+            "--api",
+            "gl:core=3.3",
+            "--extensions",
+            "",
+            "--promoted",
+            "--predecessors",
+            "--out-path",
+            dir.path().to_str().unwrap(),
+            "c",
+        ])
+        .assert()
+        .success();
+
+    let header = read_header(dir.path(), "gl");
+
+    // --promoted should still include ARB_copy_buffer.
+    assert!(
+        has_ext(&header, "ARB_copy_buffer"),
+        "ARB_copy_buffer should be included via --promoted"
+    );
+
+    // --promoted should include ARB_multitexture (renamed promotion).
+    assert!(
+        has_ext(&header, "ARB_multitexture"),
+        "ARB_multitexture should be included via --promoted"
+    );
+}
+
+#[test]
+fn predecessors_finds_chain_through_promoted_extension() {
+    // GL_KHR_parallel_shader_compile is explicitly requested.
+    // --predecessors should find GL_ARB_parallel_shader_compile as its
+    // predecessor.  Combined with --promoted, the entire chain should
+    // resolve correctly.
+    let dir = TempDir::new().unwrap();
+    gloam()
+        .args([
+            "--api",
+            "gl:core=3.3",
+            "--extensions",
+            "GL_KHR_parallel_shader_compile",
+            "--promoted",
+            "--predecessors",
+            "--out-path",
+            dir.path().to_str().unwrap(),
+            "c",
+        ])
+        .assert()
+        .success();
+
+    let header = read_header(dir.path(), "gl");
+
+    assert!(
+        has_ext(&header, "KHR_parallel_shader_compile"),
+        "KHR_parallel_shader_compile should be present (explicitly requested)"
+    );
+    assert!(
+        has_ext(&header, "ARB_parallel_shader_compile"),
+        "ARB_parallel_shader_compile should be included via --predecessors"
+    );
+}

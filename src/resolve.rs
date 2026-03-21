@@ -164,7 +164,7 @@ pub struct EnumGroup {
     pub values: Vec<FlatEnum>,
 }
 
-#[derive(Debug, Serialize, Clone, Copy)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct PfnRange {
     /// Index into featArray or extArray.
     pub extension: u16,
@@ -2044,5 +2044,305 @@ mod tests {
     fn name_prefix_glx_is_case_sensitive() {
         // glX — capital X matters for generated member names.
         assert_eq!(api_name_prefix("glx"), "glX");
+    }
+
+    // ---- Protection lattice ----
+
+    #[test]
+    fn protection_guarded_absorbs_unconditional() {
+        // A guarded state that encounters an unprotected extension becomes
+        // unconditional (absorbing element of the lattice).
+        let mut p = Protection::Guarded(vec!["VK_USE_PLATFORM_WIN32_KHR".to_string()]);
+        p.add_extension(&[]); // unprotected extension
+        assert!(p.is_unconditional());
+    }
+
+    #[test]
+    fn protection_unconditional_stays_unconditional() {
+        // Once unconditional, adding a guarded extension can't re-guard it.
+        let mut p = Protection::Unconditional;
+        p.add_extension(&["VK_USE_PLATFORM_XLIB_KHR".to_string()]);
+        assert!(p.is_unconditional());
+    }
+
+    #[test]
+    fn protection_guarded_unions_guards() {
+        let mut p = Protection::new_guarded();
+        p.add_extension(&["VK_USE_PLATFORM_WIN32_KHR".to_string()]);
+        p.add_extension(&["VK_USE_PLATFORM_XLIB_KHR".to_string()]);
+        let v = p.into_vec();
+        assert_eq!(v.len(), 2);
+        // into_vec sorts
+        assert_eq!(v[0], "VK_USE_PLATFORM_WIN32_KHR");
+        assert_eq!(v[1], "VK_USE_PLATFORM_XLIB_KHR");
+    }
+
+    #[test]
+    fn protection_guarded_deduplicates() {
+        let mut p = Protection::new_guarded();
+        p.add_extension(&["VK_USE_PLATFORM_WIN32_KHR".to_string()]);
+        p.add_extension(&["VK_USE_PLATFORM_WIN32_KHR".to_string()]);
+        let v = p.into_vec();
+        assert_eq!(v.len(), 1);
+    }
+
+    #[test]
+    fn protection_empty_guarded_into_vec_is_empty() {
+        // A Guarded with no guards is treated as unconditional (empty Vec).
+        let p = Protection::new_guarded();
+        assert!(p.into_vec().is_empty());
+    }
+
+    #[test]
+    fn protection_unconditional_into_vec_is_empty() {
+        let p = Protection::Unconditional;
+        assert!(p.into_vec().is_empty());
+    }
+
+    // ---- indices_to_ranges ----
+
+    #[test]
+    fn indices_to_ranges_empty() {
+        assert!(indices_to_ranges(0, &[]).is_empty());
+    }
+
+    #[test]
+    fn indices_to_ranges_single_element() {
+        let r = indices_to_ranges(5, &[42]);
+        assert_eq!(
+            r,
+            vec![PfnRange {
+                extension: 5,
+                start: 42,
+                count: 1
+            }]
+        );
+    }
+
+    #[test]
+    fn indices_to_ranges_fully_contiguous() {
+        // A contiguous run should produce a single range.
+        let r = indices_to_ranges(0, &[10, 11, 12, 13, 14]);
+        assert_eq!(
+            r,
+            vec![PfnRange {
+                extension: 0,
+                start: 10,
+                count: 5
+            }]
+        );
+    }
+
+    #[test]
+    fn indices_to_ranges_single_gap() {
+        // [3, 4, 5, 10, 11] → two ranges.
+        let r = indices_to_ranges(1, &[3, 4, 5, 10, 11]);
+        assert_eq!(
+            r,
+            vec![
+                PfnRange {
+                    extension: 1,
+                    start: 3,
+                    count: 3
+                },
+                PfnRange {
+                    extension: 1,
+                    start: 10,
+                    count: 2
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn indices_to_ranges_all_disjoint() {
+        // No contiguous pairs → one range per element.
+        let r = indices_to_ranges(2, &[0, 5, 10]);
+        assert_eq!(
+            r,
+            vec![
+                PfnRange {
+                    extension: 2,
+                    start: 0,
+                    count: 1
+                },
+                PfnRange {
+                    extension: 2,
+                    start: 5,
+                    count: 1
+                },
+                PfnRange {
+                    extension: 2,
+                    start: 10,
+                    count: 1
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn indices_to_ranges_multiple_gaps() {
+        let r = indices_to_ranges(0, &[1, 2, 5, 6, 7, 20]);
+        assert_eq!(
+            r,
+            vec![
+                PfnRange {
+                    extension: 0,
+                    start: 1,
+                    count: 2
+                },
+                PfnRange {
+                    extension: 0,
+                    start: 5,
+                    count: 3
+                },
+                PfnRange {
+                    extension: 0,
+                    start: 20,
+                    count: 1
+                },
+            ]
+        );
+    }
+
+    // ---- ext_short_name / version_short_name ----
+
+    #[test]
+    fn ext_short_name_strips_gl_prefix() {
+        assert_eq!(ext_short_name("GL_ARB_sync"), "ARB_sync");
+    }
+
+    #[test]
+    fn ext_short_name_strips_vk_prefix() {
+        assert_eq!(ext_short_name("VK_KHR_swapchain"), "KHR_swapchain");
+    }
+
+    #[test]
+    fn ext_short_name_strips_egl_prefix() {
+        assert_eq!(
+            ext_short_name("EGL_KHR_platform_wayland"),
+            "KHR_platform_wayland"
+        );
+    }
+
+    #[test]
+    fn ext_short_name_unknown_prefix_unchanged() {
+        assert_eq!(ext_short_name("UNKNOWN_foo_bar"), "UNKNOWN_foo_bar");
+    }
+
+    #[test]
+    fn version_short_name_gl() {
+        assert_eq!(version_short_name("GL_VERSION_3_3", "gl"), "VERSION_3_3");
+    }
+
+    #[test]
+    fn version_short_name_gles2() {
+        // GLES uses "GL_" prefix in the XML feature name.
+        assert_eq!(
+            version_short_name("GL_ES_VERSION_3_0", "gles2"),
+            "ES_VERSION_3_0"
+        );
+    }
+
+    #[test]
+    fn version_short_name_vk() {
+        assert_eq!(version_short_name("VK_VERSION_1_3", "vk"), "VERSION_1_3");
+    }
+
+    #[test]
+    fn version_short_name_unknown_api_no_strip() {
+        assert_eq!(
+            version_short_name("CUSTOM_VERSION_1_0", "custom"),
+            "CUSTOM_VERSION_1_0"
+        );
+    }
+
+    // ---- is_gl_auto_excluded ----
+
+    #[test]
+    fn gl_auto_excluded_known_names() {
+        assert!(is_gl_auto_excluded("stddef"));
+        assert!(is_gl_auto_excluded("khrplatform"));
+        assert!(is_gl_auto_excluded("inttypes"));
+    }
+
+    #[test]
+    fn gl_auto_excluded_other_names() {
+        assert!(!is_gl_auto_excluded("GLuint"));
+        assert!(!is_gl_auto_excluded("GLenum"));
+    }
+
+    // ---- topo_sort_typedefs: cycle fallback ----
+
+    #[test]
+    fn topo_sort_typedefs_simple_dependency_order() {
+        // B depends on A (A appears in B's raw_c), so A should come first.
+        let types = vec![
+            TypeDef {
+                name: "B".to_string(),
+                raw_c: "typedef struct { A member; } B;".to_string(),
+                category: "struct".to_string(),
+                protect: vec![],
+            },
+            TypeDef {
+                name: "A".to_string(),
+                raw_c: "typedef struct { int x; } A;".to_string(),
+                category: "struct".to_string(),
+                protect: vec![],
+            },
+        ];
+        let sorted = topo_sort_typedefs(types);
+        let a_pos = sorted.iter().position(|t| t.name == "A").unwrap();
+        let b_pos = sorted.iter().position(|t| t.name == "B").unwrap();
+        assert!(a_pos < b_pos, "A must precede B");
+    }
+
+    #[test]
+    fn topo_sort_typedefs_cycle_does_not_panic() {
+        // A references B, B references A — a cycle.  The fallback path
+        // must produce *some* valid output without panicking.
+        let types = vec![
+            TypeDef {
+                name: "A".to_string(),
+                raw_c: "typedef struct { B* ptr; } A;".to_string(),
+                category: "struct".to_string(),
+                protect: vec![],
+            },
+            TypeDef {
+                name: "B".to_string(),
+                raw_c: "typedef struct { A* ptr; } B;".to_string(),
+                category: "struct".to_string(),
+                protect: vec![],
+            },
+        ];
+        let sorted = topo_sort_typedefs(types);
+        // Both must appear exactly once.
+        assert_eq!(sorted.len(), 2);
+        assert!(sorted.iter().any(|t| t.name == "A"));
+        assert!(sorted.iter().any(|t| t.name == "B"));
+    }
+
+    #[test]
+    fn topo_sort_typedefs_non_scannable_categories_ignored() {
+        // "define" category bodies are not scanned for deps, so even though
+        // D's raw_c mentions C, no edge is created and insertion order is kept.
+        let types = vec![
+            TypeDef {
+                name: "D".to_string(),
+                raw_c: "#define D C".to_string(),
+                category: "define".to_string(),
+                protect: vec![],
+            },
+            TypeDef {
+                name: "C".to_string(),
+                raw_c: "typedef int C;".to_string(),
+                category: "basetype".to_string(),
+                protect: vec![],
+            },
+        ];
+        let sorted = topo_sort_typedefs(types);
+        // No dep edge was created, so original order is preserved.
+        assert_eq!(sorted[0].name, "D");
+        assert_eq!(sorted[1].name, "C");
     }
 }
