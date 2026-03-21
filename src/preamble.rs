@@ -4,12 +4,13 @@
 //! top of every generated `.h` and `.c` file.
 
 use crate::build_info;
-use crate::resolve::FeatureSet;
+use crate::resolve::{FeatureSet, SelectionReason};
 
 /// Build the preamble comment block for a generated file.
 ///
 /// The block includes:
 ///   - gloam version and the command line that produced the file
+///   - API versions and extension provenance summary
 ///   - MIT license notice for gloam itself
 ///   - Khronos Group copyright (always — all output derives from their XML)
 ///   - ANGLE copyright (only when GL/GLES/EGL supplementals contributed)
@@ -23,6 +24,29 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
     ));
     lines.push(" *".to_string());
     lines.push(format!(" *   {command_line}"));
+
+    // ---- Extension provenance ----
+    if !fs.extensions.is_empty() {
+        lines.push(" *".to_string());
+        lines.push(format!(" * {}", extension_summary(fs)));
+
+        // List implicitly-included extensions (promoted, predecessor) so the
+        // user can see what was pulled in automatically.
+        for (label, reason) in &[
+            ("promoted", SelectionReason::Promoted),
+            ("predecessor", SelectionReason::Predecessor),
+        ] {
+            let names: Vec<&str> = fs
+                .extensions
+                .iter()
+                .filter(|e| e.reason == *reason)
+                .map(|e| e.name.as_str())
+                .collect();
+            if !names.is_empty() {
+                lines.push(format!(" *   {}: {}", label, names.join(", ")));
+            }
+        }
+    }
 
     // ---- gloam license ----
     lines.push(" *".to_string());
@@ -53,6 +77,47 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
     format!("/*\n{}\n */", lines.join("\n"))
 }
 
+/// Build a one-line summary of extension selection.
+///
+/// Examples:
+///   "Extensions: all (451 total)"
+///   "Extensions: 5 explicit, 12 promoted, 3 predecessor (20 total)"
+///   "Extensions: 2 mandatory, 5 explicit (7 total)"
+fn extension_summary(fs: &FeatureSet) -> String {
+    let total = fs.extensions.len();
+
+    let count = |reason: SelectionReason| -> usize {
+        fs.extensions.iter().filter(|e| e.reason == reason).count()
+    };
+
+    let n_all = count(SelectionReason::AllExtensions);
+    let n_explicit = count(SelectionReason::Explicit);
+    let n_mandatory = count(SelectionReason::Mandatory);
+    let n_promoted = count(SelectionReason::Promoted);
+    let n_predecessor = count(SelectionReason::Predecessor);
+
+    // If everything came from "all extensions" (no filter), use the short form.
+    if n_all + n_mandatory == total {
+        return format!("Extensions: all ({total} total)");
+    }
+
+    let mut parts: Vec<String> = Vec::new();
+    if n_explicit > 0 {
+        parts.push(format!("{n_explicit} explicit"));
+    }
+    if n_mandatory > 0 {
+        parts.push(format!("{n_mandatory} mandatory"));
+    }
+    if n_promoted > 0 {
+        parts.push(format!("{n_promoted} promoted"));
+    }
+    if n_predecessor > 0 {
+        parts.push(format!("{n_predecessor} predecessor"));
+    }
+
+    format!("Extensions: {} ({total} total)", parts.join(", "))
+}
+
 /// Returns true if this feature set includes ANGLE extension supplementals.
 /// ANGLE extensions are loaded for GL-family and EGL specs.
 fn uses_angle_supplementals(fs: &FeatureSet) -> bool {
@@ -62,8 +127,9 @@ fn uses_angle_supplementals(fs: &FeatureSet) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resolve::Extension;
 
-    /// Minimal FeatureSet for testing — only spec_name matters here.
+    /// Minimal FeatureSet for testing.
     fn stub_fs(spec_name: &str) -> FeatureSet {
         FeatureSet {
             spec_name: spec_name.to_string(),
@@ -84,6 +150,17 @@ mod tests {
             ext_subset_indices: Default::default(),
             alias_pairs: vec![],
             required_headers: vec![],
+        }
+    }
+
+    fn stub_ext(name: &str, reason: SelectionReason) -> Extension {
+        Extension {
+            index: 0,
+            name: name.to_string(),
+            short_name: name.to_string(),
+            hash: String::new(),
+            protect: vec![],
+            reason,
         }
     }
 
@@ -154,15 +231,95 @@ mod tests {
         let fs = stub_fs("vk");
         let p = build_preamble(&fs, "gloam --api vk=1.3 c");
         let year = build_info::BUILD_YEAR.to_string();
-        // gloam copyright should contain the build year.
         assert!(
             p.contains(&format!("Copyright (c) {year} Steven Noonan")),
             "gloam copyright should use BUILD_YEAR ({year})"
         );
-        // Khronos copyright should contain the build year as the end of the range.
         assert!(
             p.contains(&format!("2013-{year} The Khronos Group")),
             "Khronos copyright range should end with BUILD_YEAR ({year})"
         );
+    }
+
+    // ---- Extension provenance summary ----
+
+    #[test]
+    fn summary_all_extensions() {
+        let mut fs = stub_fs("vk");
+        fs.extensions = vec![
+            stub_ext("VK_KHR_swapchain", SelectionReason::AllExtensions),
+            stub_ext("VK_KHR_surface", SelectionReason::AllExtensions),
+        ];
+        assert_eq!(extension_summary(&fs), "Extensions: all (2 total)");
+    }
+
+    #[test]
+    fn summary_all_plus_mandatory() {
+        let mut fs = stub_fs("wgl");
+        fs.extensions = vec![
+            stub_ext("WGL_ARB_extensions_string", SelectionReason::Mandatory),
+            stub_ext("WGL_ARB_pixel_format", SelectionReason::AllExtensions),
+        ];
+        assert_eq!(extension_summary(&fs), "Extensions: all (2 total)");
+    }
+
+    #[test]
+    fn summary_explicit_only() {
+        let mut fs = stub_fs("vk");
+        fs.extensions = vec![
+            stub_ext("VK_KHR_swapchain", SelectionReason::Explicit),
+            stub_ext("VK_KHR_surface", SelectionReason::Explicit),
+        ];
+        assert_eq!(extension_summary(&fs), "Extensions: 2 explicit (2 total)");
+    }
+
+    #[test]
+    fn summary_mixed_reasons() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![
+            stub_ext("GL_KHR_debug", SelectionReason::Explicit),
+            stub_ext("GL_ARB_copy_buffer", SelectionReason::Promoted),
+            stub_ext("GL_ARB_multitexture", SelectionReason::Promoted),
+            stub_ext(
+                "GL_ARB_parallel_shader_compile",
+                SelectionReason::Predecessor,
+            ),
+        ];
+        assert_eq!(
+            extension_summary(&fs),
+            "Extensions: 1 explicit, 2 promoted, 1 predecessor (4 total)"
+        );
+    }
+
+    #[test]
+    fn preamble_lists_promoted_extensions() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![
+            stub_ext("GL_KHR_debug", SelectionReason::Explicit),
+            stub_ext("GL_ARB_copy_buffer", SelectionReason::Promoted),
+        ];
+        let p = build_preamble(&fs, "gloam --api gl:core=3.3 c");
+        assert!(p.contains("promoted: GL_ARB_copy_buffer"));
+    }
+
+    #[test]
+    fn preamble_lists_predecessor_extensions() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![
+            stub_ext("GL_KHR_parallel_shader_compile", SelectionReason::Explicit),
+            stub_ext(
+                "GL_ARB_parallel_shader_compile",
+                SelectionReason::Predecessor,
+            ),
+        ];
+        let p = build_preamble(&fs, "gloam --api gl:core=3.3 c");
+        assert!(p.contains("predecessor: GL_ARB_parallel_shader_compile"));
+    }
+
+    #[test]
+    fn preamble_no_extension_section_when_empty() {
+        let fs = stub_fs("vk");
+        let p = build_preamble(&fs, "gloam --api vk=1.3 c");
+        assert!(!p.contains("Extensions:"));
     }
 }

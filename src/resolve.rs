@@ -110,6 +110,8 @@ pub struct Extension {
     pub hash: String,
     /// Platform protection macros (if any).
     pub protect: Vec<String>,
+    /// Why this extension was included in the feature set.
+    pub reason: SelectionReason,
 }
 
 #[derive(Debug, Serialize)]
@@ -696,8 +698,24 @@ fn api_order(api: &str) -> u8 {
 // Extension selection
 // ---------------------------------------------------------------------------
 
+/// Why an extension was included in the feature set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum SelectionReason {
+    /// Explicitly listed in --extensions or included because no filter was set.
+    Explicit,
+    /// No --extensions filter was given — all supported extensions are included.
+    AllExtensions,
+    /// WGL mandatory extensions (always required for WGL to function).
+    Mandatory,
+    /// Auto-included because its commands were promoted into a requested core version.
+    Promoted,
+    /// Auto-included as a predecessor of an already-selected extension.
+    Predecessor,
+}
+
 struct SelectedExt<'a> {
     raw: &'a crate::ir::RawExtension,
+    reason: SelectionReason,
 }
 
 fn select_extensions<'a>(
@@ -729,20 +747,34 @@ fn select_extensions<'a>(
     let mut selected: Vec<SelectedExt<'a>> = raw
         .extensions
         .iter()
-        .filter(|e| {
+        .filter_map(|e| {
             let supported = e.supported.iter().any(|s| api_set.contains(s.as_str()));
             if !supported {
-                return false;
+                return None;
             }
             if wgl_mandatory.contains(e.name.as_str()) {
-                return true;
+                return Some(SelectedExt {
+                    raw: e,
+                    reason: SelectionReason::Mandatory,
+                });
             }
             match filter {
-                None => true,
-                Some(list) => list.contains(&e.name),
+                None => Some(SelectedExt {
+                    raw: e,
+                    reason: SelectionReason::AllExtensions,
+                }),
+                Some(list) => {
+                    if list.contains(&e.name) {
+                        Some(SelectedExt {
+                            raw: e,
+                            reason: SelectionReason::Explicit,
+                        })
+                    } else {
+                        None
+                    }
+                }
             }
         })
-        .map(|e| SelectedExt { raw: e })
         .collect();
 
     // Build the bidirectional alias maps once — they're used by both the
@@ -821,7 +853,10 @@ fn select_extensions<'a>(
                 });
 
             if is_promoted {
-                selected.push(SelectedExt { raw: ext });
+                selected.push(SelectedExt {
+                    raw: ext,
+                    reason: SelectionReason::Promoted,
+                });
             }
         }
     }
@@ -883,7 +918,10 @@ fn select_extensions<'a>(
                     })
                 });
                 if is_predecessor {
-                    selected.push(SelectedExt { raw: ext });
+                    selected.push(SelectedExt {
+                        raw: ext,
+                        reason: SelectionReason::Predecessor,
+                    });
                 }
             }
 
@@ -993,6 +1031,7 @@ fn build_extension(index: u16, e: &SelectedExt<'_>) -> Extension {
         short_name: short,
         hash,
         protect: e.raw.protect.clone(),
+        reason: e.reason,
     }
 }
 
