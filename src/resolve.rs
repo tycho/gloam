@@ -1195,10 +1195,14 @@ fn build_type_list(
             if t.category == "enum" && t.raw_c.is_empty() {
                 return false;
             }
-            // Include-category types: emit only if infer_include_protections
-            // decided they're needed (i.e. at least one selected extension
-            // depends on a type that requires this include file).
+            // Include-category types: emit only for system/WSI headers where
+            // infer_include_protections decided they're needed.  Bundled headers
+            // (vk_platform, vk_video/*, etc.) are already emitted by the
+            // required_headers template loop and must not appear here too.
             if t.category == "include" {
+                if is_bundled_include_type(&t.name) {
+                    return false;
+                }
                 return include_protections.contains_key(&t.name);
             }
             // `define` and `basetype` types (VK_DEFINE_HANDLE, VkFlags,
@@ -1690,6 +1694,14 @@ fn requires_to_bundled_header(requires: &str) -> Option<&'static str> {
         "vk_platform" => Some("vk_platform.h"),
         _ => None,
     }
+}
+
+/// True if an include-category type name refers to a header that we bundle
+/// and copy to the output tree.  These are emitted via the `required_headers`
+/// template loop and must NOT also appear as include-category types, or the
+/// generated header `#include`s them twice.
+fn is_bundled_include_type(name: &str) -> bool {
+    matches!(name, "vk_platform" | "khrplatform" | "eglplatform") || name.starts_with("vk_video/")
 }
 
 fn normalize_raw_c(raw: &str) -> String {
