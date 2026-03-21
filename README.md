@@ -50,6 +50,20 @@ Options:
                         name per line) or a comma-separated inline list.
                         Omit to include all extensions supported by the
                         requested API.
+  --promoted            Automatically include any extension whose commands
+                        were promoted into the requested core version, even
+                        if not listed in --extensions. Handles both
+                        same-name promotion (e.g. ARB_copy_buffer) and
+                        renamed promotion (e.g. ARB_multitexture →
+                        glActiveTexture). Scoped per-API to prevent
+                        cross-contamination in merged builds.
+  --predecessors        Automatically include any extension that is a
+                        predecessor of an already-selected extension — i.e.
+                        its commands or enums are aliases of those in the
+                        selected set. Follows chains to a fixed point, so
+                        indirect predecessors are included too. Runs after
+                        --promoted, so promoted extensions also seed the
+                        predecessor search.
   --merge               Merge multiple APIs of the same spec into a single
                         output file. Required when combining gl and gles2.
   --out-path <DIR>      Output directory [default: .]
@@ -60,11 +74,35 @@ Options:
 Commands:
   c     Generate a C loader.
         --alias   Enable bijective function-pointer alias resolution at
-                  load time. The alias table is always built; this flag
-                  controls whether the runtime resolver loop is emitted.
+                  load time. If the canonical slot is null but an alias
+                  was loaded by the driver (or vice versa), the pointer
+                  is propagated to both slots.
         --loader  Include a built-in dlopen/LoadLibrary convenience layer.
   rust  Generate a Rust loader.
         --alias   Enable bijective function-pointer alias resolution.
+```
+
+### Extension selection flags
+
+The three extension-related flags are orthogonal and compose freely:
+
+| Flag | What it does |
+|------|--------------|
+| `--alias` | *Runtime*: propagates loaded function pointers to alias slots at load time |
+| `--promoted` | *Selection*: adds extensions whose commands were promoted into requested core |
+| `--predecessors` | *Selection*: adds predecessor extensions of the already-selected set |
+
+Typical use with an explicit `--extensions` list:
+
+```sh
+# Explicit list only — exactly what you asked for.
+gloam --api gl:core=4.6,gles2=3.2 --extensions GL_KHR_debug,... --merge c
+
+# Explicit list + promoted ARB predecessors of core functions.
+gloam --api gl:core=4.6,gles2=3.2 --extensions GL_KHR_debug,... --merge c --promoted
+
+# Explicit list + promoted + extension-to-extension predecessor chains.
+gloam --api gl:core=4.6,gles2=3.2 --extensions GL_KHR_debug,... --merge c --promoted --predecessors
 ```
 
 ---
@@ -79,9 +117,13 @@ include/
     gl.h          # public header — include this in your project
   KHR/
     khrplatform.h # auxiliary headers copied from bundled/
+  xxhash.h        # single-file xxHash amalgamation used by the loader
 src/
   gl.c            # loader implementation
 ```
+
+When generating without `--merge`, each API gets its own stem:
+`gles2` → `gles2.h` / `gles2.c`, `gl` → `gl.h` / `gl.c`, etc.
 
 **`include/gloam/gl.h`**
 - `GloamAPIProc` opaque function pointer type and `GloamLoadFunc` callback typedef
@@ -214,12 +256,16 @@ from upstream at generation time.  Any failure is fatal.
 
 ## Alias resolution (`--alias`)
 
-Alias pairs (e.g. `glActiveTexture` / `glActiveTextureARB`) are always
-discovered and stored in the feature set.  When `--alias` is passed, the
-generated loader also emits a runtime resolver: if the canonical slot is
-null but an alias was loaded by the driver (or vice versa), the loaded
-pointer is propagated to both slots.  This is useful for extension
-functions that were later promoted to core under a new name.
+When `--alias` is passed, the generated loader emits a runtime resolver:
+after loading all function pointers, if the canonical slot for an alias
+pair is null but the alias slot was loaded by the driver (or vice versa),
+the loaded pointer is propagated to both slots.  This is useful for
+extension functions that were later promoted to core under a new name,
+where a driver may only expose one spelling.
+
+Note: `--alias` is a *runtime* concern — it does not affect which extensions
+are selected.  For selection-time alias expansion see `--promoted` and
+`--predecessors`.
 
 ---
 
@@ -228,7 +274,7 @@ functions that were later promoted to core under a new name.
 ```sh
 cargo build            # debug
 cargo build --release  # release
-cargo test             # (tests not yet written)
+cargo test
 ```
 
 Requires Rust 1.75 or later.
