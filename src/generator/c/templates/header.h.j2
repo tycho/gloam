@@ -129,13 +129,25 @@ struct _cl_event;
 #define {{ enum.name }} {{ enum.value }}{% if enum.comment %} /* {{ enum.comment }} */{% endif %}
 {% endfor %}
 {% endif -%}
-{%- if fs.is_vulkan and fs.features | length > 0 %}
+{%- if fs.features | length > 0 %}
 /* ---- Version feature guards ----------------------------------------------
-   These mirror the upstream vulkan_core.h definitions so that code guarded
-   by e.g. #ifdef VK_VERSION_1_1 compiles correctly against this header. */
+   These mirror the upstream vulkan_core.h / gl.h definitions so that code
+   guarded by e.g. #ifdef GL_VERSION_3_3 compiles correctly against this
+   header. */
 {% for feat in fs.features %}
 #define {{ feat.full_name }} 1
 {% endfor %}
+{% endif -%}
+{%- if not fs.is_vulkan and fs.extensions | length > 0 %}
+/* ---- Extension compile-time guards ---------------------------------------
+   These mirror the definitions in standard glext.h/gl2ext.h/eglext.h so
+   that code guarded by e.g. #ifdef GL_ARB_draw_indirect compiles correctly
+   against this header. */
+{% for ext in fs.extensions %}
+{{- u.protect_begin(ext.protect) -}}
+#define {{ ext.name }} 1
+{{ u.protect_end(ext.protect) -}}
+{%- endfor %}
 {% endif -%}
 {%- if fs.enum_groups | length > 0 %}
 /* ---- Vulkan enum groups -------------------------------------------------- */
