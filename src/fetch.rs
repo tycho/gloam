@@ -12,14 +12,12 @@ use crate::bundled;
 const BASE_GL: &str = "https://raw.githubusercontent.com/KhronosGroup/OpenGL-Registry/main/xml/";
 const BASE_EGL: &str = "https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/main/api/";
 const BASE_VK: &str = "https://raw.githubusercontent.com/KhronosGroup/Vulkan-Docs/main/xml/";
-// The auxiliary-header subsystem (load_auxiliary_header and its helpers) is
-// infrastructure for copying headers to the output directory.  It is not yet
-// wired into the generators.
-#[allow(dead_code)]
 const BASE_VK_HEADERS: &str =
     "https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/main/include/";
 const BASE_ANGLE: &str = "https://raw.githubusercontent.com/google/angle/main/scripts/";
 const GLSL_EXTS_URL: &str = "https://www.uplinklabs.net/glsl_exts.xml";
+const XXHASH_HEAD_URL: &str =
+    "https://raw.githubusercontent.com/Cyan4973/xxHash/refs/heads/dev/xxhash.h";
 
 // ---------------------------------------------------------------------------
 // SpecSources
@@ -45,15 +43,19 @@ pub fn load_spec(spec_name: &str, use_fetch: bool) -> Result<SpecSources> {
     }
 }
 
-#[allow(dead_code)]
 pub fn load_auxiliary_header(path: &str, use_fetch: bool) -> Result<String> {
     if use_fetch {
-        let url = auxiliary_url(path)
-            .ok_or_else(|| anyhow::anyhow!("no remote URL known for '{}'", path))?;
-        fetch_text(&url).with_context(|| format!("fetching auxiliary header '{}'", path))
-    } else {
-        bundled_auxiliary(path).map(str::to_string)
+        if let Some(url) = auxiliary_url(path) {
+            return fetch_text(&url)
+                .with_context(|| format!("fetching auxiliary header '{}'", path));
+        }
+        eprintln!(
+            "no remote auxiliary URL for '{}'; using bundled version",
+            path
+        );
     }
+
+    bundled_auxiliary(path).map(str::to_string)
 }
 
 // ---------------------------------------------------------------------------
@@ -146,12 +148,13 @@ fn fetch_spec(spec_name: &str) -> Result<SpecSources> {
     })
 }
 
-#[allow(dead_code)]
 fn auxiliary_url(path: &str) -> Option<String> {
     if path.starts_with("vk_video/") || path == "vk_platform.h" {
         Some(format!("{}vulkan/{}", BASE_VK_HEADERS, path))
     } else if path.starts_with("KHR/") || path.starts_with("EGL/") {
         Some(format!("{}{}", BASE_EGL, path))
+    } else if path == "xxhash.h" {
+        Some(XXHASH_HEAD_URL.to_string())
     } else {
         None
     }
