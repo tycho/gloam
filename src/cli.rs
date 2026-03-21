@@ -16,6 +16,18 @@ use crate::ir::Version;
     about = "Vulkan/OpenGL/GLES/EGL/GLX/WGL loader generator"
 )]
 pub struct Cli {
+    /// Automatically include any extension whose commands were promoted into the
+    /// requested core version, even if not listed in --extensions.
+    #[arg(long)]
+    pub promoted: bool,
+
+    /// Automatically include any extension that is a predecessor of an
+    /// explicitly selected extension (i.e. its commands are aliases of commands
+    /// in the selected set).  For example, if GL_KHR_parallel_shader_compile is
+    /// selected, GL_ARB_parallel_shader_compile is included automatically.
+    #[arg(long)]
+    pub predecessors: bool,
+
     /// API specifiers: comma-separated name\[:profile\]=version pairs.
     /// Profile is required for GL (core|compat). Version is optional (latest if omitted).
     /// Example: gl:core=3.3,gles2=3.0

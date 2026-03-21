@@ -187,6 +187,8 @@ pub struct AliasPair {
 pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
     let requests = cli.api_requests()?;
     let ext_filter = cli.extension_filter()?;
+    let promoted = cli.promoted;
+    let predecessors = cli.predecessors;
 
     let alias = match &cli.generator {
         crate::cli::Generator::C(c) => c.alias,
@@ -209,7 +211,8 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
         for (spec_name, reqs) in &by_spec {
             let sources = fetch::load_spec(spec_name, cli.fetch)?;
             let raw = parse::parse(&sources, spec_name)?;
-            let fs = resolve_feature_set(&raw, reqs, &ext_filter, true, alias)?;
+            let fs =
+                resolve_feature_set(&raw, reqs, &ext_filter, true, alias, promoted, predecessors)?;
             feature_sets.push(fs);
         }
     } else {
@@ -217,8 +220,15 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
             let spec_name = req.spec_name();
             let sources = fetch::load_spec(spec_name, cli.fetch)?;
             let raw = parse::parse(&sources, spec_name)?;
-            let fs =
-                resolve_feature_set(&raw, std::slice::from_ref(req), &ext_filter, false, alias)?;
+            let fs = resolve_feature_set(
+                &raw,
+                std::slice::from_ref(req),
+                &ext_filter,
+                false,
+                alias,
+                promoted,
+                predecessors,
+            )?;
             feature_sets.push(fs);
         }
     }
@@ -236,6 +246,8 @@ fn resolve_feature_set(
     ext_filter: &Option<Vec<String>>,
     is_merged: bool,
     want_aliases: bool,
+    want_promoted: bool,
+    want_predecessors: bool,
 ) -> Result<FeatureSet> {
     let spec_name = &raw.spec_name;
     let is_vulkan = spec_name == "vk";
@@ -265,10 +277,14 @@ fn resolve_feature_set(
     let mut req_commands: IndexMap<String, ()> = IndexMap::new(); // preserves order
     let mut removed_commands: HashSet<String> = HashSet::new();
     let mut removed_enums: HashSet<String> = HashSet::new();
+    // Per-API core command sets used by --promoted to scope promotion checks.
+    // Keyed by API name (e.g. "gl", "gles2"); values exclude profile-removed commands.
+    let mut per_api_core_cmds: HashMap<String, HashSet<String>> = HashMap::new();
 
     for feat in &selected_features {
         let req_for_api = requests.iter().find(|r| r.name == feat.api);
         let profile = req_for_api.and_then(|r| r.profile.as_deref());
+        let api_cmds = per_api_core_cmds.entry(feat.api.clone()).or_default();
 
         for require in &feat.raw.requires {
             if !api_profile_matches(
@@ -283,6 +299,7 @@ fn resolve_feature_set(
             req_enums.extend(require.enums.iter().cloned());
             for cmd in &require.commands {
                 req_commands.entry(cmd.clone()).or_insert(());
+                api_cmds.insert(cmd.clone());
             }
         }
         for remove in &feat.raw.removes {
@@ -291,6 +308,11 @@ fn resolve_feature_set(
             }
             removed_commands.extend(remove.commands.iter().cloned());
             removed_enums.extend(remove.enums.iter().cloned());
+            // Apply removes inline — features are processed in version order so
+            // each version's removes are applied immediately after its requires.
+            for cmd in &remove.commands {
+                api_cmds.remove(cmd.as_str());
+            }
         }
     }
     for cmd in &removed_commands {
@@ -300,7 +322,15 @@ fn resolve_feature_set(
     // ------------------------------------------------------------------
     // Step 3: Determine which extensions are selected.
     // ------------------------------------------------------------------
-    let selected_exts = select_extensions(raw, requests, ext_filter, spec_name);
+    let selected_exts = select_extensions(
+        raw,
+        requests,
+        ext_filter,
+        spec_name,
+        &per_api_core_cmds,
+        want_promoted,
+        want_predecessors,
+    );
 
     // ------------------------------------------------------------------
     // Step 4: Collect additional required names from extensions.
@@ -578,6 +608,9 @@ fn select_extensions<'a>(
     requests: &[ApiRequest],
     filter: &Option<Vec<String>>,
     spec_name: &str,
+    per_api_core_cmds: &HashMap<String, HashSet<String>>,
+    want_promoted: bool,
+    want_predecessors: bool,
 ) -> Vec<SelectedExt<'a>> {
     let api_set: HashSet<&str> = requests.iter().map(|r| r.name.as_str()).collect();
     // WGL mandatory extensions (spec gotcha #9).
@@ -590,7 +623,8 @@ fn select_extensions<'a>(
         HashSet::new()
     };
 
-    raw.extensions
+    let mut selected: Vec<SelectedExt<'a>> = raw
+        .extensions
         .iter()
         .filter(|e| {
             let supported = e.supported.iter().any(|s| api_set.contains(s.as_str()));
@@ -606,7 +640,131 @@ fn select_extensions<'a>(
             }
         })
         .map(|e| SelectedExt { raw: e })
-        .collect()
+        .collect();
+
+    // Build the bidirectional alias map once — it's used by both the
+    // --promoted and --predecessors passes.
+    let cmd_to_alias: HashMap<&str, &str> = if want_promoted || want_predecessors {
+        let mut m = HashMap::new();
+        for (name, cmd) in &raw.commands {
+            if let Some(ref alias) = cmd.alias {
+                m.insert(name.as_str(), alias.as_str());
+                m.insert(alias.as_str(), name.as_str());
+            }
+        }
+        m
+    } else {
+        HashMap::new()
+    };
+
+    if want_promoted {
+        // Snapshot names already selected so we don't duplicate them.
+        let already: HashSet<&str> = selected.iter().map(|e| e.raw.name.as_str()).collect();
+
+        for ext in &raw.extensions {
+            if already.contains(ext.name.as_str()) {
+                continue;
+            }
+
+            // An extension is considered promoted if, for at least one API A that:
+            //   (a) the extension claims to support, and
+            //   (b) we are generating,
+            // any of the extension's commands for that API appear in A's core
+            // command set — either directly (same-name promotion) or via the
+            // alias graph (renamed promotion, e.g. glActiveTextureARB → glActiveTexture).
+            //
+            // Checking per-API (rather than against the unified req_commands) prevents
+            // cross-contamination in merged builds: a GLES2-only extension whose
+            // commands happen to match GLES2 core will not be auto-included for gl:core.
+            let is_promoted = ext
+                .supported
+                .iter()
+                .filter(|s| api_set.contains(s.as_str()))
+                .any(|api| {
+                    let Some(core_cmds) = per_api_core_cmds.get(api.as_str()) else {
+                        return false;
+                    };
+                    ext.requires
+                        .iter()
+                        // Only consider require blocks that apply to this API.
+                        .filter(|req| api_profile_matches(req.api.as_deref(), None, api, None))
+                        .any(|req| {
+                            req.commands.iter().any(|c| {
+                                // Same-name promotion: the command landed in core
+                                // with the same name (e.g. ARB_copy_buffer →
+                                // glCopyBufferSubData is unchanged).
+                                core_cmds.contains(c.as_str())
+                                    // Renamed promotion: the command has an alias
+                                    // that is in core (e.g. glActiveTextureARB →
+                                    // glActiveTexture).
+                                    || cmd_to_alias
+                                        .get(c.as_str())
+                                        .is_some_and(|a| core_cmds.contains(*a))
+                            })
+                        })
+                });
+
+            if is_promoted {
+                selected.push(SelectedExt { raw: ext });
+            }
+        }
+    }
+
+    if want_predecessors {
+        // Build the set of all commands contributed by the currently selected
+        // extensions (after --promoted may have expanded the set).
+        // An unselected extension is a "predecessor" of the selected set if any
+        // of its commands are aliases of commands in this set — i.e. the
+        // extension was superseded by one already selected.
+        //
+        // We iterate to a fixed point because adding a predecessor may itself
+        // have predecessors not yet in the set.
+        loop {
+            // Collect commands from all currently selected extensions.
+            let selected_ext_cmds: HashSet<&str> = selected
+                .iter()
+                .flat_map(|e| {
+                    e.raw
+                        .requires
+                        .iter()
+                        .flat_map(|req| req.commands.iter().map(String::as_str))
+                })
+                .collect();
+
+            let already: HashSet<&str> = selected.iter().map(|e| e.raw.name.as_str()).collect();
+
+            let mut added_any = false;
+            for ext in &raw.extensions {
+                if already.contains(ext.name.as_str()) {
+                    continue;
+                }
+                let supported = ext.supported.iter().any(|s| api_set.contains(s.as_str()));
+                if !supported {
+                    continue;
+                }
+                let is_predecessor = ext.requires.iter().any(|req| {
+                    req.commands.iter().any(|c| {
+                        // This extension's command is in the selected set directly,
+                        // or its alias is — meaning a newer extension absorbed it.
+                        selected_ext_cmds.contains(c.as_str())
+                            || cmd_to_alias
+                                .get(c.as_str())
+                                .is_some_and(|a| selected_ext_cmds.contains(*a))
+                    })
+                });
+                if is_predecessor {
+                    selected.push(SelectedExt { raw: ext });
+                    added_any = true;
+                }
+            }
+
+            if !added_any {
+                break;
+            }
+        }
+    }
+
+    selected
 }
 
 // ---------------------------------------------------------------------------
