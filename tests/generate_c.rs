@@ -398,3 +398,40 @@ fn removed_enums_readded_by_extensions() {
         "GL_QUADS should be in core profile with GL_ARB_tessellation_shader"
     );
 }
+
+#[test]
+fn generated_has_support_macros() {
+    let dir = TempDir::new().unwrap();
+    gloam()
+        .args([
+            "--api",
+            "gl:core=3.3",
+            "--extensions",
+            "GL_ARB_tessellation_shader",
+            "--out-path",
+            dir.path().to_str().unwrap(),
+            "c",
+        ])
+        .assert()
+        .success();
+
+    let header =
+        std::fs::read_to_string(dir.path().join("include").join("gloam").join("gl.h")).unwrap();
+
+    // We targeted OpenGL 3.3, we should have the macro defined to 1 indicating
+    // support for that and prior versions
+    assert!(
+        header.contains(" GL_VERSION_1_0 1"),
+        "GL_VERSION_1_0 should be defined"
+    );
+    assert!(
+        header.contains(" GL_VERSION_3_3 1"),
+        "GL_VERSION_3_3 should be defined"
+    );
+
+    // We should also have a macro for GL_ARB_tesselation_shader
+    assert!(
+        header.contains(" GL_ARB_tessellation_shader 1"),
+        "GL_ARB_tessellation_shader should be defined"
+    );
+}
