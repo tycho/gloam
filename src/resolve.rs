@@ -10,7 +10,7 @@ use anyhow::Result;
 use indexmap::IndexMap;
 use serde::Serialize;
 
-use crate::cli::{ApiRequest, Cli};
+use crate::cli::{ApiRequest, Cli, canonical_api_name};
 use crate::fetch;
 use crate::ir::{RawCommand, RawSpec};
 use crate::parse;
@@ -649,7 +649,7 @@ fn select_features<'a>(raw: &'a RawSpec, requests: &[ApiRequest]) -> Vec<Selecte
     for req in requests {
         let max_ver = req.version.clone();
         for feat in &raw.features {
-            if feat.api != req.name {
+            if canonical_api_name(&feat.api) != canonical_api_name(&req.name) {
                 continue;
             }
             if let Some(ref mv) = max_ver
@@ -702,7 +702,13 @@ fn select_extensions<'a>(
     want_promoted: bool,
     want_predecessors: bool,
 ) -> Vec<SelectedExt<'a>> {
-    let api_set: HashSet<&str> = requests.iter().map(|r| r.name.as_str()).collect();
+    let mut api_set: HashSet<&str> = requests.iter().map(|r| r.name.as_str()).collect();
+    // The Khronos XML uses "vulkan" in supported= attributes, but our
+    // canonical name is "vk".  Insert the XML form so contains() lookups
+    // against XML-sourced strings succeed.
+    if api_set.contains("vk") {
+        api_set.insert("vulkan");
+    }
     // WGL mandatory extensions (spec gotcha #9).
     let wgl_mandatory: HashSet<&str> = if spec_name == "wgl" {
         ["WGL_ARB_extensions_string", "WGL_EXT_extensions_string"]
@@ -783,7 +789,8 @@ fn select_extensions<'a>(
                 .iter()
                 .filter(|s| api_set.contains(s.as_str()))
                 .any(|api| {
-                    let Some(core_cmds) = per_api_core_cmds.get(api.as_str()) else {
+                    let Some(core_cmds) = per_api_core_cmds.get(canonical_api_name(api.as_str()))
+                    else {
                         return false;
                     };
                     ext.requires
@@ -1086,7 +1093,12 @@ fn build_ext_pfn_ranges(
     let relevant_exts: Vec<(usize, &SelectedExt)> = exts
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.raw.supported.iter().any(|s| s == api))
+        .filter(|(_, e)| {
+            e.raw
+                .supported
+                .iter()
+                .any(|s| canonical_api_name(s) == canonical_api_name(api))
+        })
         .collect();
 
     for (_orig_idx, ext) in &relevant_exts {
@@ -1913,7 +1925,9 @@ fn api_profile_matches(
     target_prof: Option<&str>,
 ) -> bool {
     if let Some(a) = elem_api
-        && !a.split(',').any(|x| x.trim() == target_api)
+        && !a
+            .split(',')
+            .any(|x| canonical_api_name(x.trim()) == canonical_api_name(target_api))
     {
         return false;
     }

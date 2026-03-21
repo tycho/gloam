@@ -127,6 +127,19 @@ impl Cli {
 // ApiRequest
 // ---------------------------------------------------------------------------
 
+/// Normalize an API name to its canonical short form.
+///
+/// The Khronos XML uses `"vulkan"` in feature and extension `api=`
+/// / `supported=` attributes, but the CLI convention is `"vk"`.  This function
+/// maps the long form to the short form so the rest of the codebase can use
+/// a single canonical name.  All other API names pass through unchanged.
+pub fn canonical_api_name(name: &str) -> &str {
+    match name {
+        "vulkan" => "vk",
+        other => other,
+    }
+}
+
 /// One parsed entry from the `--api` argument.
 #[derive(Debug, Clone)]
 pub struct ApiRequest {
@@ -165,7 +178,7 @@ impl ApiRequest {
             .transpose()?;
 
         Ok(Self {
-            name: name.to_string(),
+            name: canonical_api_name(name).to_string(),
             profile: profile.map(str::to_string),
             version,
         })
@@ -225,6 +238,22 @@ mod tests {
         let r = ApiRequest::parse("vk=1.3").unwrap();
         assert_eq!(r.name, "vk");
         assert_eq!(r.version, Some(Version::new(1, 3)));
+    }
+
+    #[test]
+    fn parse_vulkan_normalizes_to_vk() {
+        // "vulkan" is the XML-canonical name; "vk" is the CLI-canonical name.
+        // Both must produce the same ApiRequest.
+        let r = ApiRequest::parse("vulkan=1.3").unwrap();
+        assert_eq!(r.name, "vk", "vulkan should normalize to vk");
+        assert_eq!(r.version, Some(Version::new(1, 3)));
+    }
+
+    #[test]
+    fn parse_vulkan_bare_normalizes_to_vk() {
+        let r = ApiRequest::parse("vulkan").unwrap();
+        assert_eq!(r.name, "vk");
+        assert!(r.version.is_none());
     }
 
     #[test]
