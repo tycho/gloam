@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/tycho/gloam/compare/0.1.6...0.1.7) - 2026-03-21
+
+### Added
+
+- *(resolve)* tag extensions with selection reason, show in preamble
+- *(gen)* add copyright and provenance preamble to generated files
+- *(build)* embed git version info at build time
+
+### Fixed
+
+- *(resolve)* follow extension-to-extension dependencies
+
+### Other
+
+- *(cleanup)* fix some clippy warnings
+
 ## [0.1.6](https://github.com/tycho/gloam/compare/0.1.5...0.1.6) - 2026-03-21
 
 ### Fixed
