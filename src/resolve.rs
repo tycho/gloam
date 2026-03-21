@@ -592,7 +592,7 @@ fn resolve_feature_set(
         }
     }
 
-    let types = build_type_list(raw, &req_types, spec_name, is_vulkan);
+    let types = build_type_list(raw, &req_types, spec_name, is_vulkan, &selected_exts);
 
     // ------------------------------------------------------------------
     // Step 9: Flat enums and enum groups.
@@ -1171,10 +1171,13 @@ fn build_type_list(
     req_types: &HashSet<String>,
     spec_name: &str,
     is_vulkan: bool,
+    selected_exts: &[SelectedExt<'_>],
 ) -> Vec<TypeDef> {
     // Always infer include protections — Vulkan needs it for WSI headers,
     // and GL needs it to correctly guard khrplatform and eglplatform includes.
-    let include_protections = infer_include_protections(raw);
+    // Scoped to selected extensions so that includes are only emitted when
+    // an extension actually in the feature set depends on them.
+    let include_protections = infer_include_protections(raw, selected_exts);
     let ext_type_protect = build_ext_type_protections(raw);
 
     let type_list: Vec<TypeDef> = raw
@@ -1447,7 +1450,10 @@ fn record_protect<'a>(
 ///   - If any requiring extension is unprotected, the include is unconditional
 ///     (empty protection list).
 ///   - If no extension requires the type at all, the include is omitted.
-fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
+fn infer_include_protections(
+    raw: &RawSpec,
+    selected_exts: &[SelectedExt<'_>],
+) -> HashMap<String, Vec<String>> {
     // Step 1: include_name → set of type names that `requires=` it.
     // e.g. "X11/Xlib.h" → {"Display", "VisualID", "Window"}
     let include_names: HashSet<&str> = raw
@@ -1492,13 +1498,15 @@ fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
     // Source (a): extension require blocks — type names and command parameter
     // types.  Platform types like `Display` and `RROutput` often only appear
     // as command parameters, never as explicit <type> entries in <require>.
-    for ext in &raw.extensions {
-        for require in &ext.requires {
+    // Scoped to selected extensions so includes not needed by the feature set
+    // are not emitted.
+    for ext in selected_exts {
+        for require in &ext.raw.requires {
             // (a1) Explicitly listed type names.
             for type_name in &require.types {
                 record_protect(
                     type_name.as_str(),
-                    &ext.protect,
+                    &ext.raw.protect,
                     &all_dep_names,
                     &mut type_protect,
                 );
@@ -1509,7 +1517,7 @@ fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
                     for param in &cmd.params {
                         record_protect(
                             param.type_name.as_str(),
-                            &ext.protect,
+                            &ext.raw.protect,
                             &all_dep_names,
                             &mut type_protect,
                         );
@@ -1533,17 +1541,17 @@ fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
                 .or_insert_with(|| Protection::Guarded(vec![p.clone()]));
         }
     }
-    // Also derive struct protection from extension context.
-    for ext in &raw.extensions {
-        for require in &ext.requires {
+    // Also derive struct protection from selected extension context.
+    for ext in selected_exts {
+        for require in &ext.raw.requires {
             for type_name in &require.types {
                 type_own_protect
                     .entry(type_name.as_str())
                     .or_insert_with(|| {
-                        if ext.protect.is_empty() {
+                        if ext.raw.protect.is_empty() {
                             Protection::Unconditional
                         } else {
-                            Protection::Guarded(ext.protect.clone())
+                            Protection::Guarded(ext.raw.protect.clone())
                         }
                     });
             }

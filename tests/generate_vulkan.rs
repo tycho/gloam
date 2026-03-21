@@ -2,6 +2,10 @@
 //!
 //! These tests require that the bundled XML files are populated.
 //! They also attempt a C compile step if `cc` is available on PATH.
+//!
+//! Vulkan WSI headers (X11/Xlib.h, windows.h, etc.) are behind `#ifdef`
+//! guards that are not defined during the compile check, so they pose no
+//! issue even without a Vulkan SDK installed.
 
 use std::path::Path;
 use std::process::Command;
@@ -185,6 +189,7 @@ fn vulkan_latest_version_generates() {
         .success();
 
     assert_c_output_exists(dir.path(), "vk");
+    try_compile_c(dir.path());
 }
 
 #[test]
