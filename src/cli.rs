@@ -129,13 +129,26 @@ impl Cli {
 
 /// Normalize an API name to its canonical short form.
 ///
-/// The Khronos XML uses `"vulkan"` in feature and extension `api=`
-/// / `supported=` attributes, but the CLI convention is `"vk"`.  This function
-/// maps the long form to the short form so the rest of the codebase can use
-/// a single canonical name.  All other API names pass through unchanged.
+/// The Khronos XML uses `"vulkan"` in feature and extension `api=` / `supported=`
+/// attributes, but the CLI convention (and GLAD's convention) is `"vk"`.  This
+/// function maps the long form to the short form so the rest of the codebase
+/// can use a single canonical name.  All other API names pass through unchanged.
 pub fn canonical_api_name(name: &str) -> &str {
     match name {
         "vulkan" => "vk",
+        other => other,
+    }
+}
+
+/// Map a canonical short API name back to the XML-canonical form.
+///
+/// Used when the name will appear in generated symbol names (e.g.
+/// `kExtIdx_vulkan`, `gloam_vk_find_extensions_vulkan`), where the XML
+/// convention is the appropriate one.  `spec_name` ("vk") controls file
+/// stems; this controls symbol suffixes.
+pub fn xml_api_name(name: &str) -> &str {
+    match name {
+        "vk" => "vulkan",
         other => other,
     }
 }

@@ -10,7 +10,7 @@ use anyhow::Result;
 use indexmap::IndexMap;
 use serde::Serialize;
 
-use crate::cli::{ApiRequest, Cli, canonical_api_name};
+use crate::cli::{ApiRequest, Cli, canonical_api_name, xml_api_name};
 use crate::fetch;
 use crate::ir::{RawCommand, RawSpec};
 use crate::parse;
@@ -335,7 +335,14 @@ fn resolve_feature_set(
         _ => spec_name.as_str(),
     };
 
-    let api_names: Vec<String> = requests.iter().map(|r| r.name.clone()).collect();
+    // api_names uses the XML-canonical form ("vulkan" not "vk") because
+    // these flow into generated C symbol suffixes (kExtIdx_vulkan, etc.)
+    // and IndexMap keys used by the templates.  File stems come from
+    // spec_name ("vk"), not from here.
+    let api_names: Vec<String> = requests
+        .iter()
+        .map(|r| xml_api_name(&r.name).to_string())
+        .collect();
 
     // ------------------------------------------------------------------
     // Step 1: Determine which features (versions) are selected.

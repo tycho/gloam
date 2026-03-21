@@ -111,7 +111,7 @@ fn vulkan_13_generates_expected_files() {
         .assert()
         .success();
 
-    assert_c_output_exists(dir.path(), "vk");
+    assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
@@ -130,7 +130,7 @@ fn vulkan_13_with_loader_generates_and_compiles() {
         .assert()
         .success();
 
-    assert_c_output_exists(dir.path(), "vk");
+    assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
@@ -149,7 +149,7 @@ fn vulkan_13_with_alias_generates_and_compiles() {
         .assert()
         .success();
 
-    assert_c_output_exists(dir.path(), "vk");
+    assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
@@ -169,7 +169,7 @@ fn vulkan_13_all_flags_generates_and_compiles() {
         .assert()
         .success();
 
-    assert_c_output_exists(dir.path(), "vk");
+    assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
@@ -180,7 +180,7 @@ fn vulkan_latest_version_generates() {
     gloam()
         .args([
             "--api",
-            "vk",
+            "vulkan",
             "--out-path",
             dir.path().to_str().unwrap(),
             "c",
@@ -188,7 +188,7 @@ fn vulkan_latest_version_generates() {
         .assert()
         .success();
 
-    assert_c_output_exists(dir.path(), "vk");
+    assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
@@ -208,7 +208,7 @@ fn vulkan_long_name_normalizes_to_vk_stem() {
         .assert()
         .success();
 
-    assert_c_output_exists(dir.path(), "vk");
+    assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
@@ -230,7 +230,7 @@ fn vulkan_header_has_context_and_scope_enum() {
         .assert()
         .success();
 
-    let header = read_header(dir.path(), "vk");
+    let header = read_header(dir.path(), "vulkan");
 
     assert!(
         header.contains("GloamVulkanContext"),
@@ -266,7 +266,7 @@ fn vulkan_header_has_core_commands() {
         .assert()
         .success();
 
-    let header = read_header(dir.path(), "vk");
+    let header = read_header(dir.path(), "vulkan");
 
     // Fundamental Vulkan entry points that must always be present.
     assert!(
@@ -303,7 +303,7 @@ fn vulkan_header_has_version_macros() {
         .assert()
         .success();
 
-    let header = read_header(dir.path(), "vk");
+    let header = read_header(dir.path(), "vulkan");
 
     assert!(
         header.contains("VK_VERSION_1_0 1"),
@@ -339,7 +339,7 @@ fn vulkan_10_does_not_have_13_features() {
         .assert()
         .success();
 
-    let header = read_header(dir.path(), "vk");
+    let header = read_header(dir.path(), "vulkan");
 
     assert!(
         header.contains("VK_VERSION_1_0 1"),
@@ -372,7 +372,7 @@ fn vulkan_with_extension_filter_generates() {
         .assert()
         .success();
 
-    let header = read_header(dir.path(), "vk");
+    let header = read_header(dir.path(), "vulkan");
     assert!(
         header.contains("KHR_swapchain"),
         "VK_KHR_swapchain should be present when explicitly requested"
