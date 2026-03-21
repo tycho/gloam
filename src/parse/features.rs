@@ -263,7 +263,7 @@ fn parse_extension_depends(node: roxmltree::Node<'_, '_>) -> Vec<String> {
         return Vec::new();
     };
 
-    raw.split(|c: char| c == ',' || c == '+' || c == '(' || c == ')')
+    raw.split([',', '+', '(', ')'])
         .map(str::trim)
         .filter(|s| !s.is_empty() && s.contains('_'))
         .map(str::to_string)
