@@ -42,19 +42,38 @@ fn git_ok(repo_dir: &Path, args: &[&str]) -> Option<bool> {
         .map(|o| o.status.success())
 }
 
-/// Walk up from `start` looking for `.git` (file or directory).
-/// Returns the directory *containing* `.git`, not `.git` itself.
-fn find_repo_root(start: &Path) -> Option<PathBuf> {
-    let mut dir = start.to_path_buf();
-    loop {
-        let candidate = dir.join(".git");
-        if candidate.exists() {
-            return Some(dir);
-        }
-        if !dir.pop() {
-            return None;
-        }
+/// Find the git repo root for the crate being built.
+///
+/// Uses `git rev-parse --show-toplevel` from CARGO_MANIFEST_DIR, which
+/// lets git itself determine whether we're inside a repo.  This avoids
+/// the problem of manually walking up the directory tree and accidentally
+/// finding an unrelated `.git` in a parent directory (e.g. when
+/// `cargo install` extracts into `~/.cargo/registry/src/` and some
+/// ancestor has a `.git`).
+///
+/// Returns None if git isn't installed, we're not in a repo (crates.io
+/// tarball), or the detected repo root isn't an ancestor of our manifest
+/// directory (sanity check).
+fn find_repo_root(manifest_dir: &Path) -> Option<PathBuf> {
+    let toplevel = git(manifest_dir, &["rev-parse", "--show-toplevel"])?;
+    let root = PathBuf::from(&toplevel);
+
+    // Sanity check: the manifest dir must be inside the detected repo.
+    // This guards against pathological setups where a completely unrelated
+    // git repo contains our extraction directory.
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+    let canonical_manifest = manifest_dir
+        .canonicalize()
+        .unwrap_or_else(|_| manifest_dir.to_path_buf());
+    if !canonical_manifest.starts_with(&canonical_root) {
+        println!(
+            "cargo:warning=build.rs: git toplevel {:?} is not an ancestor of manifest dir {:?}, ignoring",
+            canonical_root, canonical_manifest
+        );
+        return None;
     }
+
+    Some(root)
 }
 
 /// Write `contents` to `path`, but only if the file doesn't already exist
@@ -139,8 +158,11 @@ fn main() {
             Some(ref root) => (
                 // --tags: match lightweight tags too (not just annotated).
                 // --dirty: append "-dirty" if the worktree has uncommitted changes.
-                // --always: fall back to abbreviated SHA if no tag is reachable.
-                git(root, &["describe", "--tags", "--dirty", "--always"]),
+                // Deliberately no --always: if no tag is reachable (shallow
+                // clone, tags not fetched), we want this to fail so we fall
+                // through to the PKG_VERSION+sha format instead of emitting
+                // a bare SHA as the version string.
+                git(root, &["describe", "--tags", "--dirty"]),
                 git(root, &["rev-parse", "HEAD"]),
                 git(root, &["rev-parse", "--short", "HEAD"]),
                 git(root, &["symbolic-ref", "--short", "-q", "HEAD"]),
