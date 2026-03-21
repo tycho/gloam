@@ -400,6 +400,37 @@ fn removed_enums_readded_by_extensions() {
 }
 
 #[test]
+fn compatibility_profile_has_legacy_gl() {
+    let dir = TempDir::new().unwrap();
+    gloam()
+        .args([
+            "--api",
+            "gl:compatibility=3.3",
+            "--extensions",
+            "",
+            "--out-path",
+            dir.path().to_str().unwrap(),
+            "c",
+        ])
+        .assert()
+        .success();
+
+    let header =
+        std::fs::read_to_string(dir.path().join("include").join("gloam").join("gl.h")).unwrap();
+
+    // Ensure that the compatibility profile has the legacy OpenGL functionality
+    assert!(header.contains(" GL_QUADS "), "GL_QUADS should be defined");
+    assert!(
+        header.contains(" glVertex3f "),
+        "glVertex3f should be defined"
+    );
+    assert!(
+        header.contains(" glNormal3f "),
+        "glNormal3f should be defined"
+    );
+}
+
+#[test]
 fn generated_has_support_macros() {
     let dir = TempDir::new().unwrap();
     gloam()
