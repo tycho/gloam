@@ -658,12 +658,24 @@ fn select_extensions<'a>(
         .map(|e| SelectedExt { raw: e })
         .collect();
 
-    // Build the bidirectional alias map once — it's used by both the
+    // Build the bidirectional alias maps once — they're used by both the
     // --promoted and --predecessors passes.
     let cmd_to_alias: HashMap<&str, &str> = if want_promoted || want_predecessors {
         let mut m = HashMap::new();
         for (name, cmd) in &raw.commands {
             if let Some(ref alias) = cmd.alias {
+                m.insert(name.as_str(), alias.as_str());
+                m.insert(alias.as_str(), name.as_str());
+            }
+        }
+        m
+    } else {
+        HashMap::new()
+    };
+    let enum_to_alias: HashMap<&str, &str> = if want_predecessors {
+        let mut m = HashMap::new();
+        for (name, e) in &raw.flat_enums {
+            if let Some(ref alias) = e.alias {
                 m.insert(name.as_str(), alias.as_str());
                 m.insert(alias.as_str(), name.as_str());
             }
@@ -747,6 +759,17 @@ fn select_extensions<'a>(
                 })
                 .collect();
 
+            // Collect enums from all currently selected extensions.
+            let selected_ext_enums: HashSet<&str> = selected
+                .iter()
+                .flat_map(|e| {
+                    e.raw
+                        .requires
+                        .iter()
+                        .flat_map(|req| req.enums.iter().map(String::as_str))
+                })
+                .collect();
+
             let already: HashSet<&str> = selected.iter().map(|e| e.raw.name.as_str()).collect();
 
             let mut added_any = false;
@@ -759,13 +782,18 @@ fn select_extensions<'a>(
                     continue;
                 }
                 let is_predecessor = ext.requires.iter().any(|req| {
+                    // Check if this extension's command or enum is in the selected set directly, or
+                    // its alias is — meaning a newer extension absorbed it.
                     req.commands.iter().any(|c| {
-                        // This extension's command is in the selected set directly,
-                        // or its alias is — meaning a newer extension absorbed it.
                         selected_ext_cmds.contains(c.as_str())
                             || cmd_to_alias
                                 .get(c.as_str())
                                 .is_some_and(|a| selected_ext_cmds.contains(*a))
+                    }) || req.enums.iter().any(|e| {
+                        selected_ext_enums.contains(e.as_str())
+                            || enum_to_alias
+                                .get(e.as_str())
+                                .is_some_and(|a| selected_ext_enums.contains(*a))
                     })
                 });
                 if is_predecessor {
