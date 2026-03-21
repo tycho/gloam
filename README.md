@@ -104,10 +104,10 @@ Typical use with an explicit `--extensions` list:
 gloam --api gl:core=4.6,gles2=3.2 --extensions GL_KHR_debug,... --merge c
 
 # Explicit list + promoted ARB predecessors of core functions.
-gloam --api gl:core=4.6,gles2=3.2 --extensions GL_KHR_debug,... --merge c --promoted
+gloam --api gl:core=4.6,gles2=3.2 --extensions GL_KHR_debug,... --promoted --merge c
 
 # Explicit list + promoted + extension-to-extension predecessor chains.
-gloam --api gl:core=4.6,gles2=3.2 --extensions GL_KHR_debug,... --merge c --promoted --predecessors
+gloam --api gl:core=4.6,gles2=3.2 --extensions GL_KHR_debug,... --promoted --predecessors --merge c
 ```
 
 ---
