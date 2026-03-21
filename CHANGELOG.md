@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/tycho/gloam/compare/0.1.4...0.1.5) - 2026-03-21
+
+### Fixed
+
+- *(header)* add missing version/extension compile-time guard macros
+- *(cli)* make CLI argument descriptions slightly more clear
+
+### Other
+
+- *(c)* fix some generated formatting issues
+
 ## [0.1.4](https://github.com/tycho/gloam/compare/0.1.3...0.1.4) - 2026-03-21
 
 ### Fixed
