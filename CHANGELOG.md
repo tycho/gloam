@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/tycho/gloam/compare/0.1.5...0.1.6) - 2026-03-21
+
+### Fixed
+
+- *(vulkan)* ensure we use the proper spec name in the generated file
+- *(resolve)* avoid double-inclusion of dependent headers
+- *(vulkan)* ensure we include the vk_video headers we need
+- *(cli)* treat `--api vk=` and `--api vulkan=` as equivalent
+- *(tests)* add test coverage for vulkan generation
+- *(fetch)* fall back to bundled file for unmatched upstream URLs
+- *(resolve)* algorithmic and readability improvements
+- *(tests)* ensure that 'compatibility' profile has features we expect
+- *(tests)* check for version and extension support macros
+
 ## [0.1.5](https://github.com/tycho/gloam/compare/0.1.4...0.1.5) - 2026-03-21
 
 ### Fixed
