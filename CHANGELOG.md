@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/tycho/gloam/compare/0.1.2...0.1.3) - 2026-03-21
+
+### Added
+
+- *(resolve)* add --promoted and --predecessors extension selection flags
+
+### Fixed
+
+- *(resolve)* include enums in predecessor check too
+- *(resolve)* seed req_types from command parameter types for Vulkan
+
 ## [0.1.2](https://github.com/tycho/gloam/compare/0.1.1...0.1.2) - 2026-03-20
 
 ### Fixed
