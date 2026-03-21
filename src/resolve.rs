@@ -707,6 +707,9 @@ pub enum SelectionReason {
     AllExtensions,
     /// WGL mandatory extensions (always required for WGL to function).
     Mandatory,
+    /// Auto-included because a selected extension declares it as a dependency
+    /// (via the `requires=` or `depends=` XML attribute).
+    Dependency,
     /// Auto-included because its commands were promoted into a requested core version.
     Promoted,
     /// Auto-included as a predecessor of an already-selected extension.
@@ -776,6 +779,53 @@ fn select_extensions<'a>(
             }
         })
         .collect();
+
+    // Build an extension name → index lookup for dependency resolution.
+    let ext_by_name: HashMap<&str, usize> = raw
+        .extensions
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.name.as_str(), i))
+        .collect();
+
+    // Dependency-following pass: walk the `depends` field of each selected
+    // extension and pull in any prerequisite extensions not already selected.
+    // Fixed-point loop because dependencies can be transitive — pulling in
+    // extension A may require extension B which requires extension C.
+    // Runs before --promoted and --predecessors so that dependency-pulled
+    // extensions' commands are visible to those passes.
+    loop {
+        let already: HashSet<&str> = selected.iter().map(|e| e.raw.name.as_str()).collect();
+        let prev_len = selected.len();
+
+        // Collect unique dependency names from all currently selected extensions.
+        let needed: HashSet<&str> = selected
+            .iter()
+            .flat_map(|e| e.raw.depends.iter().map(String::as_str))
+            .filter(|dep| {
+                !already.contains(dep)
+                    && ext_by_name.contains_key(dep)
+                    // Only pull in extensions that support a requested API.
+                    && raw.extensions[ext_by_name[dep]]
+                        .supported
+                        .iter()
+                        .any(|s| api_set.contains(s.as_str()))
+            })
+            .collect();
+
+        for dep_name in needed {
+            if let Some(&idx) = ext_by_name.get(dep_name) {
+                selected.push(SelectedExt {
+                    raw: &raw.extensions[idx],
+                    reason: SelectionReason::Dependency,
+                });
+            }
+        }
+
+        if selected.len() == prev_len {
+            break;
+        }
+    }
 
     // Build the bidirectional alias maps once — they're used by both the
     // --promoted and --predecessors passes.

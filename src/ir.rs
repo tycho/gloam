@@ -203,6 +203,11 @@ pub struct RawExtension {
     pub protect: Vec<String>,
     /// Extension registry number, used for enum offset calculation.
     pub number: Option<u32>,
+    /// Extensions this one depends on (from `requires=` or `depends=` attribute).
+    /// All referenced extension names, regardless of AND/OR semantics in the
+    /// original attribute — if a name appears at all, it's a prerequisite the
+    /// loader should include.
+    pub depends: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------

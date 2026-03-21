@@ -202,6 +202,13 @@ fn parse_extensions(
 
         let number = node.attribute("number").and_then(|s| s.parse().ok());
 
+        // Extension-to-extension dependencies: GL uses `requires=` (comma-
+        // separated), Vulkan uses `depends=` with `+` (AND), `,` (OR), and
+        // parentheses.  We extract every extension-name-looking token from
+        // whichever attribute is present — the resolver needs all prerequisites
+        // regardless of AND/OR semantics.
+        let depends = parse_extension_depends(node);
+
         let requires = node
             .children()
             .filter(|n| n.is_element() && n.tag_name().name() == "require")
@@ -214,6 +221,7 @@ fn parse_extensions(
             requires,
             protect,
             number,
+            depends,
         });
     }
 
@@ -231,6 +239,37 @@ fn parse_extensions(
 
     Ok(extensions)
 }
+// ---------------------------------------------------------------------------
+// Parse extension dependency attributes
+// ---------------------------------------------------------------------------
+
+/// Extract extension dependency names from the `requires=` (GL) or `depends=`
+/// (Vulkan) attribute on an `<extension>` element.
+///
+/// GL uses comma-separated names: `requires="GL_ARB_draw_indirect"`
+/// Vulkan uses a boolean expression: `depends="VK_KHR_foo+VK_KHR_bar,VK_VERSION_1_1"`
+/// with `+` (AND), `,` (OR), and parentheses.
+///
+/// We split on all delimiters and return every token that looks like an
+/// extension name (contains `_` and doesn't start with a digit).  Version
+/// requirements like `VK_VERSION_1_1` are included — the resolver filters
+/// them against the actual extension list.
+fn parse_extension_depends(node: roxmltree::Node<'_, '_>) -> Vec<String> {
+    let attr = node
+        .attribute("depends")
+        .or_else(|| node.attribute("requires"));
+
+    let Some(raw) = attr else {
+        return Vec::new();
+    };
+
+    raw.split(|c: char| c == ',' || c == '+' || c == '(' || c == ')')
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.contains('_'))
+        .map(str::to_string)
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Parse <require> and <remove> blocks
 // ---------------------------------------------------------------------------

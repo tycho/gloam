@@ -30,9 +30,10 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
         lines.push(" *".to_string());
         lines.push(format!(" * {}", extension_summary(fs)));
 
-        // List implicitly-included extensions (promoted, predecessor) so the
-        // user can see what was pulled in automatically.
+        // List implicitly-included extensions (dependency, promoted, predecessor)
+        // so the user can see what was pulled in automatically.
         for (label, reason) in &[
+            ("dependency", SelectionReason::Dependency),
             ("promoted", SelectionReason::Promoted),
             ("predecessor", SelectionReason::Predecessor),
         ] {
@@ -50,7 +51,7 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
 
     // ---- gloam license ----
     lines.push(" *".to_string());
-    lines.push(format!(" * gloam Copyright (c) {year} Steven Noonan"));
+    lines.push(format!(" * Copyright (c) {year} Steven Noonan"));
     lines.push(" * SPDX-License-Identifier: MIT".to_string());
 
     // ---- Khronos ----
@@ -93,6 +94,7 @@ fn extension_summary(fs: &FeatureSet) -> String {
     let n_all = count(SelectionReason::AllExtensions);
     let n_explicit = count(SelectionReason::Explicit);
     let n_mandatory = count(SelectionReason::Mandatory);
+    let n_dependency = count(SelectionReason::Dependency);
     let n_promoted = count(SelectionReason::Promoted);
     let n_predecessor = count(SelectionReason::Predecessor);
 
@@ -107,6 +109,9 @@ fn extension_summary(fs: &FeatureSet) -> String {
     }
     if n_mandatory > 0 {
         parts.push(format!("{n_mandatory} mandatory"));
+    }
+    if n_dependency > 0 {
+        parts.push(format!("{n_dependency} dependency"));
     }
     if n_promoted > 0 {
         parts.push(format!("{n_promoted} promoted"));
@@ -314,6 +319,30 @@ mod tests {
         ];
         let p = build_preamble(&fs, "gloam --api gl:core=3.3 c");
         assert!(p.contains("predecessor: GL_ARB_parallel_shader_compile"));
+    }
+
+    #[test]
+    fn preamble_lists_dependency_extensions() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![
+            stub_ext("GL_ARB_multi_draw_indirect", SelectionReason::Explicit),
+            stub_ext("GL_ARB_draw_indirect", SelectionReason::Dependency),
+        ];
+        let p = build_preamble(&fs, "gloam --api gl:core=3.3 c");
+        assert!(p.contains("dependency: GL_ARB_draw_indirect"));
+    }
+
+    #[test]
+    fn summary_with_dependencies() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![
+            stub_ext("GL_ARB_multi_draw_indirect", SelectionReason::Explicit),
+            stub_ext("GL_ARB_draw_indirect", SelectionReason::Dependency),
+        ];
+        assert_eq!(
+            extension_summary(&fs),
+            "Extensions: 1 explicit, 1 dependency (2 total)"
+        );
     }
 
     #[test]
