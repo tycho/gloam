@@ -4,7 +4,7 @@
 //! with all arrays indexed, range tables built, and alias pairs computed.
 //! This is the bridge between the parser and the code generators.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use anyhow::Result;
 use indexmap::IndexMap;
@@ -178,6 +178,79 @@ pub struct PfnRange {
 pub struct AliasPair {
     pub canonical: u16,
     pub secondary: u16,
+}
+
+// ---------------------------------------------------------------------------
+// Protection lattice
+// ---------------------------------------------------------------------------
+
+/// Tracks the platform-protection state for a type or include.
+///
+/// The lattice has two states:
+///   - `Guarded(macros)` — protected by a set of `#if defined(...)` macros.
+///   - `Unconditional` — required by at least one unprotected context, so no
+///     guard is needed.
+///
+/// Once a value reaches `Unconditional` it stays there (absorbing element).
+#[derive(Debug, Clone)]
+enum Protection {
+    Unconditional,
+    Guarded(Vec<String>),
+}
+
+impl Protection {
+    fn new_guarded() -> Self {
+        Self::Guarded(Vec::new())
+    }
+
+    /// Merge protection information from one extension.  If the extension is
+    /// unprotected, the result becomes unconditional.  Otherwise the
+    /// extension's guards are unioned in.
+    fn add_extension(&mut self, ext_protect: &[String]) {
+        match self {
+            Self::Unconditional => {} // absorbing — nothing to do
+            Self::Guarded(guards) => {
+                if ext_protect.is_empty() {
+                    *self = Self::Unconditional;
+                } else {
+                    for p in ext_protect {
+                        if !guards.contains(p) {
+                            guards.push(p.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Convert to the final representation: empty Vec = unconditional.
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            Self::Unconditional => Vec::new(),
+            Self::Guarded(v) if v.is_empty() => Vec::new(),
+            Self::Guarded(mut v) => {
+                v.sort();
+                v
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    fn is_unconditional(&self) -> bool {
+        matches!(self, Self::Unconditional)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GL auto-exclude set
+// ---------------------------------------------------------------------------
+
+/// Type names that GL specs auto-include but that we never emit (they map to
+/// system or bundled headers instead).
+const GL_AUTO_EXCLUDE: &[&str] = &["stddef", "khrplatform", "inttypes"];
+
+fn is_gl_auto_excluded(name: &str) -> bool {
+    GL_AUTO_EXCLUDE.contains(&name)
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +450,7 @@ fn resolve_feature_set(
 
     let pfn_prefix = api_pfn_prefix(spec_name);
     let name_prefix = api_name_prefix(spec_name);
+    let cmd_protect_map = build_command_protect_map(&selected_exts);
 
     let mut commands: Vec<Command> = Vec::with_capacity(all_cmd_names.len());
     for (idx, &cmd_name) in all_cmd_names.iter().enumerate() {
@@ -394,7 +468,7 @@ fn resolve_feature_set(
             String::new()
         };
 
-        let protect = find_command_protect(raw, cmd_name, &selected_exts);
+        let protect = cmd_protect_map.get(cmd_name).cloned();
 
         commands.push(build_command(
             idx as u16,
@@ -739,40 +813,40 @@ fn select_extensions<'a>(
     }
 
     if want_predecessors {
-        // Build the set of all commands contributed by the currently selected
-        // extensions (after --promoted may have expanded the set).
+        // Build the set of all commands and enums contributed by the currently
+        // selected extensions (after --promoted may have expanded the set).
         // An unselected extension is a "predecessor" of the selected set if any
-        // of its commands are aliases of commands in this set — i.e. the
+        // of its commands or enums are aliases of items in this set — i.e. the
         // extension was superseded by one already selected.
         //
         // We iterate to a fixed point because adding a predecessor may itself
-        // have predecessors not yet in the set.
+        // have predecessors not yet in the set.  The sets are maintained
+        // incrementally: each iteration only adds items from newly-selected
+        // extensions rather than re-scanning the entire selected list.
+        let mut selected_ext_cmds: HashSet<&str> = selected
+            .iter()
+            .flat_map(|e| {
+                e.raw
+                    .requires
+                    .iter()
+                    .flat_map(|req| req.commands.iter().map(String::as_str))
+            })
+            .collect();
+
+        let mut selected_ext_enums: HashSet<&str> = selected
+            .iter()
+            .flat_map(|e| {
+                e.raw
+                    .requires
+                    .iter()
+                    .flat_map(|req| req.enums.iter().map(String::as_str))
+            })
+            .collect();
+
         loop {
-            // Collect commands from all currently selected extensions.
-            let selected_ext_cmds: HashSet<&str> = selected
-                .iter()
-                .flat_map(|e| {
-                    e.raw
-                        .requires
-                        .iter()
-                        .flat_map(|req| req.commands.iter().map(String::as_str))
-                })
-                .collect();
-
-            // Collect enums from all currently selected extensions.
-            let selected_ext_enums: HashSet<&str> = selected
-                .iter()
-                .flat_map(|e| {
-                    e.raw
-                        .requires
-                        .iter()
-                        .flat_map(|req| req.enums.iter().map(String::as_str))
-                })
-                .collect();
-
             let already: HashSet<&str> = selected.iter().map(|e| e.raw.name.as_str()).collect();
+            let prev_len = selected.len();
 
-            let mut added_any = false;
             for ext in &raw.extensions {
                 if already.contains(ext.name.as_str()) {
                     continue;
@@ -782,8 +856,6 @@ fn select_extensions<'a>(
                     continue;
                 }
                 let is_predecessor = ext.requires.iter().any(|req| {
-                    // Check if this extension's command or enum is in the selected set directly, or
-                    // its alias is — meaning a newer extension absorbed it.
                     req.commands.iter().any(|c| {
                         selected_ext_cmds.contains(c.as_str())
                             || cmd_to_alias
@@ -798,12 +870,19 @@ fn select_extensions<'a>(
                 });
                 if is_predecessor {
                     selected.push(SelectedExt { raw: ext });
-                    added_any = true;
                 }
             }
 
-            if !added_any {
+            if selected.len() == prev_len {
                 break;
+            }
+
+            // Incrementally add commands/enums from only the newly selected extensions.
+            for ext in &selected[prev_len..] {
+                for req in &ext.raw.requires {
+                    selected_ext_cmds.extend(req.commands.iter().map(String::as_str));
+                    selected_ext_enums.extend(req.enums.iter().map(String::as_str));
+                }
             }
         }
     }
@@ -952,6 +1031,12 @@ fn build_feature_pfn_ranges(
     feat_entries: &[Feature],
     commands: &[Command],
 ) -> Vec<PfnRange> {
+    debug_assert_eq!(
+        features.len(),
+        feat_entries.len(),
+        "SelectedFeature and Feature slices must be built in the same order"
+    );
+
     // Build a map: command name → pfnArray index.
     let cmd_index: HashMap<&str, u16> = commands
         .iter()
@@ -960,12 +1045,10 @@ fn build_feature_pfn_ranges(
 
     let mut ranges: Vec<PfnRange> = Vec::new();
 
-    for feat in feat_entries {
-        // Find the commands belonging to this feature.
-        let sf = match features.iter().find(|f| f.raw.name == feat.full_name) {
-            Some(f) => f,
-            None => continue,
-        };
+    // features[] and feat_entries[] are built from the same source in the same
+    // order, so we zip rather than doing O(n) string searches per feature.
+    for (sf, feat) in features.iter().zip(feat_entries.iter()) {
+        debug_assert_eq!(sf.raw.name, feat.full_name);
 
         let mut cmd_indices: Vec<u16> = Vec::new();
         for require in &sf.raw.requires {
@@ -1077,11 +1160,6 @@ fn build_type_list(
     spec_name: &str,
     is_vulkan: bool,
 ) -> Vec<TypeDef> {
-    let gl_auto_exclude: HashSet<&str> = ["stddef", "khrplatform", "inttypes"]
-        .iter()
-        .copied()
-        .collect();
-
     // Always infer include protections — Vulkan needs it for WSI headers,
     // and GL needs it to correctly guard khrplatform and eglplatform includes.
     let include_protections = infer_include_protections(raw);
@@ -1129,7 +1207,7 @@ fn build_type_list(
             }
             // GL family: auto-include all API-compatible types except the
             // excluded ones (spec gotcha #5 exclusions).
-            if gl_auto_exclude.contains(t.name.as_str()) {
+            if is_gl_auto_excluded(&t.name) {
                 return false;
             }
             req_types.contains(&t.name) || t.api.as_deref().is_none_or(|a| a == spec_name)
@@ -1222,8 +1300,7 @@ fn topo_sort_typedefs(types: Vec<TypeDef>) -> Vec<TypeDef> {
         }
     }
 
-    let mut queue: std::collections::VecDeque<usize> =
-        (0..n).filter(|&i| in_degree[i] == 0).collect();
+    let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
     let mut order: Vec<usize> = Vec::with_capacity(n);
     while let Some(node) = queue.pop_front() {
         order.push(node);
@@ -1236,74 +1313,62 @@ fn topo_sort_typedefs(types: Vec<TypeDef>) -> Vec<TypeDef> {
     }
 
     // Cycle fallback: sort stranded nodes so that if A's raw_c references
-    // B's name, B comes before A.
+    // B's name, B comes before A.  Uses a second topo sort scoped to just
+    // the stranded subset.
     if order.len() < n {
-        let mut stranded: Vec<usize> = (0..n).filter(|&i| in_degree[i] != 0).collect();
-        // Build a simple ordering: if stranded[j] appears in stranded[k]'s raw_c,
-        // stranded[j] should come before stranded[k].
-        let stranded_names: std::collections::HashSet<usize> = stranded.iter().copied().collect();
-        // Topological sort among just the stranded nodes.
-        let mut s_in: HashMap<usize, usize> = HashMap::new();
-        let mut s_rev: HashMap<usize, Vec<usize>> = HashMap::new();
-        for &i in &stranded {
-            s_in.insert(i, 0);
-            s_rev.insert(i, Vec::new());
-        }
-        for &i in &stranded {
-            for word in crate::parse::types::ident_words(&types[i].raw_c) {
-                if let Some(&j) = name_to_idx.get(word)
-                    && j != i
-                    && stranded_names.contains(&j)
-                {
-                    *s_in.get_mut(&i).unwrap() += 1;
-                    s_rev.get_mut(&j).unwrap().push(i);
-                }
-            }
-        }
-        // Deduplicate s_in counts (since ident_words may yield same word twice).
-        // Simpler: just rebuild cleanly with dedup per node.
-        let mut s_deps: HashMap<usize, std::collections::HashSet<usize>> = HashMap::new();
-        for &i in &stranded {
-            let mut deps_i = std::collections::HashSet::new();
-            for word in crate::parse::types::ident_words(&types[i].raw_c) {
-                if let Some(&j) = name_to_idx.get(word)
-                    && j != i
-                    && stranded_names.contains(&j)
-                {
-                    deps_i.insert(j);
-                }
-            }
-            s_deps.insert(i, deps_i);
-        }
-        let mut s_in2: HashMap<usize, usize> =
+        let stranded: Vec<usize> = (0..n).filter(|&i| in_degree[i] != 0).collect();
+        let stranded_set: HashSet<usize> = stranded.iter().copied().collect();
+
+        // Build per-node dependency sets (deduplicated — ident_words may
+        // yield the same word more than once for a given type body).
+        let s_deps: HashMap<usize, HashSet<usize>> = stranded
+            .iter()
+            .map(|&i| {
+                let deps_i: HashSet<usize> = crate::parse::types::ident_words(&types[i].raw_c)
+                    .filter_map(|word| {
+                        name_to_idx
+                            .get(word)
+                            .copied()
+                            .filter(|&j| j != i && stranded_set.contains(&j))
+                    })
+                    .collect();
+                (i, deps_i)
+            })
+            .collect();
+
+        let mut s_in: HashMap<usize, usize> =
             stranded.iter().map(|&i| (i, s_deps[&i].len())).collect();
-        let mut s_rev2: HashMap<usize, Vec<usize>> =
+        let mut s_rev: HashMap<usize, Vec<usize>> =
             stranded.iter().map(|&i| (i, Vec::new())).collect();
         for &i in &stranded {
             for &j in &s_deps[&i] {
-                s_rev2.get_mut(&j).unwrap().push(i);
+                s_rev.get_mut(&j).unwrap().push(i);
             }
         }
-        let mut s_queue: std::collections::VecDeque<usize> = stranded
+
+        let mut s_queue: VecDeque<usize> = stranded
             .iter()
-            .filter(|&&i| s_in2[&i] == 0)
+            .filter(|&&i| s_in[&i] == 0)
             .copied()
             .collect();
         let mut s_order: Vec<usize> = Vec::new();
         while let Some(node) = s_queue.pop_front() {
             s_order.push(node);
-            for &dep in &s_rev2[&node] {
-                let e = s_in2.get_mut(&dep).unwrap();
+            for &dep in &s_rev[&node] {
+                let e = s_in.get_mut(&dep).unwrap();
                 *e -= 1;
                 if *e == 0 {
                     s_queue.push_back(dep);
                 }
             }
         }
-        // Any still-stranded types append in original index order.
-        let processed: std::collections::HashSet<usize> = s_order.iter().copied().collect();
-        stranded.retain(|i| !processed.contains(i));
-        s_order.extend(stranded);
+        // Any still-stranded types (true cycles) append in original index order.
+        let processed: HashSet<usize> = s_order.iter().copied().collect();
+        for &i in &stranded {
+            if !processed.contains(&i) {
+                s_order.push(i);
+            }
+        }
         order.extend(s_order);
     }
 
@@ -1314,6 +1379,49 @@ fn topo_sort_typedefs(types: Vec<TypeDef>) -> Vec<TypeDef> {
 // ---------------------------------------------------------------------------
 // Include protection inference
 // ---------------------------------------------------------------------------
+
+/// Build a map from type name → protection macros derived purely from the
+/// extensions that require that type.
+///
+/// This covers the common Vulkan pattern where a struct has no `protect=`
+/// attribute on its `<type>` element but is required only inside an extension
+/// with `platform="win32"` (or similar), making its protection implicit.
+///
+/// Missing from the map = not required by any extension (use the type's
+/// own `protect=` attribute instead, or no guard).
+fn build_ext_type_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
+    let mut tmp: HashMap<&str, Protection> = HashMap::new();
+
+    for ext in &raw.extensions {
+        for require in &ext.requires {
+            for type_name in &require.types {
+                tmp.entry(type_name.as_str())
+                    .or_insert_with(Protection::new_guarded)
+                    .add_extension(&ext.protect);
+            }
+        }
+    }
+
+    tmp.into_iter()
+        .map(|(name, prot)| (name.to_string(), prot.into_vec()))
+        .collect()
+}
+
+/// Record protection guards for a single type name if it's an include
+/// dependency.  Uses the `Protection` lattice for clean state merging.
+fn record_protect<'a>(
+    name: &'a str,
+    ext_protect: &[String],
+    all_dep_names: &HashSet<&str>,
+    map: &mut HashMap<&'a str, Protection>,
+) {
+    if !all_dep_names.contains(name) {
+        return;
+    }
+    map.entry(name)
+        .or_insert_with(Protection::new_guarded)
+        .add_extension(ext_protect);
+}
 
 /// For each `category="include"` type in the spec, determine what `#if`
 /// protection it needs based on which extensions require types that depend
@@ -1327,90 +1435,17 @@ fn topo_sort_typedefs(types: Vec<TypeDef>) -> Vec<TypeDef> {
 ///   - If any requiring extension is unprotected, the include is unconditional
 ///     (empty protection list).
 ///   - If no extension requires the type at all, the include is omitted.
-///
-/// Build a map from type name → protection macros derived purely from the
-/// extensions that require that type.
-///
-/// This covers the common Vulkan pattern where a struct has no `protect=`
-/// attribute on its `<type>` element but is required only inside an extension
-/// with `platform="win32"` (or similar), making its protection implicit.
-///
-/// - `None` in the intermediate map = unconditional (required by an
-///   unprotected extension).
-/// - Missing from the map = not required by any extension (use the type's
-///   own `protect=` attribute instead, or no guard).
-fn build_ext_type_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
-    // type_name → Option<Vec<guards>>  (None = unconditional)
-    let mut tmp: HashMap<&str, Option<Vec<String>>> = HashMap::new();
-
-    for ext in &raw.extensions {
-        for require in &ext.requires {
-            for type_name in &require.types {
-                let entry = tmp
-                    .entry(type_name.as_str())
-                    .or_insert_with(|| Some(Vec::new()));
-                match entry {
-                    None => {} // already unconditional
-                    Some(guards) => {
-                        if ext.protect.is_empty() {
-                            *entry = None;
-                        } else {
-                            for p in &ext.protect {
-                                if !guards.contains(p) {
-                                    guards.push(p.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Convert: None → empty Vec (unconditional), Some(guards) → guards.
-    // Only include entries that were actually found in extension require blocks.
-    tmp.into_iter()
-        .map(|(name, state)| (name.to_string(), state.unwrap_or_default()))
-        .collect()
-}
-
-/// Record protection guards for a single type name, used during include
-/// protection inference.  Standalone function to avoid lifetime issues with
-/// closures over HashMap<&str, ...>.
-fn record_protect<'a>(
-    name: &'a str,
-    ext_protect: &[String],
-    all_dep_names: &std::collections::HashSet<&str>,
-    map: &mut HashMap<&'a str, Option<Vec<String>>>,
-) {
-    if !all_dep_names.contains(name) {
-        return;
-    }
-    let entry = map.entry(name).or_insert_with(|| Some(Vec::new()));
-    if let Some(guards) = entry {
-        if ext_protect.is_empty() {
-            *entry = None;
-        } else {
-            for p in ext_protect {
-                if !guards.contains(p) {
-                    guards.push(p.clone());
-                }
-            }
-        }
-    }
-}
-
 fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
     // Step 1: include_name → set of type names that `requires=` it.
     // e.g. "X11/Xlib.h" → {"Display", "VisualID", "Window"}
-    let include_names: std::collections::HashSet<&str> = raw
+    let include_names: HashSet<&str> = raw
         .types
         .iter()
         .filter(|t| t.category == "include")
         .map(|t| t.name.as_str())
         .collect();
 
-    let mut include_to_deps: HashMap<&str, std::collections::HashSet<&str>> = HashMap::new();
+    let mut include_to_deps: HashMap<&str, HashSet<&str>> = HashMap::new();
     for t in &raw.types {
         if t.category == "include" {
             continue;
@@ -1434,13 +1469,10 @@ fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
     //       name (e.g. VkXlibSurfaceCreateInfoKHR has a Display* member and
     //       lives under VK_USE_PLATFORM_XLIB_KHR).  This catches the case
     //       where the dep type is never listed in any <require> block.
-    //
-    // None  = unconditional (required by an unprotected context)
-    // Some  = guarded by these macros
-    let mut type_protect: HashMap<&str, Option<Vec<String>>> = HashMap::new();
+    let mut type_protect: HashMap<&str, Protection> = HashMap::new();
 
     // Collect all dep names for fast membership tests in (b).
-    let all_dep_names: std::collections::HashSet<&str> = include_to_deps
+    let all_dep_names: HashSet<&str> = include_to_deps
         .values()
         .flat_map(|s| s.iter().copied())
         .collect();
@@ -1476,19 +1508,20 @@ fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
     }
 
     // Source (b): scan raw_c of every type that has a known protection.
-    // Collect (type_name, protection) pairs first to avoid borrow conflicts.
     // Protection comes from the type's own protect= attr, OR from extensions
     // that require that type.
-    let mut type_own_protect: HashMap<&str, Option<Vec<String>>> = HashMap::new();
+    let mut type_own_protect: HashMap<&str, Protection> = HashMap::new();
     for t in &raw.types {
         if t.category == "include" || t.raw_c.is_empty() {
             continue;
         }
         if let Some(ref p) = t.protect {
-            type_own_protect.insert(t.name.as_str(), Some(vec![p.clone()]));
+            type_own_protect
+                .entry(t.name.as_str())
+                .or_insert_with(|| Protection::Guarded(vec![p.clone()]));
         }
     }
-    // Also derive struct protection from extension context (same as above).
+    // Also derive struct protection from extension context.
     for ext in &raw.extensions {
         for require in &ext.requires {
             for type_name in &require.types {
@@ -1496,9 +1529,9 @@ fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
                     .entry(type_name.as_str())
                     .or_insert_with(|| {
                         if ext.protect.is_empty() {
-                            None
+                            Protection::Unconditional
                         } else {
-                            Some(ext.protect.clone())
+                            Protection::Guarded(ext.protect.clone())
                         }
                     });
             }
@@ -1510,27 +1543,19 @@ fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
             continue;
         }
         let struct_protect = match type_own_protect.get(t.name.as_str()) {
-            None => continue,   // unprotected type, skip
-            Some(None) => None, // unconditional context
-            Some(Some(v)) => Some(v.as_slice()),
+            None => continue, // unprotected type, skip
+            Some(prot) => prot,
         };
         for word in ident_words(&t.raw_c) {
             if !all_dep_names.contains(word) {
                 continue;
             }
-            let entry = type_protect.entry(word).or_insert_with(|| Some(Vec::new()));
-            match (entry.as_mut(), struct_protect) {
-                (None, _) => {} // already unconditional
-                (Some(_), None) => {
-                    *entry = None;
-                } // unconditional struct
-                (Some(guards), Some(ps)) => {
-                    for p in ps {
-                        if !guards.contains(p) {
-                            guards.push(p.to_string());
-                        }
-                    }
-                }
+            let entry = type_protect
+                .entry(word)
+                .or_insert_with(Protection::new_guarded);
+            match struct_protect {
+                Protection::Unconditional => *entry = Protection::Unconditional,
+                Protection::Guarded(ps) => entry.add_extension(ps),
             }
         }
     }
@@ -1539,35 +1564,24 @@ fn infer_include_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
     let mut result: HashMap<String, Vec<String>> = HashMap::new();
 
     for (include_name, dep_names) in &include_to_deps {
-        let mut all_guards: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut unconditional = false;
+        let mut merged = Protection::new_guarded();
         let mut any_found = false;
 
         for &dep_name in dep_names {
-            if let Some(state) = type_protect.get(dep_name) {
+            if let Some(prot) = type_protect.get(dep_name) {
                 any_found = true;
-                match state {
-                    None => {
-                        unconditional = true;
+                match prot {
+                    Protection::Unconditional => {
+                        merged = Protection::Unconditional;
                         break;
                     }
-                    Some(guards) => {
-                        all_guards.extend(guards.iter().cloned());
-                    }
+                    Protection::Guarded(guards) => merged.add_extension(guards),
                 }
             }
         }
 
-        if !any_found {
-            continue;
-        }
-
-        if unconditional || all_guards.is_empty() {
-            result.insert(include_name.to_string(), Vec::new());
-        } else {
-            let mut v: Vec<String> = all_guards.into_iter().collect();
-            v.sort();
-            result.insert(include_name.to_string(), v);
+        if any_found {
+            result.insert(include_name.to_string(), merged.into_vec());
         }
     }
 
@@ -1588,11 +1602,6 @@ fn collect_required_headers(
     req_types: &HashSet<String>,
     spec_name: &str,
 ) -> Vec<String> {
-    let gl_auto_exclude: HashSet<&str> = ["stddef", "khrplatform", "inttypes"]
-        .iter()
-        .copied()
-        .collect();
-
     let mut headers: IndexMap<String, ()> = IndexMap::new();
 
     for t in &raw.types {
@@ -1600,7 +1609,7 @@ fn collect_required_headers(
         let selected = if spec_name == "vk" {
             req_types.contains(&t.name)
         } else {
-            !gl_auto_exclude.contains(t.name.as_str())
+            !is_gl_auto_excluded(&t.name)
                 && (req_types.contains(&t.name) || t.api.as_deref().is_none_or(|a| a == spec_name))
         };
         if !selected {
@@ -1622,7 +1631,7 @@ fn collect_required_headers(
         headers.insert("vk_platform.h".to_string(), ());
 
         // Build set of vk_video include names for fast lookup.
-        let vk_video_includes: std::collections::HashSet<&str> = raw
+        let vk_video_includes: HashSet<&str> = raw
             .types
             .iter()
             .filter(|t| t.category == "include" && t.name.starts_with("vk_video/"))
@@ -1768,8 +1777,7 @@ fn sort_enum_values(values: Vec<FlatEnum>) -> Vec<FlatEnum> {
         }
     }
 
-    let mut queue: std::collections::VecDeque<usize> =
-        (0..n).filter(|&i| in_degree[i] == 0).collect();
+    let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
     let mut order: Vec<usize> = Vec::with_capacity(n);
 
     while let Some(node) = queue.pop_front() {
@@ -1846,24 +1854,24 @@ fn build_alias_pairs(raw: &RawSpec, commands: &[Command]) -> Vec<AliasPair> {
 }
 
 // ---------------------------------------------------------------------------
-// Utility: find platform protect for a command (from its extension).
+// Utility: prebake command → platform protect mapping.
 // ---------------------------------------------------------------------------
 
-fn find_command_protect(
-    _raw: &RawSpec,
-    cmd_name: &str,
-    exts: &[SelectedExt<'_>],
-) -> Option<String> {
+/// Build a map from command name → platform protection macro, derived from
+/// extensions.  A single pass over all extensions replaces the previous
+/// per-command linear scan (O(cmds × exts × requires) → O(exts × requires)).
+fn build_command_protect_map<'a>(exts: &[SelectedExt<'a>]) -> HashMap<&'a str, String> {
+    let mut map = HashMap::new();
     for ext in exts {
-        for require in &ext.raw.requires {
-            if require.commands.iter().any(|c| c == cmd_name)
-                && let Some(p) = ext.raw.protect.first()
-            {
-                return Some(p.clone());
+        if let Some(protect) = ext.raw.protect.first() {
+            for require in &ext.raw.requires {
+                for cmd in &require.commands {
+                    map.entry(cmd.as_str()).or_insert_with(|| protect.clone());
+                }
             }
         }
     }
-    None
+    map
 }
 
 // ---------------------------------------------------------------------------
