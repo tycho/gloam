@@ -63,7 +63,7 @@ static const char * const kFnNames_{{ fs.spec_name | spec_display }}[] = {
    or a switch inside the loop). */
 static const uint8_t kCommandScopes_{{ fs.spec_name | spec_display }}[] = {
 {%- for cmd in fs.commands %}
-    /* {{ cmd.index | rjust(4) }} */ {{ cmd.scope }}, /* {{ cmd.name }} */
+    /* {{ cmd.index | rjust(4) }} */ {{ cmd.scope | ljust(25) }}, /* {{ cmd.name }} */
 {%- endfor %}
 };
 {% endif %}
