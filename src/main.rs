@@ -5,6 +5,7 @@ mod fetch;
 mod generator;
 mod ir;
 mod parse;
+mod preamble;
 mod resolve;
 
 use anyhow::Result;
@@ -22,6 +23,17 @@ fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
+    // Capture the effective command line for the preamble comment in
+    // generated files.  Replace argv[0] with just "gloam" to avoid
+    // embedding full filesystem paths.
+    let command_line: String = {
+        let mut args: Vec<String> = std::env::args().collect();
+        if !args.is_empty() {
+            args[0] = "gloam".to_string();
+        }
+        args.join(" ")
+    };
+
     if !cli.quiet {
         eprintln!("gloam: resolving feature sets...");
     }
@@ -37,7 +49,7 @@ fn run() -> Result<()> {
                 eprintln!("gloam: generating C loader...");
             }
             for fs in &feature_sets {
-                generator::c::generate(fs, c_args, out, cli.fetch)?;
+                generator::c::generate(fs, c_args, out, cli.fetch, &command_line)?;
             }
         }
         Generator::Rust(r_args) => {
