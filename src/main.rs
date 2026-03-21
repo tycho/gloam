@@ -1,3 +1,4 @@
+mod build_info;
 mod bundled;
 mod cli;
 mod fetch;

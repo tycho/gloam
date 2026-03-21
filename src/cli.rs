@@ -12,7 +12,7 @@ use crate::ir::Version;
 #[derive(Parser, Debug)]
 #[command(
     name = "gloam",
-    version,
+    version = crate::build_info::VERSION,
     about = "Vulkan/OpenGL/GLES/EGL/GLX/WGL loader generator"
 )]
 pub struct Cli {

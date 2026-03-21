@@ -1,0 +1,215 @@
+//! Build script: embeds git version information at compile time.
+//!
+//! Produces `$OUT_DIR/build_info.rs` with constants that `src/build_info.rs`
+//! includes.  Every git operation is independently fallible — no `.git`
+//! directory (crates.io tarball), shallow clones (no tags), and sparse
+//! checkouts are all handled gracefully by falling back to `None`.
+//!
+//! Scenarios:
+//!   cargo build              — .git directory at repo root, full info
+//!   cargo install --git=...  — .git *file* in checkout (gitdir: pointer),
+//!                              git -C follows it transparently
+//!   cargo install gloam      — crates.io tarball, no .git at all,
+//!                              all git values are None
+//!   shallow clone / CI       — .git exists but tags may be missing,
+//!                              GIT_DESCRIBE falls back to None
+
+use std::{env, fs, io, path::Path, path::PathBuf, process::Command};
+
+/// Run a git command in `repo_dir`.  Using `-C` lets git walk up to find
+/// `.git` naturally and handles gitdir files (worktrees, cargo git checkouts).
+fn git(repo_dir: &Path, args: &[&str]) -> Option<String> {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo_dir)
+        .args(args)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Check whether a git command exits successfully (ignoring output).
+fn git_ok(repo_dir: &Path, args: &[&str]) -> Option<bool> {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo_dir)
+        .args(args)
+        .output()
+        .ok()
+        .map(|o| o.status.success())
+}
+
+/// Walk up from `start` looking for `.git` (file or directory).
+/// Returns the directory *containing* `.git`, not `.git` itself.
+fn find_repo_root(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
+    loop {
+        let candidate = dir.join(".git");
+        if candidate.exists() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+/// Write `contents` to `path`, but only if the file doesn't already exist
+/// with identical content.  Avoids triggering unnecessary rebuilds.
+fn write_if_changed(path: &Path, contents: &[u8]) -> io::Result<()> {
+    if let Ok(existing) = fs::read(path) {
+        if existing == contents {
+            return Ok(());
+        }
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, contents)
+}
+
+fn opt_str(v: &Option<String>) -> String {
+    match v {
+        Some(s) => format!("Some({:?})", s),
+        None => "None".to_string(),
+    }
+}
+
+fn main() {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let repo_root = find_repo_root(&manifest_dir);
+
+    // Tell cargo when to re-run.  We must resolve the *real* git directory —
+    // when .git is a file (worktrees, `cargo install --git`), the actual HEAD,
+    // refs, and packed-refs live inside the gitdir target, not next to the .git
+    // file.  Cargo treats non-existent rerun-if-changed paths as "always
+    // changed", so we must only emit paths that actually exist.
+    //
+    // IMPORTANT: do NOT watch the `.git` directory itself — cargo watches
+    // directories recursively, and git constantly touches files inside `.git/`
+    // (index, lock files, FETCH_HEAD, etc.) that have nothing to do with the
+    // commit or tag state.  Only watch the specific files that change when
+    // the version-relevant state changes.
+    //
+    // If no repo is found at all, emit just `build.rs` to prevent cargo's
+    // default "rerun on any file change" behaviour.
+    if let Some(ref root) = repo_root {
+        // `git rev-parse --git-dir` follows .git files and returns the real
+        // directory (e.g. ~/.cargo/git/db/gloam-xxxx/...).  The result may be
+        // relative to the repo root, so resolve it.
+        let git_dir = git(root, &["rev-parse", "--git-dir"])
+            .map(|p| {
+                let path = PathBuf::from(p);
+                if path.is_absolute() {
+                    path
+                } else {
+                    root.join(path)
+                }
+            })
+            .unwrap_or_else(|| root.join(".git"));
+
+        // HEAD changes on commit, checkout, rebase, etc.
+        // packed-refs changes when refs are packed.
+        // refs/heads and refs/tags change on commit/tag operations.
+        for name in &["HEAD", "packed-refs", "refs/heads", "refs/tags"] {
+            let path = git_dir.join(name);
+            if path.exists() {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
+
+        // Also watch .git itself if it's a *file* (gitdir pointer) — if the
+        // pointer changes, we need to re-resolve.  But NOT if it's a
+        // directory, because that triggers recursive watching.
+        let git_entry = root.join(".git");
+        if git_entry.is_file() {
+            println!("cargo:rerun-if-changed={}", git_entry.display());
+        }
+    } else {
+        // No git — just watch build.rs so we don't re-run on every build.
+        println!("cargo:rerun-if-changed=build.rs");
+    }
+
+    // Each git query is independent — any can fail without affecting others.
+    let (git_describe, git_sha, git_sha_short, git_branch, git_dirty) = match repo_root {
+        Some(ref root) => (
+            // --tags: match lightweight tags too (not just annotated).
+            // --dirty: append "-dirty" if the worktree has uncommitted changes.
+            // --always: fall back to abbreviated SHA if no tag is reachable.
+            git(root, &["describe", "--tags", "--dirty", "--always"]),
+            git(root, &["rev-parse", "HEAD"]),
+            git(root, &["rev-parse", "--short", "HEAD"]),
+            git(root, &["symbolic-ref", "--short", "-q", "HEAD"]),
+            // diff-index exits 0 if clean, 1 if dirty.  Covers tracked files;
+            // for untracked files we'd need status --porcelain, but untracked
+            // files aren't a meaningful "dirty" signal for version stamping.
+            git_ok(root, &["diff-index", "--quiet", "HEAD", "--"]).map(|clean| !clean),
+        ),
+        None => (None, None, None, None, None),
+    };
+
+    // Assemble a human-readable version string:
+    //   With git describe:  "v0.3.1-7-gabcdef1" or "v0.3.1-7-gabcdef1-dirty"
+    //   SHA only (no tags):  "0.3.1+abcdef1" or "0.3.1+abcdef1.dirty"
+    //   No git at all:       "0.3.1"
+    let pkg_version = env::var("CARGO_PKG_VERSION").unwrap();
+    let version_string = if let Some(ref desc) = git_describe {
+        desc.clone()
+    } else if let Some(ref sha) = git_sha_short {
+        let dirty_suffix = if git_dirty == Some(true) {
+            ".dirty"
+        } else {
+            ""
+        };
+        format!("{pkg_version}+{sha}{dirty_suffix}")
+    } else {
+        pkg_version.clone()
+    };
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let dest = out_dir.join("build_info.rs");
+
+    let rs = format!(
+        r#"// @generated by build.rs — do not edit.
+
+/// Composite version string for display.  Prefers `git describe` output
+/// when available, falls back to `CARGO_PKG_VERSION` + short SHA, or just
+/// `CARGO_PKG_VERSION` if no git info is available at all.
+pub const VERSION: &str = {version_string};
+
+/// Cargo package version from Cargo.toml (always present).
+pub const PKG_VERSION: &str = {pkg_version};
+
+/// Full output of `git describe --tags --dirty --always`, if available.
+/// Examples: "v0.3.1", "v0.3.1-7-gabcdef1", "v0.3.1-dirty", "abcdef1".
+pub const GIT_DESCRIBE: Option<&str> = {git_describe};
+
+/// Full commit SHA, if available.
+pub const GIT_SHA: Option<&str> = {git_sha};
+
+/// Abbreviated commit SHA, if available.
+pub const GIT_SHA_SHORT: Option<&str> = {git_sha_short};
+
+/// Current branch name, if on a branch (None for detached HEAD).
+pub const GIT_BRANCH: Option<&str> = {git_branch};
+
+/// Whether the working tree had uncommitted changes at build time.
+pub const GIT_DIRTY: Option<bool> = {git_dirty};
+"#,
+        version_string = format!("{:?}", version_string),
+        pkg_version = format!("{:?}", pkg_version),
+        git_describe = opt_str(&git_describe),
+        git_sha = opt_str(&git_sha),
+        git_sha_short = opt_str(&git_sha_short),
+        git_branch = opt_str(&git_branch),
+        git_dirty = match git_dirty {
+            Some(b) => format!("Some({b})"),
+            None => "None".to_string(),
+        },
+    );
+
+    write_if_changed(&dest, rs.as_bytes()).expect("failed to write build_info.rs");
+}
