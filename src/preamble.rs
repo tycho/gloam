@@ -50,7 +50,7 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
 
     // ---- gloam license ----
     lines.push(" *".to_string());
-    lines.push(format!(" * Copyright (c) {year} Steven Noonan"));
+    lines.push(format!(" * gloam Copyright (c) {year} Steven Noonan"));
     lines.push(" * SPDX-License-Identifier: MIT".to_string());
 
     // ---- Khronos ----
