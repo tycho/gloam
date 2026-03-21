@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/tycho/gloam/compare/0.1.3...0.1.4) - 2026-03-21
+
+### Fixed
+
+- *(doc)* use correct syntax for --predecessors and --promoted examples
+- *(doc)* update README to reflect new command line arguments
+
+### Other
+
+- *(github)* use correct branch name for CI workflow
+- *(tests)* add tests for --promoted and --predecessors
+
 ## [0.1.3](https://github.com/tycho/gloam/compare/0.1.2...0.1.3) - 2026-03-21
 
 ### Added
