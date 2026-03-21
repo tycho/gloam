@@ -11,15 +11,23 @@ use minijinja::{Environment, Value, context};
 
 use crate::cli::CArgs;
 use crate::fetch;
+use crate::preamble;
 use crate::resolve::FeatureSet;
 
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
-pub fn generate(fs: &FeatureSet, args: &CArgs, out: &Path, use_fetch: bool) -> Result<()> {
+pub fn generate(
+    fs: &FeatureSet,
+    args: &CArgs,
+    out: &Path,
+    use_fetch: bool,
+    command_line: &str,
+) -> Result<()> {
     let stem = output_stem(fs);
     let env = build_env()?;
+    let preamble = preamble::build_preamble(fs, command_line);
 
     // Output tree:
     //   {out}/include/gloam/{stem}.h
@@ -32,11 +40,12 @@ pub fn generate(fs: &FeatureSet, args: &CArgs, out: &Path, use_fetch: bool) -> R
     std::fs::create_dir_all(&src_dir)?;
 
     let ctx = context! {
-        fs     => fs,
-        stem   => &stem,
-        guard  => format!("{}_H", stem.to_uppercase()),
-        alias  => args.alias,
-        loader => args.loader,
+        fs       => fs,
+        stem     => &stem,
+        guard    => format!("{}_H", stem.to_uppercase()),
+        alias    => args.alias,
+        loader   => args.loader,
+        preamble => &preamble,
     };
 
     std::fs::write(

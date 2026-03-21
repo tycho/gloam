@@ -134,22 +134,43 @@ fn main() {
     }
 
     // Each git query is independent — any can fail without affecting others.
-    let (git_describe, git_sha, git_sha_short, git_branch, git_dirty) = match repo_root {
-        Some(ref root) => (
-            // --tags: match lightweight tags too (not just annotated).
-            // --dirty: append "-dirty" if the worktree has uncommitted changes.
-            // --always: fall back to abbreviated SHA if no tag is reachable.
-            git(root, &["describe", "--tags", "--dirty", "--always"]),
-            git(root, &["rev-parse", "HEAD"]),
-            git(root, &["rev-parse", "--short", "HEAD"]),
-            git(root, &["symbolic-ref", "--short", "-q", "HEAD"]),
-            // diff-index exits 0 if clean, 1 if dirty.  Covers tracked files;
-            // for untracked files we'd need status --porcelain, but untracked
-            // files aren't a meaningful "dirty" signal for version stamping.
-            git_ok(root, &["diff-index", "--quiet", "HEAD", "--"]).map(|clean| !clean),
-        ),
-        None => (None, None, None, None, None),
-    };
+    let (git_describe, git_sha, git_sha_short, git_branch, git_dirty, git_commit_year) =
+        match repo_root {
+            Some(ref root) => (
+                // --tags: match lightweight tags too (not just annotated).
+                // --dirty: append "-dirty" if the worktree has uncommitted changes.
+                // --always: fall back to abbreviated SHA if no tag is reachable.
+                git(root, &["describe", "--tags", "--dirty", "--always"]),
+                git(root, &["rev-parse", "HEAD"]),
+                git(root, &["rev-parse", "--short", "HEAD"]),
+                git(root, &["symbolic-ref", "--short", "-q", "HEAD"]),
+                // diff-index exits 0 if clean, 1 if dirty.  Covers tracked files;
+                // for untracked files we'd need status --porcelain, but untracked
+                // files aren't a meaningful "dirty" signal for version stamping.
+                git_ok(root, &["diff-index", "--quiet", "HEAD", "--"]).map(|clean| !clean),
+                // Year of HEAD commit — used for copyright years in generated files.
+                // %as gives the author date in YYYY-MM-DD format.
+                git(root, &["show", "-s", "--format=%as", "HEAD"])
+                    .and_then(|s| s.split('-').next().map(str::to_string)),
+            ),
+            None => (None, None, None, None, None, None),
+        };
+
+    // Build year: prefer git commit year (accurate for releases), fall back to
+    // the current calendar year (correct for crates.io installs where no git
+    // info is available).
+    let build_year: u16 = git_commit_year
+        .as_deref()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| {
+            // std::time is available without extra deps.  SystemTime → days → year.
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            // Approximate: 365.25 days/year, close enough for a copyright year.
+            (1970 + secs / 31_557_600) as u16
+        });
 
     // Assemble a human-readable version string:
     //   With git describe:  "v0.3.1-7-gabcdef1" or "v0.3.1-7-gabcdef1-dirty"
@@ -198,6 +219,10 @@ pub const GIT_BRANCH: Option<&str> = {git_branch};
 
 /// Whether the working tree had uncommitted changes at build time.
 pub const GIT_DIRTY: Option<bool> = {git_dirty};
+
+/// Year for copyright notices.  From the git commit date when available,
+/// otherwise the calendar year at build time.
+pub const BUILD_YEAR: u16 = {build_year};
 "#,
         version_string = format!("{:?}", version_string),
         pkg_version = format!("{:?}", pkg_version),
@@ -209,6 +234,7 @@ pub const GIT_DIRTY: Option<bool> = {git_dirty};
             Some(b) => format!("Some({b})"),
             None => "None".to_string(),
         },
+        build_year = build_year,
     );
 
     write_if_changed(&dest, rs.as_bytes()).expect("failed to write build_info.rs");
