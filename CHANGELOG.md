@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/tycho/gloam/compare/0.1.7...0.2.0) - 2026-03-22
+
+### Removed
+
+- [**breaking**] Removing incomplete and untested Rust loader generator.
+  I hadn't been building and testing around the Rust output target, and I don't
+  want to keep shipping code that I am not using or testing myself. If someone
+  wants to implement a Rust loader generator using some of the same principles
+  from the C loader generator, contributions would be welcome.
+
+### Fixed
+
+- *(build)* Try to fix version numbering in release builds.
+
+### Other
+
+- remove LICENSE.asc, add Apache license
+
 ## [0.1.7](https://github.com/tycho/gloam/compare/0.1.6...0.1.7) - 2026-03-21
 
 ### Added
