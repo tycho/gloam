@@ -10,7 +10,7 @@ use anyhow::Result;
 use indexmap::IndexMap;
 use serde::Serialize;
 
-use crate::cli::{ApiRequest, Cli, canonical_api_name, xml_api_name};
+use crate::cli::{ApiRequest, Cli, ExtensionFilter, canonical_api_name, xml_api_name};
 use crate::fetch;
 use crate::ir::{RawCommand, RawSpec};
 use crate::parse;
@@ -76,6 +76,11 @@ pub struct FeatureSet {
     /// Derived from the `requires=` attributes of selected types.
     /// Paths are relative to the include root, e.g. "KHR/khrplatform.h".
     pub required_headers: Vec<String>,
+
+    /// Extensions excluded by explicit `-` prefix in --extensions.
+    pub excluded_explicit: Vec<String>,
+    /// Extensions excluded because they are fully promoted into --baseline versions.
+    pub excluded_baseline: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -133,6 +138,9 @@ pub struct Command {
     pub scope: String,
     /// Platform guard macro (if any).
     pub protect: Option<String>,
+    /// Byte offset of this command's name within the packed name blob.
+    /// Computed after the command list is finalized.
+    pub name_offset: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -262,6 +270,7 @@ fn is_gl_auto_excluded(name: &str) -> bool {
 pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
     let requests = cli.api_requests()?;
     let ext_filter = cli.extension_filter()?;
+    let baseline = cli.baseline_requests()?;
     let promoted = cli.promoted;
     let predecessors = cli.predecessors;
 
@@ -285,8 +294,16 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
         for (spec_name, reqs) in &by_spec {
             let sources = fetch::load_spec(spec_name, cli.fetch)?;
             let raw = parse::parse(&sources, spec_name)?;
-            let fs =
-                resolve_feature_set(&raw, reqs, &ext_filter, true, alias, promoted, predecessors)?;
+            let fs = resolve_feature_set(
+                &raw,
+                reqs,
+                &ext_filter,
+                &baseline,
+                true,
+                alias,
+                promoted,
+                predecessors,
+            )?;
             feature_sets.push(fs);
         }
     } else {
@@ -298,6 +315,7 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
                 &raw,
                 std::slice::from_ref(req),
                 &ext_filter,
+                &baseline,
                 false,
                 alias,
                 promoted,
@@ -314,10 +332,12 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
 // Core resolution
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_feature_set(
     raw: &RawSpec,
     requests: &[ApiRequest],
-    ext_filter: &Option<Vec<String>>,
+    ext_filter: &ExtensionFilter,
+    baseline: &[ApiRequest],
     is_merged: bool,
     want_aliases: bool,
     want_promoted: bool,
@@ -403,15 +423,19 @@ fn resolve_feature_set(
     // ------------------------------------------------------------------
     // Step 3: Determine which extensions are selected.
     // ------------------------------------------------------------------
-    let selected_exts = select_extensions(
+    let ext_selection = select_extensions(
         raw,
         requests,
         ext_filter,
+        baseline,
         spec_name,
         &per_api_core_cmds,
         want_promoted,
         want_predecessors,
     );
+    let selected_exts = ext_selection.selected;
+    let excluded_explicit = ext_selection.excluded_explicit;
+    let excluded_baseline = ext_selection.excluded_baseline;
 
     // ------------------------------------------------------------------
     // Step 4: Collect additional required names from extensions.
@@ -650,6 +674,8 @@ fn resolve_feature_set(
         ext_subset_indices,
         alias_pairs,
         required_headers,
+        excluded_explicit,
+        excluded_baseline,
     })
 }
 
@@ -730,15 +756,26 @@ struct SelectedExt<'a> {
     reason: SelectionReason,
 }
 
+/// Result of select_extensions: the selected extensions plus exclusion info.
+struct ExtensionSelection<'a> {
+    selected: Vec<SelectedExt<'a>>,
+    /// Extensions excluded via `-` prefix in --extensions.
+    excluded_explicit: Vec<String>,
+    /// Extensions excluded because fully promoted into --baseline versions.
+    excluded_baseline: Vec<String>,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn select_extensions<'a>(
     raw: &'a RawSpec,
     requests: &[ApiRequest],
-    filter: &Option<Vec<String>>,
+    filter: &ExtensionFilter,
+    baseline: &[ApiRequest],
     spec_name: &str,
     per_api_core_cmds: &HashMap<String, HashSet<String>>,
     want_promoted: bool,
     want_predecessors: bool,
-) -> Vec<SelectedExt<'a>> {
+) -> ExtensionSelection<'a> {
     let mut api_set: HashSet<&str> = requests.iter().map(|r| r.name.as_str()).collect();
     // The Khronos XML uses "vulkan" in supported= attributes, but our
     // canonical name is "vk".  Insert the XML form so contains() lookups
@@ -770,7 +807,7 @@ fn select_extensions<'a>(
                     reason: SelectionReason::Mandatory,
                 });
             }
-            match filter {
+            match &filter.include {
                 None => Some(SelectedExt {
                     raw: e,
                     reason: SelectionReason::AllExtensions,
@@ -998,7 +1035,124 @@ fn select_extensions<'a>(
         }
     }
 
-    selected
+    // ------------------------------------------------------------------
+    // Final exclusion pass: remove extensions that are either:
+    //   (a) explicitly excluded via `-` prefix in --extensions, or
+    //   (b) fully promoted into a --baseline version.
+    // Applied after all selection passes so it acts as an unconditional veto.
+    // ------------------------------------------------------------------
+    let explicit_excludes: HashSet<&str> = filter.exclude.iter().map(String::as_str).collect();
+    let mut baseline_excludes: HashSet<String> = HashSet::new();
+
+    // --baseline: compute extensions fully promoted into baseline versions.
+    if !baseline.is_empty() {
+        // Build per-API core command sets for the baseline versions.
+        let baseline_features = select_features(raw, baseline);
+        let mut baseline_core_cmds: HashMap<String, HashSet<String>> = HashMap::new();
+
+        for feat in &baseline_features {
+            let req_for_api = baseline
+                .iter()
+                .find(|r| canonical_api_name(&r.name) == canonical_api_name(&feat.api));
+            let profile = req_for_api.and_then(|r| r.profile.as_deref());
+            let api_cmds = baseline_core_cmds.entry(feat.api.clone()).or_default();
+
+            for require in &feat.raw.requires {
+                if !api_profile_matches(
+                    require.api.as_deref(),
+                    require.profile.as_deref(),
+                    &feat.api,
+                    profile,
+                ) {
+                    continue;
+                }
+                for cmd in &require.commands {
+                    api_cmds.insert(cmd.clone());
+                }
+            }
+            for remove in &feat.raw.removes {
+                if !profile_matches(remove.profile.as_deref(), profile) {
+                    continue;
+                }
+                for cmd in &remove.commands {
+                    api_cmds.remove(cmd.as_str());
+                }
+            }
+        }
+
+        // Build bidirectional alias map for baseline promotion checks.
+        let baseline_cmd_aliases: HashMap<&str, &str> = {
+            let mut m = HashMap::new();
+            for (name, cmd) in &raw.commands {
+                if let Some(ref alias) = cmd.alias {
+                    m.insert(name.as_str(), alias.as_str());
+                    m.insert(alias.as_str(), name.as_str());
+                }
+            }
+            m
+        };
+
+        // An extension is "fully promoted into baseline" if, for at least one
+        // API in the baseline set that the extension supports, ALL of the
+        // extension's commands for that API appear in the baseline core set
+        // (directly or via alias).  Partial promotion doesn't count — if even
+        // one command isn't in core, the extension is still needed.
+        let baseline_api_set: HashSet<&str> = baseline.iter().map(|r| r.name.as_str()).collect();
+
+        for ext in &raw.extensions {
+            let dominated = ext
+                .supported
+                .iter()
+                .filter(|s| baseline_api_set.contains(canonical_api_name(s.as_str())))
+                .any(|api| {
+                    let Some(core_cmds) = baseline_core_cmds.get(canonical_api_name(api.as_str()))
+                    else {
+                        return false;
+                    };
+                    // Collect all commands this extension contributes for this API.
+                    let ext_cmds: Vec<&str> = ext
+                        .requires
+                        .iter()
+                        .filter(|req| api_profile_matches(req.api.as_deref(), None, api, None))
+                        .flat_map(|req| req.commands.iter().map(String::as_str))
+                        .collect();
+                    // Extension must have at least one command, and ALL must be
+                    // in the baseline core (directly or via alias).
+                    !ext_cmds.is_empty()
+                        && ext_cmds.iter().all(|c| {
+                            core_cmds.contains(*c)
+                                || baseline_cmd_aliases
+                                    .get(c)
+                                    .is_some_and(|a| core_cmds.contains(*a))
+                        })
+                });
+
+            if dominated {
+                baseline_excludes.insert(ext.name.clone());
+            }
+        }
+    }
+
+    // Build unified exclude set and apply.
+    let has_excludes = !explicit_excludes.is_empty() || !baseline_excludes.is_empty();
+    if has_excludes {
+        selected.retain(|e| {
+            !explicit_excludes.contains(e.raw.name.as_str())
+                && !baseline_excludes.contains(&e.raw.name)
+        });
+    }
+
+    // Collect the names that were actually excluded (intersection of what was
+    // selected before the veto with the exclude sets).
+    let excluded_explicit: Vec<String> = filter.exclude.iter().cloned().collect();
+    let mut excluded_baseline: Vec<String> = baseline_excludes.into_iter().collect();
+    excluded_baseline.sort();
+
+    ExtensionSelection {
+        selected,
+        excluded_explicit,
+        excluded_baseline,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1069,6 +1223,7 @@ fn build_command(
         params,
         scope: scope.to_string(),
         protect,
+        name_offset: 0, // computed after command list is finalized
     }
 }
 

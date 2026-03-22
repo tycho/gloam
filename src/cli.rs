@@ -1,5 +1,7 @@
 //! Command-line interface definitions.
 
+use std::collections::HashSet;
+
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 
@@ -35,10 +37,21 @@ pub struct Cli {
     #[arg(long, required = true)]
     pub api: String,
 
-    /// Extension filter: path to a file (one per line) or a comma-separated
-    /// list of extension names. Omit to include all possible extensions.
+    /// Extension filter: path to a file (one per line), a comma-separated
+    /// list of extension names, or "all" (the default if omitted).  Prefix a
+    /// name with `-` to exclude it.  Examples:
+    ///   --extensions all,-GL_EXT_direct_state_access
+    ///   --extensions GL_KHR_debug,GL_ARB_sync
+    ///   --extensions ""              (include no extensions)
     #[arg(long)]
     pub extensions: Option<String>,
+
+    /// Baseline API versions.  Extensions that are fully promoted into these
+    /// versions or earlier are excluded — they're guaranteed to be present
+    /// in a context of at least the baseline version.  Format matches --api:
+    ///   --baseline gl:core=3.3,gles2=3.0
+    #[arg(long)]
+    pub baseline: Option<String>,
 
     /// Merge multiple APIs of the same spec into a single output file.
     /// Required when combining gl and gles2; behaviour is undefined otherwise.
@@ -86,31 +99,86 @@ impl Cli {
             .collect()
     }
 
-    /// Returns None (include all) or Some(list of extension names).
-    pub fn extension_filter(&self) -> Result<Option<Vec<String>>> {
+    /// Parse the --extensions argument into an `ExtensionFilter`.
+    pub fn extension_filter(&self) -> Result<ExtensionFilter> {
         let Some(ref spec) = self.extensions else {
-            return Ok(None);
+            return Ok(ExtensionFilter::all());
         };
 
-        if std::path::Path::new(spec).exists() {
+        // Read names from a file or inline comma-separated list.
+        let raw_names: Vec<String> = if std::path::Path::new(spec).exists() {
             let text = std::fs::read_to_string(spec)?;
-            let list = text
-                .lines()
+            text.lines()
                 .map(str::trim)
                 .filter(|l| !l.is_empty() && !l.starts_with('#'))
                 .map(str::to_string)
-                .collect();
-            return Ok(Some(list));
+                .collect()
+        } else {
+            spec.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
+
+        // Split into includes and excludes based on `-` prefix.
+        let mut include_all = false;
+        let mut includes: Vec<String> = Vec::new();
+        let mut excludes: HashSet<String> = HashSet::new();
+
+        for name in raw_names {
+            if name.eq_ignore_ascii_case("all") {
+                include_all = true;
+            } else if let Some(stripped) = name.strip_prefix('-') {
+                if !stripped.is_empty() {
+                    excludes.insert(stripped.to_string());
+                }
+            } else {
+                includes.push(name);
+            }
         }
 
-        // Treat as an inline comma-separated list.
-        let list = spec
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect();
-        Ok(Some(list))
+        let include = if include_all { None } else { Some(includes) };
+        Ok(ExtensionFilter {
+            include,
+            exclude: excludes,
+        })
+    }
+
+    /// Parse the --baseline argument into API requests (same format as --api).
+    pub fn baseline_requests(&self) -> Result<Vec<ApiRequest>> {
+        let Some(ref spec) = self.baseline else {
+            return Ok(Vec::new());
+        };
+        spec.split(',')
+            .map(|s| ApiRequest::parse(s.trim()))
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ExtensionFilter
+// ---------------------------------------------------------------------------
+
+/// Parsed extension filter from --extensions.
+///
+/// `include` is `None` for "all extensions" or `Some(list)` for an explicit set.
+/// `exclude` is always a set of names to unconditionally remove — applied as a
+/// final veto after all selection passes (explicit, dependency, promoted,
+/// predecessor, baseline).
+#[derive(Debug)]
+pub struct ExtensionFilter {
+    pub include: Option<Vec<String>>,
+    pub exclude: HashSet<String>,
+}
+
+impl ExtensionFilter {
+    /// No filter — include everything, exclude nothing.
+    pub fn all() -> Self {
+        Self {
+            include: None,
+            exclude: HashSet::new(),
+        }
     }
 }
 

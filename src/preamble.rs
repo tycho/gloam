@@ -26,7 +26,10 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
     lines.push(format!(" *   {command_line}"));
 
     // ---- Extension provenance ----
-    if !fs.extensions.is_empty() {
+    if !fs.extensions.is_empty()
+        || !fs.excluded_explicit.is_empty()
+        || !fs.excluded_baseline.is_empty()
+    {
         lines.push(" *".to_string());
         lines.push(format!(" * {}", extension_summary(fs)));
 
@@ -46,6 +49,20 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
             if !names.is_empty() {
                 lines.push(format!(" *   {}: {}", label, names.join(", ")));
             }
+        }
+
+        // List excluded extensions.
+        if !fs.excluded_baseline.is_empty() {
+            lines.push(format!(
+                " *   excluded by baseline: {} extensions",
+                fs.excluded_baseline.len()
+            ));
+        }
+        if !fs.excluded_explicit.is_empty() {
+            lines.push(format!(
+                " *   excluded explicitly: {}",
+                fs.excluded_explicit.join(", ")
+            ));
         }
     }
 
@@ -81,11 +98,13 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
 /// Build a one-line summary of extension selection.
 ///
 /// Examples:
-///   "Extensions: all (451 total)"
-///   "Extensions: 5 explicit, 12 promoted, 3 predecessor (20 total)"
-///   "Extensions: 2 mandatory, 5 explicit (7 total)"
+///   "Extensions: all (451 included)"
+///   "Extensions: all, 68 excluded by baseline, 3 excluded explicitly (380 included)"
+///   "Extensions: 5 explicit, 12 promoted, 3 predecessor (20 included)"
 fn extension_summary(fs: &FeatureSet) -> String {
     let total = fs.extensions.len();
+    let n_baseline_excluded = fs.excluded_baseline.len();
+    let n_explicit_excluded = fs.excluded_explicit.len();
 
     let count = |reason: SelectionReason| -> usize {
         fs.extensions.iter().filter(|e| e.reason == reason).count()
@@ -98,29 +117,37 @@ fn extension_summary(fs: &FeatureSet) -> String {
     let n_promoted = count(SelectionReason::Promoted);
     let n_predecessor = count(SelectionReason::Predecessor);
 
+    let mut parts: Vec<String> = Vec::new();
+
     // If everything came from "all extensions" (no filter), use the short form.
     if n_all + n_mandatory == total {
-        return format!("Extensions: all ({total} total)");
+        parts.push("all".to_string());
+    } else {
+        if n_explicit > 0 {
+            parts.push(format!("{n_explicit} explicit"));
+        }
+        if n_mandatory > 0 {
+            parts.push(format!("{n_mandatory} mandatory"));
+        }
+        if n_dependency > 0 {
+            parts.push(format!("{n_dependency} dependency"));
+        }
+        if n_promoted > 0 {
+            parts.push(format!("{n_promoted} promoted"));
+        }
+        if n_predecessor > 0 {
+            parts.push(format!("{n_predecessor} predecessor"));
+        }
     }
 
-    let mut parts: Vec<String> = Vec::new();
-    if n_explicit > 0 {
-        parts.push(format!("{n_explicit} explicit"));
+    if n_baseline_excluded > 0 {
+        parts.push(format!("{n_baseline_excluded} excluded by baseline"));
     }
-    if n_mandatory > 0 {
-        parts.push(format!("{n_mandatory} mandatory"));
-    }
-    if n_dependency > 0 {
-        parts.push(format!("{n_dependency} dependency"));
-    }
-    if n_promoted > 0 {
-        parts.push(format!("{n_promoted} promoted"));
-    }
-    if n_predecessor > 0 {
-        parts.push(format!("{n_predecessor} predecessor"));
+    if n_explicit_excluded > 0 {
+        parts.push(format!("{n_explicit_excluded} excluded explicitly"));
     }
 
-    format!("Extensions: {} ({total} total)", parts.join(", "))
+    format!("Extensions: {} ({total} included)", parts.join(", "))
 }
 
 /// Returns true if this feature set includes ANGLE extension supplementals.
@@ -155,6 +182,8 @@ mod tests {
             ext_subset_indices: Default::default(),
             alias_pairs: vec![],
             required_headers: vec![],
+            excluded_explicit: vec![],
+            excluded_baseline: vec![],
         }
     }
 
@@ -255,7 +284,7 @@ mod tests {
             stub_ext("VK_KHR_swapchain", SelectionReason::AllExtensions),
             stub_ext("VK_KHR_surface", SelectionReason::AllExtensions),
         ];
-        assert_eq!(extension_summary(&fs), "Extensions: all (2 total)");
+        assert_eq!(extension_summary(&fs), "Extensions: all (2 included)");
     }
 
     #[test]
@@ -265,7 +294,7 @@ mod tests {
             stub_ext("WGL_ARB_extensions_string", SelectionReason::Mandatory),
             stub_ext("WGL_ARB_pixel_format", SelectionReason::AllExtensions),
         ];
-        assert_eq!(extension_summary(&fs), "Extensions: all (2 total)");
+        assert_eq!(extension_summary(&fs), "Extensions: all (2 included)");
     }
 
     #[test]
@@ -275,7 +304,10 @@ mod tests {
             stub_ext("VK_KHR_swapchain", SelectionReason::Explicit),
             stub_ext("VK_KHR_surface", SelectionReason::Explicit),
         ];
-        assert_eq!(extension_summary(&fs), "Extensions: 2 explicit (2 total)");
+        assert_eq!(
+            extension_summary(&fs),
+            "Extensions: 2 explicit (2 included)"
+        );
     }
 
     #[test]
@@ -292,7 +324,7 @@ mod tests {
         ];
         assert_eq!(
             extension_summary(&fs),
-            "Extensions: 1 explicit, 2 promoted, 1 predecessor (4 total)"
+            "Extensions: 1 explicit, 2 promoted, 1 predecessor (4 included)"
         );
     }
 
@@ -341,7 +373,7 @@ mod tests {
         ];
         assert_eq!(
             extension_summary(&fs),
-            "Extensions: 1 explicit, 1 dependency (2 total)"
+            "Extensions: 1 explicit, 1 dependency (2 included)"
         );
     }
 
@@ -350,5 +382,65 @@ mod tests {
         let fs = stub_fs("vk");
         let p = build_preamble(&fs, "gloam --api vk=1.3 c");
         assert!(!p.contains("Extensions:"));
+    }
+
+    // ---- Exclusion display ----
+
+    #[test]
+    fn summary_with_baseline_exclusions() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![stub_ext("GL_KHR_debug", SelectionReason::AllExtensions)];
+        fs.excluded_baseline = vec![
+            "GL_ARB_copy_buffer".to_string(),
+            "GL_ARB_multitexture".to_string(),
+        ];
+        assert_eq!(
+            extension_summary(&fs),
+            "Extensions: all, 2 excluded by baseline (1 included)"
+        );
+    }
+
+    #[test]
+    fn summary_with_explicit_exclusions() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![stub_ext("GL_KHR_debug", SelectionReason::AllExtensions)];
+        fs.excluded_explicit = vec!["GL_EXT_direct_state_access".to_string()];
+        assert_eq!(
+            extension_summary(&fs),
+            "Extensions: all, 1 excluded explicitly (1 included)"
+        );
+    }
+
+    #[test]
+    fn summary_with_both_exclusion_types() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![stub_ext("GL_KHR_debug", SelectionReason::AllExtensions)];
+        fs.excluded_baseline = vec!["GL_ARB_copy_buffer".to_string()];
+        fs.excluded_explicit = vec!["GL_EXT_direct_state_access".to_string()];
+        assert_eq!(
+            extension_summary(&fs),
+            "Extensions: all, 1 excluded by baseline, 1 excluded explicitly (1 included)"
+        );
+    }
+
+    #[test]
+    fn preamble_shows_baseline_exclusion_count() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![stub_ext("GL_KHR_debug", SelectionReason::AllExtensions)];
+        fs.excluded_baseline = vec![
+            "GL_ARB_copy_buffer".to_string(),
+            "GL_ARB_multitexture".to_string(),
+        ];
+        let p = build_preamble(&fs, "gloam --api gl:core c");
+        assert!(p.contains("excluded by baseline: 2 extensions"));
+    }
+
+    #[test]
+    fn preamble_shows_explicit_exclusion_names() {
+        let mut fs = stub_fs("gl");
+        fs.extensions = vec![stub_ext("GL_KHR_debug", SelectionReason::AllExtensions)];
+        fs.excluded_explicit = vec!["GL_EXT_direct_state_access".to_string()];
+        let p = build_preamble(&fs, "gloam --api gl:core c");
+        assert!(p.contains("excluded explicitly: GL_EXT_direct_state_access"));
     }
 }
