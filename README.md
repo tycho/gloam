@@ -277,4 +277,4 @@ cargo build --release  # release
 cargo test
 ```
 
-Requires Rust 1.87 or later.
+Requires Rust 1.88 or later.
