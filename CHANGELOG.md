@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/tycho/gloam/compare/0.1.7...0.2.0) - 2026-03-22
+
+### Fixed
+
+- *(build)* try to fix version numbering in release builds
+
+### Other
+
+- [**breaking**] removing Rust loader generator
+
 ## [0.1.7](https://github.com/tycho/gloam/compare/0.1.6...0.1.7) - 2026-03-21
 
 ### Added
