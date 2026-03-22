@@ -52,14 +52,6 @@ fn run() -> Result<()> {
                 generator::c::generate(fs, c_args, out, cli.fetch, &command_line)?;
             }
         }
-        Generator::Rust(r_args) => {
-            if !cli.quiet {
-                eprintln!("gloam: generating Rust loader...");
-            }
-            for fs in &feature_sets {
-                generator::rust::generate(fs, r_args, out)?;
-            }
-        }
     }
 
     if !cli.quiet {

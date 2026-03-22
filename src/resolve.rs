@@ -267,7 +267,6 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
 
     let alias = match &cli.generator {
         crate::cli::Generator::C(c) => c.alias,
-        crate::cli::Generator::Rust(r) => r.alias,
     };
 
     // Group requests by spec family only for merged builds.

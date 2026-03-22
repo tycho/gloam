@@ -6,7 +6,7 @@
 [crates.io]: https://crates.io/crates/gloam
 
 A loader generator for Vulkan, OpenGL, OpenGL ES, EGL, GLX, and WGL.
-Reads Khronos XML spec files and generates C or Rust dispatch code.
+Reads Khronos XML spec files and generates C dispatch code.
 
 gloam is a clean-room rewrite of [GLAD](https://github.com/Dav1dde/glad) in Rust,
 with first-class support for ANGLE extension supplementals, Vulkan command-scope
@@ -26,9 +26,6 @@ cargo build --release
 
 # 3. Generate a C loader for OpenGL 3.3 core + all extensions.
 ./target/release/gloam --api gl:core=3.3 c --loader
-
-# 4. Generate a Rust loader for Vulkan 1.3.
-./target/release/gloam --api vk=1.3 rust
 
 # 5. Generate a combined GL 3.3 + GLES 2.0 + Vulkan + EGL loader.
 ./target/release/gloam --api gl:core,gles2,vulkan,egl --merge c --alias --loader
@@ -83,8 +80,6 @@ Commands:
                   was loaded by the driver (or vice versa), the pointer
                   is propagated to both slots.
         --loader  Include a built-in dlopen/LoadLibrary convenience layer.
-  rust  Generate a Rust loader.
-        --alias   Enable bijective function-pointer alias resolution.
 ```
 
 ### Extension selection flags
@@ -282,4 +277,4 @@ cargo build --release  # release
 cargo test
 ```
 
-Requires Rust 1.75 or later.
+Requires Rust 1.87 or later.
