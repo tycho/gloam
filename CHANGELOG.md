@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/tycho/gloam/compare/0.2.0...0.2.1) - 2026-03-22
+
+### Fixed
+
+- *(build.rs)* ensure detected git repo root is ours
+
+### Other
+
+- use correct minimum Rust version
+- *(ci)* bump rustsec/audit-check to current HEAD
+
 ## [0.2.0](https://github.com/tycho/gloam/compare/0.1.7...0.2.0) - 2026-03-22
 
 ### Removed
