@@ -65,8 +65,6 @@ pub struct Cli {
 pub enum Generator {
     /// Generate a C loader.
     C(CArgs),
-    /// Generate a Rust loader.
-    Rust(RustArgs),
 }
 
 #[derive(Args, Debug)]
@@ -78,13 +76,6 @@ pub struct CArgs {
     /// Include a built-in dlopen/LoadLibrary convenience loader layer.
     #[arg(long)]
     pub loader: bool,
-}
-
-#[derive(Args, Debug)]
-pub struct RustArgs {
-    /// Enable bijective function-pointer alias resolution.
-    #[arg(long)]
-    pub alias: bool,
 }
 
 impl Cli {
