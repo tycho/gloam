@@ -5,6 +5,7 @@ edition        = "2024"
 description    = "Loader generator for Vulkan, OpenGL, OpenGL ES, EGL, GLX, and WGL"
 license        = "MIT OR Apache-2.0"
 repository     = "https://github.com/tycho/gloam"
+rust-version   = "1.88"
 
 [[bin]]
 name           = "gloam"
