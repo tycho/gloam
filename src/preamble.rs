@@ -40,12 +40,13 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
             ("promoted", SelectionReason::Promoted),
             ("predecessor", SelectionReason::Predecessor),
         ] {
-            let names: Vec<&str> = fs
+            let mut names: Vec<&str> = fs
                 .extensions
                 .iter()
                 .filter(|e| e.reason == *reason)
                 .map(|e| e.name.as_str())
                 .collect();
+            names.sort_unstable();
             if !names.is_empty() {
                 lines.push(format!(" *   {}: {}", label, names.join(", ")));
             }
@@ -59,10 +60,9 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
             ));
         }
         if !fs.excluded_explicit.is_empty() {
-            lines.push(format!(
-                " *   excluded explicitly: {}",
-                fs.excluded_explicit.join(", ")
-            ));
+            let mut names = fs.excluded_explicit.clone();
+            names.sort_unstable();
+            lines.push(format!(" *   excluded explicitly: {}", names.join(", ")));
         }
     }
 
