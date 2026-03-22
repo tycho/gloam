@@ -45,32 +45,50 @@ fn git_ok(repo_dir: &Path, args: &[&str]) -> Option<bool> {
 /// Find the git repo root for the crate being built.
 ///
 /// Uses `git rev-parse --show-toplevel` from CARGO_MANIFEST_DIR, which
-/// lets git itself determine whether we're inside a repo.  This avoids
-/// the problem of manually walking up the directory tree and accidentally
-/// finding an unrelated `.git` in a parent directory (e.g. when
-/// `cargo install` extracts into `~/.cargo/registry/src/` and some
-/// ancestor has a `.git`).
+/// lets git itself determine whether we're inside a repo.
 ///
-/// Returns None if git isn't installed, we're not in a repo (crates.io
-/// tarball), or the detected repo root isn't an ancestor of our manifest
-/// directory (sanity check).
+/// Returns None if:
+///   - git isn't installed
+///   - we're not in a repo (crates.io tarball)
+///   - the detected repo root is an unrelated repo (e.g. the user's home
+///     directory under dotfiles management, which contains the cargo
+///     registry extraction path)
+///
+/// The "is this our repo?" check verifies that the repo root contains a
+/// Cargo.toml with our package name.  This is more robust than a simple
+/// `starts_with` ancestor check, which passes when `cargo install` extracts
+/// into `~/.cargo/registry/src/` inside a home-directory git repo.
 fn find_repo_root(manifest_dir: &Path) -> Option<PathBuf> {
     let toplevel = git(manifest_dir, &["rev-parse", "--show-toplevel"])?;
     let root = PathBuf::from(&toplevel);
 
-    // Sanity check: the manifest dir must be inside the detected repo.
-    // This guards against pathological setups where a completely unrelated
-    // git repo contains our extraction directory.
-    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
-    let canonical_manifest = manifest_dir
-        .canonicalize()
-        .unwrap_or_else(|_| manifest_dir.to_path_buf());
-    if !canonical_manifest.starts_with(&canonical_root) {
-        println!(
-            "cargo:warning=build.rs: git toplevel {:?} is not an ancestor of manifest dir {:?}, ignoring",
-            canonical_root, canonical_manifest
-        );
-        return None;
+    // The repo root must contain a Cargo.toml that declares our package.
+    // This rejects unrelated repos that happen to be ancestors of the
+    // extraction directory (e.g. dotfiles repos tracking ~/).
+    let cargo_toml = root.join("Cargo.toml");
+    let pkg_name = env::var("CARGO_PKG_NAME").unwrap_or_default();
+    match fs::read_to_string(&cargo_toml) {
+        Ok(contents) => {
+            // Verify this Cargo.toml declares our package.  Whitespace
+            // around `=` varies (some authors align values), so we check
+            // that a line contains `name`, `=`, and `"<pkg_name>"` in
+            // that order rather than matching a single exact string.
+            let quoted_name = format!("\"{}\"", pkg_name);
+            let is_ours = contents.lines().any(|line| {
+                let trimmed = line.trim();
+                if let Some(rest) = trimmed.strip_prefix("name") {
+                    let rest = rest.trim_start();
+                    if let Some(rest) = rest.strip_prefix('=') {
+                        return rest.trim().starts_with(&quoted_name);
+                    }
+                }
+                false
+            });
+            if !is_ours {
+                return None;
+            }
+        }
+        Err(_) => return None,
     }
 
     Some(root)
