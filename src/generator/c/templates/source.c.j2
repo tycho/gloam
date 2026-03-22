@@ -47,17 +47,27 @@
 #endif
 
 /* ---- Function name table -------------------------------------------------
-   Indexed by command.index.  Used for bootstrapping and by the PFN-range
-   loader to call getProcAddr(name) for each slot. */
-static const char * const kFnNames_{{ fs.spec_name | spec_display }}[] = {
+   Command names stored as a single NUL-terminated string blob with a parallel
+   offset table for O(1) indexing.  This avoids one pointer (8 bytes on 64-bit)
+   plus one relocation entry (~24 bytes in PIC builds) per command compared to
+   the traditional const char * const [] approach. */
+#define kFnCount_{{ fs.spec_name | spec_display }} {{ fs.commands | length }}
+
+static const char kFnNameData_{{ fs.spec_name | spec_display }}[] =
 {%- for cmd in fs.commands %}
-    /* {{ cmd.index | rjust(4) }} */ "{{ cmd.name }}"{% if not loop.last %},{% endif %}
+    /* {{ fn_name_offsets[cmd.index] | rjust(5) }} */ "{{ cmd.name }}\0"
+{%- endfor %}
+;
+
+static const {{ fn_name_offset_type }} kFnNameOffsets_{{ fs.spec_name | spec_display }}[] = {
+{%- for cmd in fs.commands %}
+    /* {{ cmd.index | rjust(4) }} */ {{ fn_name_offsets[cmd.index] | rjust(5) }}{% if not loop.last %},{% endif %} /* {{ cmd.name }} */
 {%- endfor %}
 };
 
 {% if fs.is_vulkan -%}
 /* ---- Command scope table -------------------------------------------------
-   Indexed in lockstep with kFnNames_{{ fs.spec_name | spec_display }}[].  Each entry is the GloamCommandScope
+   Indexed in lockstep with kFnNameOffsets_{{ fs.spec_name | spec_display }}[].  Each entry is the GloamCommandScope
    value for that slot — stored as uint8_t so the whole table is one byte per
    command (compares well against the alternatives: a parallel pointer array
    or a switch inside the loop). */
@@ -95,8 +105,10 @@ static const GloamPfnRange_t kFeatPfnRanges_{{ fs.spec_name | spec_display }}[] 
 static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr,
                                   uint16_t start, uint16_t count) {
     uint16_t i;
-    for (i = start; i < (uint16_t)(start + count); ++i)
-        context->pfnArray[i] = (void *)getProcAddr(kFnNames_{{ fs.spec_name | spec_display }}[i]);
+    for (i = start; i < (uint16_t)(start + count); ++i) {
+        const char *pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]];
+        context->pfnArray[i] = (void *)getProcAddr(pfnName);
+    }
 }
 {% else -%}
 /* ---- Vulkan scope-aware PFN range helper ---------------------------------
@@ -110,9 +122,11 @@ static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamLo
 static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamVkUserptrLoadFunc load,
                                      void *userptr, uint16_t start, uint16_t count) {
     uint16_t i;
-    for (i = start; i < (uint16_t)(start + count); ++i)
-        context->pfnArray[i] = (void *)load(userptr, kFnNames_{{ fs.spec_name | spec_display }}[i],
-                                                 (GloamCommandScope)kCommandScopes_{{ fs.spec_name | spec_display }}[i]);
+    for (i = start; i < (uint16_t)(start + count); ++i) {
+        const char *pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]];
+        const GloamCommandScope cmdScope = (GloamCommandScope)kCommandScopes_{{ fs.spec_name | spec_display }}[i];
+        context->pfnArray[i] = (void *)load(userptr, pfnName, cmdScope);
+    }
 }
 {% endif %}
 {% if alias and fs.alias_pairs | length > 0 -%}
@@ -719,8 +733,8 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *displa
     if (!version) return 0;
 
     /* Load all PFNs upfront. */
-    for (i = 0; i < GLOAM_ARRAYSIZE(kFnNames_{{ fs.spec_name | spec_display }}); ++i)
-        context->pfnArray[i] = (void *)getProcAddr(kFnNames_{{ fs.spec_name | spec_display }}[i]);
+    for (i = 0; i < kFnCount_{{ fs.spec_name | spec_display }}; ++i)
+        context->pfnArray[i] = (void *)getProcAddr((kFnNameData_{{ fs.spec_name | spec_display }} + kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]));
 
     /* Mark features based on PFN availability. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_{{ fs.spec_name | spec_display }}); ++i) {
@@ -765,8 +779,8 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamL
     if (!version) return 0;
 
     /* Load all PFNs upfront. */
-    for (i = 0; i < GLOAM_ARRAYSIZE(kFnNames_{{ fs.spec_name | spec_display }}); ++i)
-        context->pfnArray[i] = (void *)getProcAddr(kFnNames_{{ fs.spec_name | spec_display }}[i]);
+    for (i = 0; i < kFnCount_{{ fs.spec_name | spec_display }}; ++i)
+        context->pfnArray[i] = (void *)getProcAddr((kFnNameData_{{ fs.spec_name | spec_display }} + kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]));
 
     /* Mark features based on PFN availability. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_{{ fs.spec_name | spec_display }}); ++i) {

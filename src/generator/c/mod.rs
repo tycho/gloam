@@ -29,6 +29,35 @@ pub fn generate(
     let env = build_env()?;
     let preamble = preamble::build_preamble(fs, command_line);
 
+    // Compute function name string blob layout: each command name is stored
+    // as a NUL-terminated string in a single contiguous char array, with a
+    // parallel offset table for O(1) indexing.  This avoids one pointer +
+    // relocation per command (saves ~30 bytes/command on PIC builds).
+    let fn_name_offsets: Vec<u32> = {
+        let mut offsets = Vec::with_capacity(fs.commands.len());
+        let mut pos = 0u32;
+        for cmd in &fs.commands {
+            offsets.push(pos);
+            pos += cmd.name.len() as u32 + 1; // +1 for NUL
+        }
+        offsets
+    };
+    let fn_name_blob_size: u32 = fn_name_offsets
+        .last()
+        .map(|&last_off| {
+            last_off
+                + fs.commands
+                    .last()
+                    .map(|c| c.name.len() as u32 + 1)
+                    .unwrap_or(0)
+        })
+        .unwrap_or(0);
+    let fn_name_offset_type = if fn_name_blob_size <= u16::MAX as u32 {
+        "uint16_t"
+    } else {
+        "uint32_t"
+    };
+
     // Output tree:
     //   {out}/include/gloam/{stem}.h
     //   {out}/include/KHR/khrplatform.h   (and other aux headers)
@@ -40,12 +69,15 @@ pub fn generate(
     std::fs::create_dir_all(&src_dir)?;
 
     let ctx = context! {
-        fs       => fs,
-        stem     => &stem,
-        guard    => format!("{}_H", stem.to_uppercase()),
-        alias    => args.alias,
-        loader   => args.loader,
-        preamble => &preamble,
+        fs                  => fs,
+        stem                => &stem,
+        guard               => format!("{}_H", stem.to_uppercase()),
+        alias               => args.alias,
+        loader              => args.loader,
+        preamble            => &preamble,
+        fn_name_offsets     => &fn_name_offsets,
+        fn_name_blob_size   => fn_name_blob_size,
+        fn_name_offset_type => fn_name_offset_type,
     };
 
     std::fs::write(
