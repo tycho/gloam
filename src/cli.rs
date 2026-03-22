@@ -138,10 +138,18 @@ impl Cli {
             }
         }
 
-        let include = if include_all { None } else { Some(includes) };
+        // When "all" is combined with explicit names, the explicit names act as
+        // baseline-override pins — they survive --baseline exclusion even though
+        // "all" means we don't use them for initial inclusion filtering.
+        let (include, keep) = if include_all {
+            (None, includes.into_iter().collect())
+        } else {
+            (Some(includes), HashSet::new())
+        };
         Ok(ExtensionFilter {
             include,
             exclude: excludes,
+            keep,
         })
     }
 
@@ -166,10 +174,14 @@ impl Cli {
 /// `exclude` is always a set of names to unconditionally remove — applied as a
 /// final veto after all selection passes (explicit, dependency, promoted,
 /// predecessor, baseline).
+/// `keep` is a set of names that override baseline exclusion — used when the
+/// user writes `--extensions all,GL_ARB_foo` to pin specific extensions even
+/// if they'd otherwise be excluded by --baseline.
 #[derive(Debug)]
 pub struct ExtensionFilter {
     pub include: Option<Vec<String>>,
     pub exclude: HashSet<String>,
+    pub keep: HashSet<String>,
 }
 
 impl ExtensionFilter {
@@ -178,6 +190,7 @@ impl ExtensionFilter {
         Self {
             include: None,
             exclude: HashSet::new(),
+            keep: HashSet::new(),
         }
     }
 }

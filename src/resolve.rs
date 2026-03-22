@@ -1134,12 +1134,38 @@ fn select_extensions<'a>(
     }
 
     // Build unified exclude set and apply.
-    let has_excludes = !explicit_excludes.is_empty() || !baseline_excludes.is_empty();
-    if has_excludes {
+    // Explicit includes override baseline exclusion — if you name an extension
+    // in --extensions (either as the sole include list, or alongside "all" as
+    // a keep-alive pin), you want it even if it's promoted into baseline.
+    // The `-` prefix exclusion is unconditional and overrides everything.
+    let explicit_keeps: HashSet<&str> = {
+        let mut keeps: HashSet<&str> = filter.keep.iter().map(String::as_str).collect();
+        // When include is Some (explicit list, no "all"), every listed name
+        // is an explicit request that should survive baseline exclusion.
+        if let Some(ref list) = filter.include {
+            keeps.extend(list.iter().map(String::as_str));
+        }
+        keeps
+    };
+
+    if !explicit_excludes.is_empty() || !baseline_excludes.is_empty() {
         selected.retain(|e| {
-            !explicit_excludes.contains(e.raw.name.as_str())
-                && !baseline_excludes.contains(&e.raw.name)
+            let name = e.raw.name.as_str();
+            // `-` prefix exclusions are unconditional.
+            if explicit_excludes.contains(name) {
+                return false;
+            }
+            // Baseline exclusions can be overridden by explicit inclusion.
+            if baseline_excludes.contains(&e.raw.name) && !explicit_keeps.contains(name) {
+                return false;
+            }
+            true
         });
+    }
+
+    // Remove kept extensions from baseline_excludes for accurate reporting.
+    if !explicit_keeps.is_empty() {
+        baseline_excludes.retain(|name| !explicit_keeps.contains(name.as_str()));
     }
 
     // Collect the names that were actually excluded (intersection of what was
