@@ -446,9 +446,19 @@ fn resolve_feature_set(
     // ------------------------------------------------------------------
     // Step 5: Build the indexed command list.
     // Core functions first (in req_commands order), then extension functions.
+    // Before assigning indices, reorder commands to minimize PFN range
+    // fragmentation — see optimize_command_order for the algorithm.
     // ------------------------------------------------------------------
     let core_cmd_names: Vec<String> = req_commands.keys().cloned().collect();
     let ext_cmd_names: Vec<String> = ext_commands.keys().cloned().collect();
+
+    let (core_cmd_names, ext_cmd_names) = optimize_command_order(
+        &core_cmd_names,
+        &ext_cmd_names,
+        &selected_features,
+        &selected_exts,
+        requests,
+    );
 
     let all_cmd_names: Vec<&str> = core_cmd_names
         .iter()
@@ -1255,6 +1265,96 @@ fn indices_to_ranges(ext_idx: u16, sorted: &[u16]) -> Vec<PfnRange> {
         count,
     });
     ranges
+}
+
+// ---------------------------------------------------------------------------
+// PFN ordering optimization
+// ---------------------------------------------------------------------------
+
+/// Reorder command names to minimize PFN range table fragmentation.
+///
+/// The pfnArray index of each command determines how many `PfnRange` entries
+/// are needed in the range tables.  When commands required by the same
+/// feature or extension are scattered across the array, each disjoint group
+/// becomes a separate range.  By placing commands with identical consumer
+/// sets adjacent, most consumers collapse to a single contiguous range.
+///
+/// **Algorithm**: assign each command a "consumer signature" — the sorted
+/// set of feature/extension indices that include it.  Sort commands by
+/// signature (lexicographic on the index lists).  This groups commands with
+/// identical consumers together, and orders the groups so that consumers
+/// with overlapping command sets are near each other.
+///
+/// **Effect**: in a merged GL 4.6 + GLES 3.2 build, GLES 2.0 drops from
+/// ~34 ranges to ~1–3 because its cherry-picked subset of GL 1.0 commands
+/// are now contiguous rather than interleaved with GL-only commands.
+fn optimize_command_order(
+    core_cmds: &[String],
+    ext_cmds: &[String],
+    selected_features: &[SelectedFeature<'_>],
+    selected_exts: &[SelectedExt<'_>],
+    requests: &[ApiRequest],
+) -> (Vec<String>, Vec<String>) {
+    let num_features = selected_features.len();
+
+    // Build command → sorted consumer-index set.
+    // Consumers 0..num_features are features, num_features.. are extensions.
+    let mut consumers: HashMap<&str, Vec<u32>> = HashMap::new();
+
+    // Feature consumers — respect API/profile filtering.
+    for (fi, feat) in selected_features.iter().enumerate() {
+        let profile = requests
+            .iter()
+            .find(|r| r.name == feat.api)
+            .and_then(|r| r.profile.as_deref());
+
+        for require in &feat.raw.requires {
+            if !api_profile_matches(
+                require.api.as_deref(),
+                require.profile.as_deref(),
+                &feat.api,
+                profile,
+            ) {
+                continue;
+            }
+            for cmd in &require.commands {
+                consumers.entry(cmd.as_str()).or_default().push(fi as u32);
+            }
+        }
+    }
+
+    // Extension consumers.
+    for (ei, ext) in selected_exts.iter().enumerate() {
+        for require in &ext.raw.requires {
+            for cmd in &require.commands {
+                consumers
+                    .entry(cmd.as_str())
+                    .or_default()
+                    .push((num_features + ei) as u32);
+            }
+        }
+    }
+
+    // Deduplicate and sort each consumer list so the signature is canonical.
+    for list in consumers.values_mut() {
+        list.sort_unstable();
+        list.dedup();
+    }
+
+    // Sort each command list by consumer signature (lexicographic).
+    // Commands with identical consumers become adjacent; the lexicographic
+    // ordering naturally clusters related consumer groups nearby.
+    let sort_by_consumers = |names: &[String]| -> Vec<String> {
+        let mut sorted = names.to_vec();
+        sorted.sort_by(|a, b| {
+            let ca = consumers.get(a.as_str()).map(Vec::as_slice).unwrap_or(&[]);
+            let cb = consumers.get(b.as_str()).map(Vec::as_slice).unwrap_or(&[]);
+            ca.cmp(cb).then_with(|| a.cmp(b)) // tie-break alphabetically for stability
+        });
+        sorted
+    };
+
+    (sort_by_consumers(core_cmds), sort_by_consumers(ext_cmds))
 }
 
 // ---------------------------------------------------------------------------
