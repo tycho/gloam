@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5](https://github.com/tycho/gloam/compare/0.2.4...0.2.5) - 2026-03-23
+
+### Fixed
+
+- *(bundled)* treat glsl_exts in this repo as canon version
+
 ## [0.2.4](https://github.com/tycho/gloam/compare/0.2.3...0.2.4) - 2026-03-23
 
 ### Added
