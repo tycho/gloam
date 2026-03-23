@@ -306,12 +306,15 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 
 /* ---- API declarations ---------------------------------------------------- */
 
+#ifndef GLOAM_DEFINED_CALLBACK_TYPES_
+#define GLOAM_DEFINED_CALLBACK_TYPES_
 /* Opaque function pointer type — the common return type for all load
    callbacks.  Callers cast to the specific PFN type they need. */
 typedef void (*GloamAPIProc)(void);
 
 /* Load function pointer type (GL / EGL / GLX / WGL). */
 typedef GloamAPIProc (*GloamLoadFunc)(const char *name);
+#endif
 {%- if fs.is_vulkan %}
 /* Vulkan command scope — controls which proc-addr entry point the load
    callback should use.  Must match the definition in impl_util.j2. */
@@ -402,3 +405,4 @@ void gloamLoaderResetVulkan(void);
 #endif /* _WIN32 */
 {% endif %}
 #endif /* GLOAM_{{ guard }} */
+

@@ -51,7 +51,7 @@
    offset table for O(1) indexing.  This avoids one pointer (8 bytes on 64-bit)
    plus one relocation entry (~24 bytes in PIC builds) per command compared to
    the traditional const char * const [] approach. */
-#define kFnCount_{{ fs.spec_name | spec_display }} {{ fs.commands | length }}
+static const uint32_t kFnCount_{{ fs.spec_name | spec_display }} = {{ fs.commands | length }};
 
 static const char kFnNameData_{{ fs.spec_name | spec_display }}[] =
 {%- for cmd in fs.commands %}
@@ -647,6 +647,7 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}EGL
 int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr) {
     int version;
     uint32_t i;
+    GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
 
     memset(context, 0, sizeof(*context));
 
@@ -687,6 +688,7 @@ int gloamLoad{{ api | api_display }}(GloamLoadFunc getProcAddr) {
 int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display, GloamLoadFunc getProcAddr) {
     int version;
     uint32_t i;
+    GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
 
     memset(context, 0, sizeof(*context));
 
@@ -766,6 +768,8 @@ int gloamLoad{{ api | api_display }}(Display *display, int screen, GloamLoadFunc
 int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamLoadFunc getProcAddr) {
     int version;
     uint32_t i;
+    GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
+
     memset(context, 0, sizeof(*context));
 
     /* WGL mandatory extensions must be loaded first for extension detection. */
@@ -835,6 +839,7 @@ int gloamLoadVulkanContextUserPtr({{ u.ctx_arg(', ') }}VkInstance instance,
                                    GloamVkUserptrLoadFunc load, void *userptr) {
     int version;
     uint32_t i;
+    GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
     GLOAM_UNUSED(instance);
     GLOAM_UNUSED(device);
 
@@ -901,3 +906,4 @@ int gloamLoadVulkan(VkInstance instance, VkPhysicalDevice physical_device, VkDev
 {% elif fs.spec_name == "wgl" -%}
 #endif /* _WIN32 */
 {% endif %}
+
