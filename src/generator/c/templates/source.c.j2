@@ -199,10 +199,12 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
         num_exts = (uint32_t)n;
         if (num_exts > 0) {
             exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts) return 0;
+            if (!exts)
+                return 0;
             for (i = 0; i < num_exts; ++i) {
                 const char *name = (const char *)context->GetStringi(GL_EXTENSIONS, i);
-                if (name) exts[i] = gloam_hash_string(name, strlen(name));
+                if (name)
+                    exts[i] = gloam_hash_string(name, strlen(name));
             }
         }
     } else
@@ -213,9 +215,11 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
         const char *ext_str;
         const char *cur, *next;
         uint32_t j;
-        if (!context->GetString) return 0;
+        if (!context->GetString)
+            return 0;
         ext_str = (const char *)context->GetString(GL_EXTENSIONS);
-        if (!ext_str) return 0;
+        if (!ext_str)
+            return 0;
         for (j = 0; j < 2; ++j) {
             num_exts = 0;
             cur  = ext_str;
@@ -223,7 +227,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
             while (1) {
                 size_t len;
                 cur += strspn(cur, " ");
-                if (!cur[0]) break;
+                if (!cur[0])
+                    break;
                 len = (size_t)(next - cur);
                 if (exts) exts[num_exts] = gloam_hash_string(cur, len);
                 ++num_exts;
@@ -232,7 +237,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
             }
             if (!exts) {
                 exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-                if (!exts) return 0;
+                if (!exts)
+                    return 0;
             }
         }
     }
@@ -250,9 +256,14 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     const char *ext_str, *cur, *next;
     uint64_t *exts = NULL;
     uint32_t num_exts = 0, j;
-    if (!context->GetString) return 0;
+
+    if (!context->GetString)
+        return 0;
+
     ext_str = (const char *)context->GetString(GL_EXTENSIONS);
-    if (!ext_str) return 0;
+    if (!ext_str)
+        return 0;
+
     for (j = 0; j < 2; ++j) {
         num_exts = 0;
         cur  = ext_str;
@@ -260,16 +271,19 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
         while (1) {
             size_t len;
             cur += strspn(cur, " ");
-            if (!cur[0]) break;
+            if (!cur[0])
+                break;
             len = (size_t)(next - cur);
-            if (exts) exts[num_exts] = gloam_hash_string(cur, len);
+            if (exts)
+                exts[num_exts] = gloam_hash_string(cur, len);
             ++num_exts;
             cur  = next + strspn(next, " ");
             next = cur  + strcspn(cur,  " ");
         }
         if (!exts) {
             exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts) return 0;
+            if (!exts)
+                return 0;
         }
     }
     gloam_sort_hashes(exts, num_exts);
@@ -289,22 +303,26 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     uint32_t num_exts = 0, j;
     size_t client_len, display_len;
 
-    if (!context->QueryString) return 0;
+    if (!context->QueryString)
+        return 0;
 
     /* Client extensions live at EGL_NO_DISPLAY. */
     client_str  = (const char *)context->QueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
     display_str = (display == EGL_NO_DISPLAY) ? "" :
                   (const char *)context->QueryString(display, EGL_EXTENSIONS);
 
-    if (!client_str)  return 0;
-    if (!display_str) return 0;
+    if (!client_str)
+        return 0;
+    if (!display_str)
+        return 0;
 
     client_len  = strlen(client_str);
     display_len = strlen(display_str);
 
     /* Concatenate with a space separator. */
     concat = (char *)malloc(client_len + display_len + 2);
-    if (!concat) return 0;
+    if (!concat)
+        return 0;
     memcpy(concat, client_str, client_len);
     size_t pos = client_len;
     if (display_len) {
@@ -323,16 +341,21 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
         while (1) {
             size_t len;
             cur += strspn(cur, " ");
-            if (!cur[0]) break;
+            if (!cur[0])
+                break;
             len = (size_t)(next - cur);
-            if (exts) exts[num_exts] = gloam_hash_string(cur, len);
+            if (exts)
+                exts[num_exts] = gloam_hash_string(cur, len);
             ++num_exts;
             cur  = next + strspn(next, " ");
             next = cur  + strcspn(cur,  " ");
         }
         if (!exts) {
             exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts) { free(concat); return 0; }
+            if (!exts) {
+                free(concat);
+                return 0;
+            }
         }
     }
 
@@ -350,9 +373,14 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     const char *ext_str, *cur, *next;
     uint64_t *exts = NULL;
     uint32_t num_exts = 0, j;
-    if (!context->QueryExtensionsString) return 0;
+
+    if (!context->QueryExtensionsString)
+        return 0;
+
     ext_str = (const char *)context->QueryExtensionsString(display, screen);
-    if (!ext_str) return 0;
+    if (!ext_str)
+        return 0;
+
     for (j = 0; j < 2; ++j) {
         num_exts = 0;
         cur  = ext_str;
@@ -360,16 +388,19 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
         while (1) {
             size_t len;
             cur += strspn(cur, " ");
-            if (!cur[0]) break;
+            if (!cur[0])
+                break;
             len = (size_t)(next - cur);
-            if (exts) exts[num_exts] = gloam_hash_string(cur, len);
+            if (exts)
+                exts[num_exts] = gloam_hash_string(cur, len);
             ++num_exts;
             cur  = next + strspn(next, " ");
             next = cur  + strcspn(cur,  " ");
         }
         if (!exts) {
             exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts) return 0;
+            if (!exts)
+                return 0;
         }
     }
     gloam_sort_hashes(exts, num_exts);
@@ -385,11 +416,16 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     const char *ext_str = NULL, *cur, *next;
     uint64_t *exts = NULL;
     uint32_t num_exts = 0, j;
+
     if (context->GetExtensionsStringARB)
         ext_str = (const char *)context->GetExtensionsStringARB(hdc);
+
     if (!ext_str && context->GetExtensionsStringEXT)
         ext_str = (const char *)context->GetExtensionsStringEXT();
-    if (!ext_str) return 0;
+
+    if (!ext_str)
+        return 0;
+
     for (j = 0; j < 2; ++j) {
         num_exts = 0;
         cur  = ext_str;
@@ -397,16 +433,19 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
         while (1) {
             size_t len;
             cur += strspn(cur, " ");
-            if (!cur[0]) break;
+            if (!cur[0])
+                break;
             len = (size_t)(next - cur);
-            if (exts) exts[num_exts] = gloam_hash_string(cur, len);
+            if (exts)
+                exts[num_exts] = gloam_hash_string(cur, len);
             ++num_exts;
             cur  = next + strspn(next, " ");
             next = cur  + strcspn(cur,  " ");
         }
         if (!exts) {
             exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts) return 0;
+            if (!exts)
+                return 0;
         }
     }
     gloam_sort_hashes(exts, num_exts);
@@ -430,27 +469,37 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     VkExtensionProperties *props = NULL;
     uint64_t *exts = NULL;
 
-    if (!context->EnumerateInstanceExtensionProperties) return 0;
+    if (!context->EnumerateInstanceExtensionProperties)
+        return 0;
 
     context->EnumerateInstanceExtensionProperties(NULL, &inst_count, NULL);
     if (physical_device != NULL && context->EnumerateDeviceExtensionProperties != NULL)
         context->EnumerateDeviceExtensionProperties(physical_device, NULL, &dev_count, NULL);
 
     total = inst_count + dev_count;
-    if (total == 0) { *out_exts = NULL; *out_num_exts = 0; return 1; }
+    if (total == 0) {
+        *out_exts = NULL;
+        *out_num_exts = 0;
+        return 1;
+    }
 
     /* Single allocation covers the larger of inst / dev for the props buffer,
        and the exact total for the hash array. */
     props = (VkExtensionProperties *)calloc(
         (inst_count > dev_count ? inst_count : dev_count), sizeof(*props));
     exts  = (uint64_t *)calloc(total, sizeof(uint64_t));
-    if (!props || !exts) { free(props); free(exts); return 0; }
+    if (!props || !exts) {
+        free(props);
+        free(exts);
+        return 0;
+    }
 
     context->EnumerateInstanceExtensionProperties(NULL, &inst_count, props);
     for (i = 0; i < inst_count; ++i)
         exts[i] = gloam_hash_string(props[i].extensionName,
                                     strlen(props[i].extensionName));
-    if (inst_count) context->vk_found_instance_exts = 1;
+    if (inst_count)
+        context->vk_found_instance_exts = 1;
 
     if (dev_count) {
         context->EnumerateDeviceExtensionProperties(physical_device, NULL, &dev_count, props);
@@ -475,8 +524,10 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg(', ')
     uint32_t  num_exts = 0, i;
 
     /* Skip re-enumeration if we already have the right scope of extensions. */
-    if (physical_device != NULL && context->vk_found_device_exts)   return 1;
-    if (physical_device == NULL && context->vk_found_instance_exts) return 1;
+    if (physical_device != NULL && context->vk_found_device_exts)
+        return 1;
+    if (physical_device == NULL && context->vk_found_instance_exts)
+        return 1;
 
     if (!gloam_{{ fs.spec_name }}_get_extensions_{{ api }}(context, physical_device, &exts, &num_exts))
         return 0;
@@ -518,10 +569,14 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }}) {
         "OpenGL SC ",    "OpenGL ",       NULL
     };
     const char *version = (const char *)context->GetString(GL_VERSION);
-    if (!version) return 0;
+    if (!version)
+        return 0;
     for (i = 0; kPrefixes[i]; ++i) {
         const size_t len = strlen(kPrefixes[i]);
-        if (strncmp(version, kPrefixes[i], len) == 0) { version += len; break; }
+        if (strncmp(version, kPrefixes[i], len) == 0) {
+            version += len;
+            break;
+        }
     }
     GLOAM_IMPL_UTIL_SSCANF(version, "%d.%d", &major, &minor);
     version_value = (unsigned short)((major << 8) | minor);
@@ -631,9 +686,11 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}EGL
     int major = 0, minor = 0;
     unsigned short version_value;
     const char *version;
-    if (!context->QueryString) return 0;
+    if (!context->QueryString)
+        return 0;
     version = (const char *)context->QueryString(display, EGL_VERSION);
-    if (!version) return 0;
+    if (!version)
+        return 0;
     GLOAM_IMPL_UTIL_SSCANF(version, "%d.%d", &major, &minor);
     version_value = (unsigned short)((major << 8) | minor);
 {% for feat in fs.features | selectattr("api", "equalto", api) %}
@@ -656,10 +713,12 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc g
     /* Bootstrap: glGetString must be loaded before find_core can run. */
 {%- for cmd in fs.commands %}{% if cmd.name == "glGetString" %}
     context->{{ cmd.short_name }} = ({{ cmd.pfn_type }})getProcAddr("glGetString");
-    if (!context->{{ cmd.short_name }}) return 0;
+    if (!context->{{ cmd.short_name }})
+        return 0;
 {% endif %}{%- endfor %}
     version = gloam_{{ fs.spec_name }}_find_core_{{ api }}(context);
-    if (!version) return 0;
+    if (!version)
+        return 0;
 
     /* Load PFNs for each enabled feature via the range table. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_{{ fs.spec_name | spec_display }}); ++i) {
@@ -668,7 +727,8 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc g
             gloam_load_pfn_range_{{ fs.spec_name }}(context, getProcAddr, r->start, r->count);
     }
 {% if fs.extensions | length > 0 and subset | length > 0 %}
-    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context)) return 0;
+    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context))
+        return 0;
 
     /* Load PFNs for each detected extension via the range table. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_{{ api }}); ++i) {
@@ -699,7 +759,8 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay disp
     context->{{ cmd.short_name }} = ({{ cmd.pfn_type }})getProcAddr("{{ cmd.name }}");
 {% endif %}{%- endfor %}
     version = gloam_{{ fs.spec_name }}_find_core_{{ api }}(context, display);
-    if (!version) return 0;
+    if (!version)
+        return 0;
 
     /* Load PFNs for each enabled feature via the range table. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_{{ fs.spec_name | spec_display }}); ++i) {
@@ -708,7 +769,8 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay disp
             gloam_load_pfn_range_{{ fs.spec_name }}(context, getProcAddr, r->start, r->count);
     }
 {% if fs.extensions | length > 0 and subset | length > 0 %}
-    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context, display)) return 0;
+    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context, display))
+        return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_{{ api }}); ++i) {
         const GloamPfnRange_t *r = &kExtPfnRanges_{{ api }}[i];
@@ -734,7 +796,8 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *displa
     context->{{ cmd.short_name }} = ({{ cmd.pfn_type }})getProcAddr("{{ cmd.name }}");
 {% endif %}{%- endfor %}
     version = gloam_{{ fs.spec_name }}_find_core_{{ api }}(context, &display, &screen);
-    if (!version) return 0;
+    if (!version)
+        return 0;
 
     /* Load all PFNs upfront. */
     for (i = 0; i < kFnCount_{{ fs.spec_name | spec_display }}; ++i)
@@ -746,10 +809,12 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *displa
         uint16_t j; int ok = 1;
         for (j = r->start; j < (uint16_t)(r->start + r->count); ++j)
             ok &= (context->pfnArray[j] != NULL);
-        if (ok) context->featArray[r->extension] = 1;
+        if (ok)
+            context->featArray[r->extension] = 1;
     }
 {% if fs.extensions | length > 0 and subset | length > 0 %}
-    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context, display, screen)) return 0;
+    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context, display, screen))
+        return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_{{ api }}); ++i) {
         const GloamPfnRange_t *r = &kExtPfnRanges_{{ api }}[i];
@@ -782,7 +847,8 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamL
 {%- endfor %}
 
     version = gloam_{{ fs.spec_name }}_find_core_{{ api }}(context);
-    if (!version) return 0;
+    if (!version)
+        return 0;
 
     /* Load all PFNs upfront. */
     for (i = 0; i < kFnCount_{{ fs.spec_name | spec_display }}; ++i)
@@ -794,11 +860,13 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamL
         uint16_t j; int ok = 1;
         for (j = r->start; j < (uint16_t)(r->start + r->count); ++j)
             ok &= (context->pfnArray[j] != NULL);
-        if (ok) context->featArray[r->extension] = 1;
+        if (ok)
+            context->featArray[r->extension] = 1;
     }
 
 {% if fs.extensions | length > 0 and subset | length > 0 %}
-    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context, hdc)) return 0;
+    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context, hdc))
+        return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_{{ api }}); ++i) {
         const GloamPfnRange_t *r = &kExtPfnRanges_{{ api }}[i];
@@ -854,7 +922,8 @@ int gloamLoadVulkanContextUserPtr({{ u.ctx_arg(', ') }}VkInstance instance,
 #endif
 
     version = gloam_vk_find_core(context, physical_device);
-    if (!version) return 0;
+    if (!version)
+        return 0;
 
     /* Load PFNs for every enabled feature via the range table. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_{{ fs.spec_name | spec_display }}); ++i) {
@@ -863,7 +932,8 @@ int gloamLoadVulkanContextUserPtr({{ u.ctx_arg(', ') }}VkInstance instance,
             gloam_load_pfn_range_{{ fs.spec_name }}(context, load, userptr, r->start, r->count);
     }
 {% if fs.extensions | length > 0 and subset | length > 0 %}
-    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context, physical_device)) return 0;
+    if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context, physical_device))
+        return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_{{ api }}); ++i) {
         const GloamPfnRange_t *r = &kExtPfnRanges_{{ api }}[i];
