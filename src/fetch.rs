@@ -1,6 +1,9 @@
 //! XML and auxiliary header loading. Default mode uses compile-time-embedded
 //! bundled copies; `--fetch` downloads from remote Khronos URLs.
 
+// In case we built without features=fetch
+#![allow(dead_code, unused)]
+
 use anyhow::{Context, Result};
 
 use crate::bundled;
@@ -36,14 +39,15 @@ pub struct SpecSources {
 // ---------------------------------------------------------------------------
 
 pub fn load_spec(spec_name: &str, use_fetch: bool) -> Result<SpecSources> {
+    #[cfg(feature = "fetch")]
     if use_fetch {
-        fetch_spec(spec_name)
-    } else {
-        bundled_spec(spec_name)
+        return fetch_spec(spec_name);
     }
+    bundled_spec(spec_name)
 }
 
 pub fn load_auxiliary_header(path: &str, use_fetch: bool) -> Result<String> {
+    #[cfg(feature = "fetch")]
     if use_fetch {
         if let Some(url) = auxiliary_url(path) {
             return fetch_text(&url)
@@ -116,6 +120,7 @@ fn bundled_auxiliary(path: &str) -> Result<&'static str> {
 // Fetch mode
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "fetch")]
 fn fetch_spec(spec_name: &str) -> Result<SpecSources> {
     let primary_url = match spec_name {
         "gl" => format!("{}gl.xml", BASE_GL),
@@ -160,6 +165,7 @@ fn auxiliary_url(path: &str) -> Option<String> {
     }
 }
 
+#[cfg(feature = "fetch")]
 fn fetch_text(url: &str) -> Result<String> {
     let resp = reqwest::blocking::get(url)
         .with_context(|| format!("GET {}", url))?

@@ -292,7 +292,7 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
                 .push(req);
         }
         for (spec_name, reqs) in &by_spec {
-            let sources = fetch::load_spec(spec_name, cli.fetch)?;
+            let sources = fetch::load_spec(spec_name, cli.use_fetch())?;
             let raw = parse::parse(&sources, spec_name)?;
             let fs = resolve_feature_set(
                 &raw,
@@ -309,7 +309,7 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
     } else {
         for req in &requests {
             let spec_name = req.spec_name();
-            let sources = fetch::load_spec(spec_name, cli.fetch)?;
+            let sources = fetch::load_spec(spec_name, cli.use_fetch())?;
             let raw = parse::parse(&sources, spec_name)?;
             let fs = resolve_feature_set(
                 &raw,

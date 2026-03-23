@@ -49,7 +49,7 @@ fn run() -> Result<()> {
                 eprintln!("gloam: generating C loader...");
             }
             for fs in &feature_sets {
-                generator::c::generate(fs, c_args, out, cli.fetch, &command_line)?;
+                generator::c::generate(fs, c_args, out, cli.use_fetch(), &command_line)?;
             }
         }
     }

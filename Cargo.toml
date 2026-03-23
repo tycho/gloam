@@ -11,12 +11,16 @@ rust-version   = "1.88"
 name           = "gloam"
 path           = "src/main.rs"
 
+[features]
+default = ["fetch"]
+fetch   = ["dep:reqwest"]
+
 [dependencies]
 anyhow         = "1"
 clap           = { version = "4", features = ["derive"] }
 indexmap       = { version = "2", features = ["serde"] }
 minijinja      = "2"
-reqwest        = { version = "0.13", features = ["blocking", "rustls"], default-features = false }
+reqwest        = { version = "0.13", features = ["blocking", "rustls"], default-features = false, optional = true}
 roxmltree      = "0.21"
 serde          = { version = "1", features = ["derive"] }
 xxhash-rust    = { version = "0.8", features = ["xxh3"] }

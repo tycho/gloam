@@ -67,6 +67,7 @@ pub struct Cli {
     pub quiet: bool,
 
     /// Fetch XML specs from Khronos remote URLs instead of bundled copies.
+    #[cfg(feature = "fetch")]
     #[arg(long)]
     pub fetch: bool,
 
@@ -97,6 +98,17 @@ impl Cli {
             .split(',')
             .map(|s| ApiRequest::parse(s.trim()))
             .collect()
+    }
+
+    pub fn use_fetch(&self) -> bool {
+        #[cfg(feature = "fetch")]
+        {
+            self.fetch
+        }
+        #[cfg(not(feature = "fetch"))]
+        {
+            false
+        }
     }
 
     /// Parse the --extensions argument into an `ExtensionFilter`.
