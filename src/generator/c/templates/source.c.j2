@@ -305,13 +305,15 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     /* Concatenate with a space separator. */
     concat = (char *)malloc(client_len + display_len + 2);
     if (!concat) return 0;
-    concat[0] = '\0';
-    strcat(concat, client_str);
+    memcpy(concat, client_str, client_len);
+    size_t pos = client_len;
     if (display_len) {
-        if (client_len && concat[client_len - 1] != ' ')
-            strcat(concat, " ");
-        strcat(concat, display_str);
+        if (client_len && client_str[client_len - 1] != ' ')
+            concat[pos++] = ' ';
+        memcpy(concat + pos, display_str, display_len);
+        pos += display_len;
     }
+    concat[pos] = '\0';
 
     /* Two-pass: count then fill. */
     for (j = 0; j < 2; ++j) {
