@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/tycho/gloam/compare/0.2.1...0.2.2) - 2026-03-23
+
+### Added
+
+- *(build)* support building without --fetch enabled
+- *(cli)* allow explicit extension names to override --baseline exclusion
+- *(cli)* add extension exclusion syntax and --baseline flag
+
+### Fixed
+
+- *(baseline)* exclusion must check all APIs in merged builds
+- *(preamble)* ensure sorted order for extension listings
+
+### Other
+
+- *(cleanup)* ensure -std=c99 -Wall compiles with no warnings
+
 ## [0.2.1](https://github.com/tycho/gloam/compare/0.2.0...0.2.1) - 2026-03-22
 
 ### Added
