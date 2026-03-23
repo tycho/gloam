@@ -69,14 +69,16 @@
 
 {# Platform / WSI system headers: include-category types whose protection
    guards were inferred at generation time from which extensions require them.
-   An empty protect list means the include is unconditional. #}
-{%- for type in fs.types -%}
-{% if type.category == "include" and type.raw_c -%}
-{{ u.protect_begin(type.protect) -}}
+   An empty protect list means the include is unconditional.
+   Consecutive types sharing the same guard are coalesced into a single
+   #ifdef/#endif block by the resolver. #}
+{%- for group in fs.include_type_groups -%}
+{{ u.protect_begin(group.protect) -}}
+{% for type in group.items -%}
 {{ type.raw_c }}
-{{ u.protect_end(type.protect) -}}
-{% endif -%}
-{%- endfor %}
+{% endfor -%}
+{{ u.protect_end(group.protect) -}}
+{% endfor %}
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -131,15 +133,17 @@ struct _cl_event;
 #define {{ feat.full_name }} 1
 {% endfor -%}
 {% endif -%}
-{%- if not fs.is_vulkan and fs.extensions | length > 0 %}
+{%- if not fs.is_vulkan and fs.ext_guard_groups | length > 0 %}
 /* ---- Extension compile-time guards ---------------------------------------
    These mirror the definitions in standard glext.h/gl2ext.h/eglext.h so
    that code guarded by e.g. #ifdef GL_ARB_draw_indirect compiles correctly
    against this header. */
-{% for ext in fs.extensions %}
-{{- u.protect_begin(ext.protect) -}}
+{% for group in fs.ext_guard_groups -%}
+{{- u.protect_begin(group.protect) -}}
+{% for ext in group.items -%}
 #define {{ ext.name }} 1
-{{ u.protect_end(ext.protect) -}}
+{% endfor -%}
+{{ u.protect_end(group.protect) -}}
 {%- endfor %}
 {% endif -%}
 {%- if fs.flat_enums | length > 0 -%}
@@ -181,28 +185,33 @@ typedef enum {{ group.name }} {
 {% endfor -%}
 {% endif %}
 /* ---- Types ----------------------------------------------------------------
-   Emitted in topological dependency order. */
-{% for type in fs.types -%}
-{%- if type.category != "include" and type.raw_c %}
-{{ u.protect_begin(type.protect if type.protect else []) -}}
+   Emitted in topological dependency order.  Consecutive types sharing the
+   same platform guard are coalesced into a single #ifdef/#endif block. */
+{% for group in fs.type_groups -%}
+{{ u.protect_begin(group.protect) -}}
+{% for type in group.items -%}
 {{ type.raw_c }}
-{{ u.protect_end(type.protect if type.protect else []) -}}
-{% endif -%}
+{% endfor -%}
+{{ u.protect_end(group.protect) -}}
 {% endfor %}
 
 /* ---- PFN typedefs -------------------------------------------------------- */
 {% if fs.is_gl_family -%}
-{% for cmd in fs.commands -%}
-{{ u.cmd_protect_begin(cmd) -}}
+{% for group in fs.cmd_pfn_groups -%}
+{{- u.protect_begin(group.protect) -}}
+{% for cmd in group.items -%}
 typedef {{ cmd.return_type }} (APIENTRYP {{ cmd.pfn_type }})({{ cmd.params_str }});
-{{ u.cmd_protect_end(cmd) }}
-{%- endfor %}
+{% endfor -%}
+{{ u.protect_end(group.protect) -}}
+{% endfor -%}
 {% else %}
-{% for cmd in fs.commands %}
-{{ u.cmd_protect_begin(cmd) -}}
+{% for group in fs.cmd_pfn_groups -%}
+{{- u.protect_begin(group.protect) -}}
+{% for cmd in group.items -%}
 typedef {{ cmd.return_type }} (VKAPI_PTR *{{ cmd.pfn_type }})({{ cmd.params_str }});
-{{- u.cmd_protect_end(cmd) }}
-{% endfor %}
+{% endfor -%}
+{{- u.protect_end(group.protect) -}}
+{% endfor -%}
 {% endif %}
 
 /* ---- Context struct ------------------------------------------------------
@@ -236,15 +245,21 @@ typedef struct {{ fs.context_name }} {
     union {
         void *pfnArray[{{ fs.commands | length }}];
         struct {
-{%- for cmd in fs.commands %}
-{%- if cmd.protect %}
-#ifdef {{ cmd.protect }}
+{%- for group in fs.cmd_pfn_groups %}
+{%- if group.protect | length > 0 %}
+#if defined({{ group.protect | join(") && defined(") }})
+{%- for cmd in group.items %}
         /* {{ cmd.index | rjust(4) }} */ {{ cmd.pfn_type }} {{ cmd.short_name }};
+{%- endfor %}
 #else
+{%- for cmd in group.items %}
         /* {{ cmd.index | rjust(4) }} */ void *_pad{{ cmd.index }};
-#endif /* {{ cmd.protect }} */
-{% else %}
+{%- endfor %}
+#endif
+{%- else %}
+{%- for cmd in group.items %}
         /* {{ cmd.index | rjust(4) }} */ {{ cmd.pfn_type }} {{ cmd.short_name }};
+{%- endfor %}
 {%- endif %}
 {%- endfor %}
         };
@@ -280,10 +295,12 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 {%- endfor %}
 
 /* ---- Extension presence macros ------------------------------------------ */
-{% for ext in fs.extensions %}
-{{- u.protect_begin(ext.protect) -}}
+{% for group in fs.ext_guard_groups %}
+{{- u.protect_begin(group.protect) -}}
+{% for ext in group.items -%}
 #define GLOAM_{{ ext.name }} (gloam_{{ fs.spec_name }}_context.{{ ext.short_name | c_ident }})
-{{ u.protect_end(ext.protect) -}}
+{% endfor -%}
+{{- u.protect_end(group.protect) -}}
 {%- endfor %}
 
 /* ---- Dispatch macros and IntelliSense prototypes -------------------------
@@ -291,17 +308,21 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
    provide parameter info and type checking.  In normal compilation the macros
    dispatch directly through the global context struct. */
 #ifdef __INTELLISENSE__
-{%- for cmd in fs.commands %}
-{{ u.cmd_protect_begin(cmd) -}}
+{%- for group in fs.cmd_pfn_groups -%}
+{{- u.protect_begin(group.protect) -}}
+{%- for cmd in group.items -%}
 {{ cmd.return_type }} {{ cmd.name }}({{ cmd.params_str }});
-{{- u.cmd_protect_end(cmd) }}
-{%- endfor %}
+{% endfor -%}
+{{- u.protect_end(group.protect) }}
+{%- endfor -%}
 #else
-{%- for cmd in fs.commands %}
-{{ u.cmd_protect_begin(cmd) -}}
+{%- for group in fs.cmd_pfn_groups -%}
+{{- u.protect_begin(group.protect) -}}
+{%- for cmd in group.items -%}
 #define {{ cmd.name }} (gloam_{{ fs.spec_name }}_context.{{ cmd.short_name }})
-{{- u.cmd_protect_end(cmd) }}
-{%- endfor %}
+{% endfor -%}
+{{- u.protect_end(group.protect) }}
+{%- endfor -%}
 #endif /* __INTELLISENSE__ */
 
 /* ---- API declarations ---------------------------------------------------- */
@@ -405,4 +426,3 @@ void gloamLoaderResetVulkan(void);
 #endif /* _WIN32 */
 {% endif %}
 #endif /* GLOAM_{{ guard }} */
-
