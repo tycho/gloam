@@ -51,7 +51,7 @@
    offset table for O(1) indexing.  This avoids one pointer (8 bytes on 64-bit)
    plus one relocation entry (~24 bytes in PIC builds) per command compared to
    the traditional const char * const [] approach. */
-#define kFnCount_{{ fs.spec_name | spec_display }} {{ fs.commands | length }}
+static const uint32_t kFnCount_{{ fs.spec_name | spec_display }} = {{ fs.commands | length }};
 
 static const char kFnNameData_{{ fs.spec_name | spec_display }}[] =
 {%- for cmd in fs.commands %}
@@ -901,3 +901,4 @@ int gloamLoadVulkan(VkInstance instance, VkPhysicalDevice physical_device, VkDev
 {% elif fs.spec_name == "wgl" -%}
 #endif /* _WIN32 */
 {% endif %}
+

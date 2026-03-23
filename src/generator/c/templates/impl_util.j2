@@ -19,13 +19,6 @@
 #define GLOAM_ARRAYSIZE(x) (sizeof(x) / sizeof((x)[0]))
 #define GLOAM_UNUSED(x)    ((void)(x))
 
-/* Opaque function pointer type — the common return type for all load
-   callbacks.  Callers cast to the specific PFN type they need. */
-typedef void (*GloamAPIProc)(void);
-
-/* Load function pointer type: plain proc-addr callback (GL / EGL / GLX / WGL). */
-typedef GloamAPIProc (*GloamLoadFunc)(const char *name);
-
 /* Contiguous run of pfnArray slots belonging to one feature or extension.
    Used by the range-based PFN loading loop. */
 typedef struct {
