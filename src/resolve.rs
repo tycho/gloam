@@ -81,6 +81,22 @@ pub struct FeatureSet {
     pub excluded_explicit: Vec<String>,
     /// Extensions excluded because they are fully promoted into --baseline versions.
     pub excluded_baseline: Vec<String>,
+
+    // -- Protection-grouped lists for header emission -------------------------
+    // These coalesce consecutive items with identical platform guards into a
+    // single ProtectedGroup, minimizing #ifdef/#endif pairs in the generated
+    // header.  The flat lists above are retained for the source template and
+    // context struct, which need per-element access.
+    /// Include-category types, grouped by consecutive protection.
+    pub include_type_groups: Vec<ProtectedGroup<TypeDef>>,
+    /// Non-include types, grouped by consecutive protection.
+    pub type_groups: Vec<ProtectedGroup<TypeDef>>,
+    /// Extensions, grouped by consecutive protection (for #define guards and
+    /// presence macros).
+    pub ext_guard_groups: Vec<ProtectedGroup<ExtGuardEntry>>,
+    /// Commands, grouped by consecutive protection (for PFN typedefs,
+    /// IntelliSense prototypes, and dispatch macros).
+    pub cmd_pfn_groups: Vec<ProtectedGroup<CmdPfnEntry>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -149,7 +165,7 @@ pub struct Param {
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TypeDef {
     /// The canonical type name as declared in the spec.
     pub name: String,
@@ -188,6 +204,73 @@ pub struct PfnRange {
 pub struct AliasPair {
     pub canonical: u16,
     pub secondary: u16,
+}
+
+// ---------------------------------------------------------------------------
+// Protection grouping — coalesce consecutive items with identical guards
+// ---------------------------------------------------------------------------
+
+/// A group of items that share the same platform protection macros.
+///
+/// Adjacent items with identical protection are coalesced into a single
+/// group so that the generated header emits one `#ifdef`/`#endif` pair per
+/// run of identically-protected items, rather than one per item.
+#[derive(Debug, Serialize)]
+pub struct ProtectedGroup<T: std::fmt::Debug + Serialize> {
+    /// Protection macros for this group.  Empty = unconditional (no guard).
+    pub protect: Vec<String>,
+    /// Items in this group, in their original order.
+    pub items: Vec<T>,
+}
+
+/// Lightweight extension entry for protection-grouped header sections.
+/// Carries only the fields needed by the `#define` guard and presence macro
+/// sections, avoiding a full `Extension` clone.
+#[derive(Debug, Serialize)]
+pub struct ExtGuardEntry {
+    pub name: String,
+    pub short_name: String,
+}
+
+/// Lightweight command entry for protection-grouped header sections.
+/// Carries only the fields needed by PFN typedefs, IntelliSense prototypes,
+/// dispatch macros, and the context struct (which needs `index` for pad slot
+/// naming).
+#[derive(Debug, Serialize)]
+pub struct CmdPfnEntry {
+    pub index: u16,
+    pub name: String,
+    pub short_name: String,
+    pub pfn_type: String,
+    pub return_type: String,
+    pub params_str: String,
+}
+
+/// Coalesce items into groups of consecutive items that share the same
+/// protection macro set.  A single linear pass — O(n) in the item count.
+fn group_by_protection<T, F>(
+    items: impl IntoIterator<Item = T>,
+    get_protect: F,
+) -> Vec<ProtectedGroup<T>>
+where
+    T: std::fmt::Debug + Serialize,
+    F: Fn(&T) -> Vec<String>,
+{
+    let mut groups: Vec<ProtectedGroup<T>> = Vec::new();
+    for item in items {
+        let protect = get_protect(&item);
+        if let Some(last) = groups.last_mut() {
+            if last.protect == protect {
+                last.items.push(item);
+                continue;
+            }
+        }
+        groups.push(ProtectedGroup {
+            protect,
+            items: vec![item],
+        });
+    }
+    groups
 }
 
 // ---------------------------------------------------------------------------
@@ -655,6 +738,97 @@ fn resolve_feature_set(
 
     let context_name = build_context_name(spec_name);
 
+    // ------------------------------------------------------------------
+    // Step 11: Build protection-grouped lists for the header template.
+    // ------------------------------------------------------------------
+    let include_type_groups = group_by_protection(
+        types
+            .iter()
+            .filter(|t| t.category == "include" && !t.raw_c.is_empty())
+            .cloned(),
+        |t| t.protect.clone(),
+    );
+
+    let type_groups = group_by_protection(
+        types
+            .iter()
+            .filter(|t| t.category != "include" && !t.raw_c.is_empty())
+            .cloned(),
+        |t| t.protect.clone(),
+    );
+
+    let ext_guard_groups = {
+        // extensions and entries are in the same order (alphabetically sorted),
+        // so consecutive extensions from the same platform naturally share
+        // protection and collapse into one group.
+        let entries: Vec<(Vec<String>, ExtGuardEntry)> = extensions
+            .iter()
+            .map(|e| {
+                (
+                    e.protect.clone(),
+                    ExtGuardEntry {
+                        name: e.name.clone(),
+                        short_name: e.short_name.clone(),
+                    },
+                )
+            })
+            .collect();
+
+        let mut groups: Vec<ProtectedGroup<ExtGuardEntry>> = Vec::new();
+        for (protect, entry) in entries {
+            if let Some(last) = groups.last_mut() {
+                if last.protect == protect {
+                    last.items.push(entry);
+                    continue;
+                }
+            }
+            groups.push(ProtectedGroup {
+                protect,
+                items: vec![entry],
+            });
+        }
+        groups
+    };
+
+    let cmd_pfn_groups = {
+        let entries: Vec<(Vec<String>, CmdPfnEntry)> = commands
+            .iter()
+            .map(|c| {
+                let protect = c
+                    .protect
+                    .as_ref()
+                    .map(|p| vec![p.clone()])
+                    .unwrap_or_default();
+                (
+                    protect,
+                    CmdPfnEntry {
+                        index: c.index,
+                        name: c.name.clone(),
+                        short_name: c.short_name.clone(),
+                        pfn_type: c.pfn_type.clone(),
+                        return_type: c.return_type.clone(),
+                        params_str: c.params_str.clone(),
+                    },
+                )
+            })
+            .collect();
+
+        let mut groups: Vec<ProtectedGroup<CmdPfnEntry>> = Vec::new();
+        for (protect, entry) in entries {
+            if let Some(last) = groups.last_mut() {
+                if last.protect == protect {
+                    last.items.push(entry);
+                    continue;
+                }
+            }
+            groups.push(ProtectedGroup {
+                protect,
+                items: vec![entry],
+            });
+        }
+        groups
+    };
+
     Ok(FeatureSet {
         spec_name: spec_name.clone(),
         display_name: display_name.to_string(),
@@ -676,6 +850,10 @@ fn resolve_feature_set(
         required_headers,
         excluded_explicit,
         excluded_baseline,
+        include_type_groups,
+        type_groups,
+        ext_guard_groups,
+        cmd_pfn_groups,
     })
 }
 
