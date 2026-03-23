@@ -29,7 +29,6 @@ EGL_BASE="https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/main/api"
 VK_XML_BASE="https://raw.githubusercontent.com/KhronosGroup/Vulkan-Docs/main/xml"
 VK_HDR_BASE="https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/main/include/vulkan"
 ANGLE_BASE="https://raw.githubusercontent.com/google/angle/main/scripts"
-GLSL_EXTS_URL="https://www.uplinklabs.net/glsl_exts.xml"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -111,7 +110,6 @@ if [[ $DO_XML -eq 1 ]]; then
 
     fetch "$ANGLE_BASE/gl_angle_ext.xml"   "$XML_DIR/gl_angle_ext.xml"
     fetch "$ANGLE_BASE/egl_angle_ext.xml"  "$XML_DIR/egl_angle_ext.xml"
-    fetch "$GLSL_EXTS_URL"                 "$XML_DIR/glsl_exts.xml"
 fi
 
 # ---------------------------------------------------------------------------
