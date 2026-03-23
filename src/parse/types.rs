@@ -89,8 +89,19 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawT
             // Enum aliases (e.g. VkComponentTypeNV = VkComponentTypeKHR) need
             // a typedef emission.  Plain enum types have no direct C emission
             // — their values are handled by enum groups in enums.rs.
+            //
+            // We deliberately omit the `enum` keyword: `typedef X Y` rather
+            // than `typedef enum X Y`.  For 32-bit enums, both forms are
+            // equivalent since `typedef enum X { ... } X` creates both the
+            // enum tag and the typedef.  For 64-bit enums, however, the
+            // pre-C23 C path emits `typedef uint64_t X` (no enum tag), so
+            // `typedef enum X Y` would be a forward reference to a
+            // non-existent enum — triggering clang's
+            // -Wmicrosoft-enum-forward-reference diagnostic.  The plain
+            // `typedef X Y` form works in all C/C++ versions regardless of
+            // bitwidth, because the topo sort guarantees X is already defined.
             if let Some(ref al) = alias {
-                format!("typedef enum {} {};", al, name)
+                format!("typedef {} {};", al, name)
             } else {
                 String::new()
             }
@@ -154,26 +165,11 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawT
     }
 
     // Propagate bitwidth=64 through alias chains (spec gotcha #4).
+    // This metadata is retained on RawType for correctness; it is no longer
+    // needed for alias raw_c fixup since enum aliases are now always emitted
+    // as plain `typedef X Y` (no `enum` keyword), which is valid regardless
+    // of bitwidth.
     propagate_bitwidth(&mut raw);
-
-    // Fix up 64-bit bitmask enum aliases (spec gotcha #5).
-    //
-    // For category="enum" aliases, raw_c was built as `typedef enum X Y`
-    // because at parse time we don't yet know whether the aliased type is a
-    // real enum or a uint64_t typedef.  After bitwidth propagation we know:
-    // if bitwidth==64, the base type was emitted as `typedef uint64_t X`
-    // (pre-C23/non-C++) so there is no `enum X` tag in scope.
-    // `typedef enum X Y` would be ill-formed in both C (no such tag) and C++
-    // (cannot use `enum` keyword to refer to a typedef).
-    // The correct form in all cases is plain `typedef X Y`.
-    for t in raw.iter_mut() {
-        if t.category == "enum"
-            && t.bitwidth == Some(64)
-            && let Some(ref al) = t.alias
-        {
-            t.raw_c = format!("typedef {} {};", al, t.name);
-        }
-    }
 
     // Topological sort by dependency order (spec gotcha #2).
     let sorted = topological_sort(raw);
