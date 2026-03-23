@@ -17,7 +17,7 @@
   Emits nothing when the list is empty.
 -#}
 {%- macro protect_begin(protects) -%}
-{%- if protects | length > 0 %}
+{%- if protects | length > 0 -%}
 #if {% for p in protects %}defined({{ p }}){% if not loop.last %} || {% endif %}{% endfor %}
 {% endif -%}
 {%- endmacro -%}
