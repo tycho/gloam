@@ -1092,40 +1092,55 @@ fn select_extensions<'a>(
             m
         };
 
-        // An extension is "fully promoted into baseline" if, for at least one
-        // API in the baseline set that the extension supports, ALL of the
+        // An extension is "fully promoted into baseline" only if, for EVERY
+        // API in the current build that the extension supports, ALL of the
         // extension's commands for that API appear in the baseline core set
-        // (directly or via alias).  Partial promotion doesn't count — if even
-        // one command isn't in core, the extension is still needed.
-        let baseline_api_set: HashSet<&str> = baseline.iter().map(|r| r.name.as_str()).collect();
+        // (directly or via alias).  Using `all` rather than `any` is critical
+        // for --merge correctness: if GL_ARB_sync is promoted into GL 3.3 core
+        // but GLES2 still needs it as an extension, the merged output must keep
+        // it.  If a build API has no corresponding baseline entry, the extension
+        // cannot be considered dominated for that API — the `baseline_core_cmds`
+        // lookup returns None and the `all` short-circuits to false.
+        //
+        // For non-merged builds there is only one API, so `all` and `any` are
+        // equivalent and the behaviour is unchanged.
+        let build_api_set: HashSet<&str> = requests.iter().map(|r| r.name.as_str()).collect();
 
         for ext in &raw.extensions {
-            let dominated = ext
+            // Which APIs in the current build does this extension support?
+            let ext_build_apis: Vec<&str> = ext
                 .supported
                 .iter()
-                .filter(|s| baseline_api_set.contains(canonical_api_name(s.as_str())))
-                .any(|api| {
-                    let Some(core_cmds) = baseline_core_cmds.get(canonical_api_name(api.as_str()))
-                    else {
-                        return false;
-                    };
-                    // Collect all commands this extension contributes for this API.
-                    let ext_cmds: Vec<&str> = ext
-                        .requires
-                        .iter()
-                        .filter(|req| api_profile_matches(req.api.as_deref(), None, api, None))
-                        .flat_map(|req| req.commands.iter().map(String::as_str))
-                        .collect();
-                    // Extension must have at least one command, and ALL must be
-                    // in the baseline core (directly or via alias).
-                    !ext_cmds.is_empty()
-                        && ext_cmds.iter().all(|c| {
-                            core_cmds.contains(*c)
-                                || baseline_cmd_aliases
-                                    .get(c)
-                                    .is_some_and(|a| core_cmds.contains(*a))
-                        })
-                });
+                .map(|s| canonical_api_name(s.as_str()))
+                .filter(|s| build_api_set.contains(s))
+                .collect();
+
+            if ext_build_apis.is_empty() {
+                continue;
+            }
+
+            let dominated = ext_build_apis.iter().all(|api| {
+                let Some(core_cmds) = baseline_core_cmds.get(*api) else {
+                    // This API has no baseline → extension is still needed.
+                    return false;
+                };
+                // Collect all commands this extension contributes for this API.
+                let ext_cmds: Vec<&str> = ext
+                    .requires
+                    .iter()
+                    .filter(|req| api_profile_matches(req.api.as_deref(), None, api, None))
+                    .flat_map(|req| req.commands.iter().map(String::as_str))
+                    .collect();
+                // Extension must have at least one command, and ALL must be
+                // in the baseline core (directly or via alias).
+                !ext_cmds.is_empty()
+                    && ext_cmds.iter().all(|c| {
+                        core_cmds.contains(*c)
+                            || baseline_cmd_aliases
+                                .get(c)
+                                .is_some_and(|a| core_cmds.contains(*a))
+                    })
+            });
 
             if dominated {
                 baseline_excludes.insert(ext.name.clone());
