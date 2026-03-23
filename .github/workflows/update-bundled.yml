@@ -28,10 +28,10 @@ jobs:
       - name: Build with updated files
         # This is the primary validity check: include_str! will fail at
         # compile time if any fetched file is empty or missing.
-        run: cargo build --release
+        run: cargo build --release --no-default-features
 
       - name: Run test suite against updated files
-        run: cargo test --release
+        run: cargo test --release --no-default-features
 
       - name: Open pull request
         uses: peter-evans/create-pull-request@v8

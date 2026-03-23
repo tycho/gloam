@@ -18,7 +18,8 @@ const BASE_VK: &str = "https://raw.githubusercontent.com/KhronosGroup/Vulkan-Doc
 const BASE_VK_HEADERS: &str =
     "https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/main/include/";
 const BASE_ANGLE: &str = "https://raw.githubusercontent.com/google/angle/main/scripts/";
-const GLSL_EXTS_URL: &str = "https://www.uplinklabs.net/glsl_exts.xml";
+const GLSL_EXTS_URL: &str =
+    "https://raw.githubusercontent.com/tycho/gloam/refs/heads/master/bundled/xml/glsl_exts.xml";
 const XXHASH_HEAD_URL: &str =
     "https://raw.githubusercontent.com/Cyan4973/xxHash/refs/heads/dev/xxhash.h";
 
