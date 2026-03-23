@@ -184,6 +184,10 @@ mod tests {
             required_headers: vec![],
             excluded_explicit: vec![],
             excluded_baseline: vec![],
+            include_type_groups: vec![],
+            type_groups: vec![],
+            ext_guard_groups: vec![],
+            cmd_pfn_groups: vec![],
         }
     }
 
