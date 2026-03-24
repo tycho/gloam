@@ -100,6 +100,11 @@ pub struct FeatureSet {
     /// Flat enum constants grouped by consecutive protection, for the
     /// constants section of the header.
     pub flat_enum_groups: Vec<ProtectedGroup<FlatEnum>>,
+
+    /// Scope boundary table — only populated when --unchecked is active for
+    /// a Vulkan feature set.  PFNs are sorted by scope in this mode and the
+    /// four boundaries replace the per-feature/per-extension range tables.
+    pub scope_boundaries: Option<ScopeBoundaries>,
 }
 
 #[derive(Debug, Serialize)]
@@ -209,6 +214,45 @@ pub struct PfnRange {
 pub struct AliasPair {
     pub canonical: u16,
     pub secondary: u16,
+}
+
+/// Scope boundary table for --unchecked Vulkan mode.
+///
+/// Commands are sorted (unguarded, scope, alpha) then (guarded, scope, alpha),
+/// producing this layout:
+///
+///   [unguarded Unknown | unguarded Global | unguarded Instance | unguarded Device |
+///    guarded Unknown   | guarded Global   | guarded Instance   | guarded Device  ]
+///
+/// `kScopeStart[5]` gives the start of each unguarded scope block plus the
+/// start of the entire guarded section as its sentinel.
+/// `kScopeGuarded[5]` gives the start of each guarded scope block plus `end`.
+///
+/// The loader runs tight unconditional loops over kScopeStart[s]..kScopeStart[s+1],
+/// then sentinel-checking loops over kScopeGuarded[s]..kScopeGuarded[s+1].
+#[derive(Debug, Serialize, Clone, Copy)]
+pub struct ScopeBoundaries {
+    /// Start of unguarded Unknown block (always 0).
+    pub unknown: u16,
+    /// Start of unguarded Global block.
+    pub global: u16,
+    /// Start of unguarded Instance block.
+    pub instance: u16,
+    /// Start of unguarded Device block.
+    pub device: u16,
+    /// Start of the guarded section (= end of unguarded Device block).
+    /// This is kScopeStart[4].
+    pub guarded: u16,
+    /// Start of guarded Unknown block (= guarded; no platform-guarded Unknown commands).
+    pub guarded_unknown: u16,
+    /// Start of guarded Global block (= guarded; no platform-guarded Global commands).
+    pub guarded_global: u16,
+    /// Start of guarded Instance block.
+    pub guarded_instance: u16,
+    /// Start of guarded Device block.
+    pub guarded_device: u16,
+    /// Total command count (= kScopeGuarded[4]).
+    pub end: u16,
 }
 
 // ---------------------------------------------------------------------------
@@ -365,6 +409,9 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
     let alias = match &cli.generator {
         crate::cli::Generator::C(c) => c.alias,
     };
+    let unchecked = match &cli.generator {
+        crate::cli::Generator::C(c) => c.unchecked,
+    };
 
     // Group requests by spec family only for merged builds.
     // For non-merged builds, resolve each API request independently
@@ -391,6 +438,7 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
                 alias,
                 promoted,
                 predecessors,
+                unchecked,
             )?;
             feature_sets.push(fs);
         }
@@ -408,6 +456,7 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
                 alias,
                 promoted,
                 predecessors,
+                unchecked,
             )?;
             feature_sets.push(fs);
         }
@@ -430,6 +479,7 @@ fn resolve_feature_set(
     want_aliases: bool,
     want_promoted: bool,
     want_predecessors: bool,
+    unchecked: bool,
 ) -> Result<FeatureSet> {
     let spec_name = &raw.spec_name;
     let is_vulkan = spec_name == "vk";
@@ -557,30 +607,72 @@ fn resolve_feature_set(
 
     // ------------------------------------------------------------------
     // Step 5: Build the indexed command list.
-    // Core functions first (in req_commands order), then extension functions.
-    // Before assigning indices, reorder commands to minimize PFN range
-    // fragmentation — see optimize_command_order for the algorithm.
+    //
+    // Normal mode: core functions first (in req_commands order), then
+    // extension functions.  Reorder to minimize PFN range fragmentation.
+    //
+    // Unchecked Vulkan mode: combine all commands (core + ext, the
+    // distinction is irrelevant) and sort by command scope ordinal first,
+    // then alphabetically within each scope.  This produces four
+    // contiguous regions that the loader can slice without a per-entry
+    // scope table.
     // ------------------------------------------------------------------
-    let core_cmd_names: Vec<String> = req_commands.keys().cloned().collect();
-    let ext_cmd_names: Vec<String> = ext_commands.keys().cloned().collect();
 
-    let (core_cmd_names, ext_cmd_names) = optimize_command_order(
-        &core_cmd_names,
-        &ext_cmd_names,
-        &selected_features,
-        &selected_exts,
-        requests,
-    );
-
-    let all_cmd_names: Vec<&str> = core_cmd_names
-        .iter()
-        .chain(ext_cmd_names.iter())
-        .map(String::as_str)
-        .collect();
+    // Storage for the optimized name list in normal mode; unused in
+    // unchecked mode but must live as long as all_cmd_names.
+    let optimized_names: Vec<String>;
 
     let pfn_prefix = api_pfn_prefix(spec_name);
     let name_prefix = api_name_prefix(spec_name);
     let cmd_protect_map = build_command_protect_map(&selected_exts);
+
+    let all_cmd_names: Vec<&str> = if is_vulkan && unchecked {
+        // Combine core + ext, sort by:
+        //   1. Scope ordinal (Unknown=0, Global=1, Instance=2, Device=3)
+        //   2. Unguarded before guarded within each scope
+        //   3. Alphabetical within each group
+        // This produces a layout where the tight unconditional range loop
+        // covers [scope_start, guarded_start) and the sentinel-checking loop
+        // covers [guarded_start, next_scope_start).
+        let mut names: Vec<&str> = req_commands
+            .keys()
+            .map(String::as_str)
+            .chain(ext_commands.keys().map(String::as_str))
+            .collect();
+        names.sort_by(|a, b| {
+            let scope_key = |name: &&str| -> u8 {
+                raw.commands
+                    .get(*name)
+                    .map(|c| infer_vulkan_scope(c) as u8)
+                    .unwrap_or(4)
+            };
+            let guarded_key = |name: &&str| -> u8 { cmd_protect_map.contains_key(*name) as u8 };
+            let protect_key = |name: &&str| -> &str {
+                cmd_protect_map.get(*name).map(|s| s.as_str()).unwrap_or("")
+            };
+            // Sort unguarded before guarded globally, then by scope within
+            // each half, then by protect macro (groups same-platform commands
+            // together for coalesced #if/#else/#endif blocks), then alpha.
+            guarded_key(a)
+                .cmp(&guarded_key(b))
+                .then_with(|| scope_key(a).cmp(&scope_key(b)))
+                .then_with(|| protect_key(a).cmp(protect_key(b)))
+                .then_with(|| a.cmp(b))
+        });
+        names
+    } else {
+        let core_cmd_names: Vec<String> = req_commands.keys().cloned().collect();
+        let ext_cmd_names: Vec<String> = ext_commands.keys().cloned().collect();
+        let (sorted_core, sorted_ext) = optimize_command_order(
+            &core_cmd_names,
+            &ext_cmd_names,
+            &selected_features,
+            &selected_exts,
+            requests,
+        );
+        optimized_names = sorted_core.into_iter().chain(sorted_ext).collect();
+        optimized_names.iter().map(String::as_str).collect()
+    };
 
     let mut commands: Vec<Command> = Vec::with_capacity(all_cmd_names.len());
     for (idx, &cmd_name) in all_cmd_names.iter().enumerate() {
@@ -650,25 +742,114 @@ fn resolve_feature_set(
         .collect();
 
     // ------------------------------------------------------------------
-    // Step 7: Build PFN range tables.
+    // Step 7: Build PFN range tables / scope boundaries.
+    //
+    // Normal mode: feature + extension PFN range tables for the
+    // conditional load loops.
+    //
+    // Unchecked Vulkan mode: commands are already scope-sorted (step 5),
+    // so compute the four boundary indices and skip range tables entirely.
     // ------------------------------------------------------------------
-    let feature_pfn_ranges = build_feature_pfn_ranges(&selected_features, &features, &commands);
+    let (feature_pfn_ranges, ext_pfn_ranges, ext_subset_indices, scope_boundaries) = if is_vulkan
+        && unchecked
+    {
+        // Commands are sorted (unguarded, scope, alpha) then (guarded, scope, alpha).
+        // Walk the list once to find the start of each unguarded scope block
+        // and each guarded scope block.
+        let mut global_start: Option<u16> = None;
+        let mut instance_start: Option<u16> = None;
+        let mut device_start: Option<u16> = None;
+        let mut guarded_start: Option<u16> = None; // first guarded command
+        let mut guarded_global_start: Option<u16> = None;
+        let mut guarded_instance_start: Option<u16> = None;
+        let mut guarded_device_start: Option<u16> = None;
 
-    // Per-API extension PFN ranges and subset indices.
-    let mut ext_pfn_ranges: IndexMap<String, Vec<PfnRange>> = IndexMap::new();
-    let mut ext_subset_indices: IndexMap<String, Vec<u16>> = IndexMap::new();
+        for cmd in &commands {
+            let is_guarded = cmd.protect.is_some();
+            let ordinal = raw
+                .commands
+                .get(cmd.name.as_str())
+                .map(|c| infer_vulkan_scope(c) as u8)
+                .unwrap_or(0);
 
-    for api in &api_names {
-        let (ranges, indices) = build_ext_pfn_ranges(
-            api,
-            &selected_exts,
-            &ext_commands,
-            &ext_index_map,
-            &commands,
-        );
-        ext_pfn_ranges.insert(api.clone(), ranges);
-        ext_subset_indices.insert(api.clone(), indices);
-    }
+            if !is_guarded {
+                if global_start.is_none() && ordinal >= 1 {
+                    global_start = Some(cmd.index);
+                }
+                if instance_start.is_none() && ordinal >= 2 {
+                    instance_start = Some(cmd.index);
+                }
+                if device_start.is_none() && ordinal >= 3 {
+                    device_start = Some(cmd.index);
+                }
+            } else {
+                if guarded_start.is_none() {
+                    guarded_start = Some(cmd.index);
+                }
+                if guarded_global_start.is_none() && ordinal >= 1 {
+                    guarded_global_start = Some(cmd.index);
+                }
+                if guarded_instance_start.is_none() && ordinal >= 2 {
+                    guarded_instance_start = Some(cmd.index);
+                }
+                if guarded_device_start.is_none() && ordinal >= 3 {
+                    guarded_device_start = Some(cmd.index);
+                }
+            }
+        }
+
+        let end = commands.len() as u16;
+
+        // If a scope has no unguarded commands, its start == next scope's start.
+        let device_start = device_start.unwrap_or(guarded_start.unwrap_or(end));
+        let instance_start = instance_start.unwrap_or(device_start);
+        let global_start = global_start.unwrap_or(instance_start);
+
+        // guarded section starts at first guarded command, or end if none.
+        let guarded = guarded_start.unwrap_or(end);
+        // If a guarded scope is empty, its start == next guarded scope's start.
+        let guarded_device = guarded_device_start.unwrap_or(end);
+        let guarded_instance = guarded_instance_start.unwrap_or(guarded_device);
+        let guarded_global = guarded_global_start.unwrap_or(guarded_instance);
+        let guarded_unknown = guarded; // no platform-guarded Unknown commands exist
+
+        let sb = ScopeBoundaries {
+            unknown: 0,
+            global: global_start,
+            instance: instance_start,
+            device: device_start,
+            guarded,
+            guarded_unknown,
+            guarded_global,
+            guarded_instance,
+            guarded_device,
+            end,
+        };
+
+        // Empty per-API maps — templates gate on scope_boundaries.is_some().
+        let empty_ranges: IndexMap<String, Vec<PfnRange>> = IndexMap::new();
+        let empty_indices: IndexMap<String, Vec<u16>> = IndexMap::new();
+        (Vec::new(), empty_ranges, empty_indices, Some(sb))
+    } else {
+        let feature_pfn_ranges = build_feature_pfn_ranges(&selected_features, &features, &commands);
+
+        let mut ext_pfn_ranges: IndexMap<String, Vec<PfnRange>> = IndexMap::new();
+        let mut ext_subset_indices: IndexMap<String, Vec<u16>> = IndexMap::new();
+
+        for api in &api_names {
+            let (ranges, indices) = build_ext_pfn_ranges(
+                api,
+                &selected_exts,
+                &ext_commands,
+                &ext_index_map,
+                &commands,
+            );
+            ext_pfn_ranges.insert(api.clone(), ranges);
+            ext_subset_indices.insert(api.clone(), indices);
+        }
+
+        (feature_pfn_ranges, ext_pfn_ranges, ext_subset_indices, None)
+    };
 
     // ------------------------------------------------------------------
     // Step 8: Types to emit.
@@ -862,6 +1043,7 @@ fn resolve_feature_set(
         ext_guard_groups,
         cmd_pfn_groups,
         flat_enum_groups,
+        scope_boundaries,
     })
 }
 

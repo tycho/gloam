@@ -189,6 +189,7 @@ mod tests {
             ext_guard_groups: vec![],
             cmd_pfn_groups: vec![],
             flat_enum_groups: vec![],
+            scope_boundaries: None,
         }
     }
 

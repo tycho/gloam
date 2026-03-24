@@ -68,16 +68,119 @@ pub fn generate(
     std::fs::create_dir_all(&gloam_dir)?;
     std::fs::create_dir_all(&src_dir)?;
 
+    // For unchecked Vulkan mode, extract the scope boundary values as flat
+    // context variables.  Minijinja's chained attribute access through a
+    // serialized Option<T> returns Undefined even when the value is Some,
+    // so we unpack here in Rust where the types are known.
+    //
+    // kScopeStart[5]   = { unknown, global, instance, device, guarded }
+    // kScopeGuarded[5] = { guarded_unknown, guarded_global, guarded_instance, guarded_device, end }
+    let (
+        vk_sb_unknown,
+        vk_sb_global,
+        vk_sb_instance,
+        vk_sb_device,
+        vk_sb_guarded,
+        vk_sg_unknown,
+        vk_sg_global,
+        vk_sg_instance,
+        vk_sg_device,
+        vk_sg_end,
+    ) = if let Some(sb) = &fs.scope_boundaries {
+        (
+            sb.unknown,
+            sb.global,
+            sb.instance,
+            sb.device,
+            sb.guarded,
+            sb.guarded_unknown,
+            sb.guarded_global,
+            sb.guarded_instance,
+            sb.guarded_device,
+            sb.end,
+        )
+    } else {
+        (0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16)
+    };
+
+    // Sentinel value used in kFnNameOffsets for platform-guarded commands
+    // that are not enabled on the current platform.  Chosen as the maximum
+    // value of the offset type so it can never be a valid string offset.
+    let vk_unchecked_sentinel: u64 = if fn_name_offset_type == "uint16_t" {
+        65535
+    } else {
+        4294967295
+    };
+
+    // Pre-compute grouped offset table entries for unchecked Vulkan mode.
+    // Commands sorted by (guarded, scope, protect, alpha) are coalesced into
+    // runs sharing the same protect macro so the template can emit one
+    // #if/#else/#endif block per run rather than one per command.
+    // Each group: { protect: String, entries: [{index, offset, name, last}] }
+    // protect="" means unguarded.  `last` flags the final entry in the whole
+    // table so the template can omit the trailing comma correctly.
+    #[derive(serde::Serialize)]
+    struct OffsetEntry {
+        index: u16,
+        offset: u32,
+        name: String,
+        last: bool,
+    }
+    #[derive(serde::Serialize)]
+    struct OffsetGroup {
+        protect: String,
+        entries: Vec<OffsetEntry>,
+    }
+    let vk_offset_groups: Vec<OffsetGroup> = if args.unchecked && fs.is_vulkan {
+        let total = fs.commands.len();
+        let mut groups: Vec<OffsetGroup> = Vec::new();
+        for (i, cmd) in fs.commands.iter().enumerate() {
+            let protect = cmd.protect.clone().unwrap_or_default();
+            let entry = OffsetEntry {
+                index: cmd.index,
+                offset: fn_name_offsets[cmd.index as usize],
+                name: cmd.name.clone(),
+                last: i + 1 == total,
+            };
+            if let Some(last_group) = groups.last_mut()
+                && last_group.protect == protect
+            {
+                last_group.entries.push(entry);
+                continue;
+            }
+            groups.push(OffsetGroup {
+                protect,
+                entries: vec![entry],
+            });
+        }
+        groups
+    } else {
+        Vec::new()
+    };
+
     let ctx = context! {
-        fs                  => fs,
-        stem                => &stem,
-        guard               => format!("{}_H", stem.to_uppercase()),
-        alias               => args.alias,
-        loader              => args.loader,
-        preamble            => &preamble,
-        fn_name_offsets     => &fn_name_offsets,
-        fn_name_blob_size   => fn_name_blob_size,
-        fn_name_offset_type => fn_name_offset_type,
+        fs                      => fs,
+        stem                    => &stem,
+        guard                   => format!("{}_H", stem.to_uppercase()),
+        alias                   => args.alias,
+        loader                  => args.loader,
+        unchecked               => args.unchecked,
+        vk_sb_unknown           => vk_sb_unknown,
+        vk_sb_global            => vk_sb_global,
+        vk_sb_instance          => vk_sb_instance,
+        vk_sb_device            => vk_sb_device,
+        vk_sb_guarded           => vk_sb_guarded,
+        vk_sg_unknown           => vk_sg_unknown,
+        vk_sg_global            => vk_sg_global,
+        vk_sg_instance          => vk_sg_instance,
+        vk_sg_device            => vk_sg_device,
+        vk_sg_end               => vk_sg_end,
+        vk_unchecked_sentinel   => vk_unchecked_sentinel,
+        vk_offset_groups        => &vk_offset_groups,
+        preamble                => &preamble,
+        fn_name_offsets         => &fn_name_offsets,
+        fn_name_blob_size       => fn_name_blob_size,
+        fn_name_offset_type     => fn_name_offset_type,
     };
 
     std::fs::write(
@@ -95,9 +198,12 @@ pub fn generate(
     // which are #include'd by other vk_video headers but never declared in the
     // XML spec.
     //
-    // xxhash.h is always needed by the generated .c (extension hash search).
+    // xxhash.h is always needed by the generated .c (extension hash search),
+    // unless we are in unchecked Vulkan mode which emits no hash search code.
     // It is not spec-derived so it is not in fs.required_headers.
+    let need_xxhash = !(args.unchecked && fs.is_vulkan);
     let mut queue: Vec<String> = std::iter::once("xxhash.h".to_string())
+        .filter(|_| need_xxhash)
         .chain(fs.required_headers.iter().cloned())
         .collect();
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();

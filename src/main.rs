@@ -34,6 +34,26 @@ fn run() -> Result<()> {
         args.join(" ")
     };
 
+    let api_requests = cli.api_requests()?;
+
+    match &cli.generator {
+        Generator::C(c_args) => {
+            if c_args.unchecked {
+                for req in &api_requests {
+                    if req.spec_name() != "vk" {
+                        anyhow::bail!(
+                            "--unchecked is only supported for the Vulkan API (got '{}')",
+                            req.name
+                        );
+                    }
+                }
+                if c_args.alias {
+                    anyhow::bail!("--unchecked and --alias are incompatible");
+                }
+            }
+        }
+    }
+
     if !cli.quiet {
         eprintln!("gloam: resolving feature sets...");
     }
