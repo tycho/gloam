@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/tycho/gloam/compare/0.3.0...0.4.0) - 2026-03-24
+
+### Added
+
+- *(vulkan)* remove the --unchecked experiment
+- *(vulkan)* [**breaking**] add three-phase enabled-path loader API, simplify public surface
+
+### Fixed
+
+- *(vulkan)* only enumerate instance and device extensions once
+
 ## [0.3.0](https://github.com/tycho/gloam/compare/0.2.4...0.3.0) - 2026-03-24
 
 ### Added
