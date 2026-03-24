@@ -176,7 +176,7 @@ static void gloam_load_scope_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}Gloam
                                       uint16_t start, uint16_t end) {
     uint16_t i;
     for (i = start; i < end; ++i) {
-		const {{ fn_name_offset_type }} uNameOffset = kFnNameOffsets_{{ fs.spec_name | spec_display }}[i];
+        const {{ fn_name_offset_type }} uNameOffset = kFnNameOffsets_{{ fs.spec_name | spec_display }}[i];
         const char *pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[uNameOffset];
         context->pfnArray[i] = (void *)load(userptr, pfnName, scope);
     }
@@ -187,12 +187,12 @@ static void gloam_load_guarded_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}Glo
                                         uint16_t start, uint16_t end) {
     uint16_t i;
     for (i = start; i < end; ++i) {
-		const {{ fn_name_offset_type }} uNameOffset = kFnNameOffsets_{{ fs.spec_name | spec_display }}[i];
+        const {{ fn_name_offset_type }} uNameOffset = kFnNameOffsets_{{ fs.spec_name | spec_display }}[i];
         const char *pfnName;
         if (uNameOffset == {{ unchecked_sentinel }})
-			continue;
-		pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[uNameOffset];
-		context->pfnArray[i] = (void *)load(userptr, pfnName, scope);
+            continue;
+        pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[uNameOffset];
+        context->pfnArray[i] = (void *)load(userptr, pfnName, scope);
     }
 }
 {% else -%}
@@ -940,6 +940,7 @@ int gloamLoadVulkanContextUserPtr({{ u.ctx_arg(', ') }}VkInstance instance,
     int version;
     uint32_t i;
     GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
+    GLOAM_UNUSED(gloam_hash_ext_string);
     GLOAM_UNUSED(instance);
     GLOAM_UNUSED(device);
 
