@@ -49,5 +49,44 @@ GLOAM_NO_INLINE static int gloam_hash_search(const uint64_t *arr, uint32_t size,
 GLOAM_NO_INLINE static uint64_t gloam_hash_string(const char *str, size_t length) {
     return XXH3_64bits(str, length);
 }
+
+/* ---- Extension string tokenizer ------------------------------------------
+   Two-pass tokenize-and-hash for space-separated extension strings (GL, EGL,
+   GLX, WGL).  First pass counts tokens, second pass hashes them.  Result is
+   sorted for binary search in find_extensions. */
+GLOAM_NO_INLINE static int gloam_hash_ext_string(const char *ext_str,
+                                 uint64_t **out_exts, uint32_t *out_num_exts) {
+    const char *cur, *next;
+    uint64_t *exts = NULL;
+    uint32_t num_exts = 0, j;
+
+    for (j = 0; j < 2; ++j) {
+        num_exts = 0;
+        cur  = ext_str;
+        next = cur + strcspn(cur, " ");
+        while (1) {
+            size_t len;
+            cur += strspn(cur, " ");
+            if (!cur[0])
+                break;
+            len = (size_t)(next - cur);
+            if (exts)
+                exts[num_exts] = gloam_hash_string(cur, len);
+            ++num_exts;
+            cur  = next + strspn(next, " ");
+            next = cur  + strcspn(cur,  " ");
+        }
+        if (!exts) {
+            exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
+            if (!exts)
+                return 0;
+        }
+    }
+
+    gloam_sort_hashes(exts, num_exts);
+    *out_exts     = exts;
+    *out_num_exts = num_exts;
+    return 1;
+}
 #endif /* GLOAM_IMPL_HASHSEARCH_C_ */
 {% endif %}

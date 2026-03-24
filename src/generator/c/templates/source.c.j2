@@ -269,75 +269,50 @@ static const GloamPfnRange_t kExtPfnRanges_{{ api }}[] = {
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}
                                                               uint64_t **out_exts,
                                                               uint32_t *out_num_exts) {
-    uint32_t num_exts = 0;
-    uint64_t *exts    = NULL;
-
 #if defined(GL_ES_VERSION_3_0) || defined(GL_VERSION_3_0)
     /* Modern path: glGetIntegerv(GL_NUM_EXTENSIONS) + glGetStringi. */
     if (context->GetStringi != NULL && context->GetIntegerv != NULL) {
         GLint n = 0;
-        uint32_t i;
+        uint32_t num_exts, i;
+        uint64_t *exts;
         context->GetIntegerv(GL_NUM_EXTENSIONS, &n);
         num_exts = (uint32_t)n;
-        if (num_exts > 0) {
-            exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts)
-                return 0;
-            for (i = 0; i < num_exts; ++i) {
-                const char *name = (const char *)context->GetStringi(GL_EXTENSIONS, i);
-                if (name)
-                    exts[i] = gloam_hash_string(name, strlen(name));
-            }
+        if (num_exts == 0) {
+            *out_exts = NULL;
+            *out_num_exts = 0;
+            return 1;
         }
-    } else
+        exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
+        if (!exts)
+            return 0;
+        for (i = 0; i < num_exts; ++i) {
+            const char *name = (const char *)context->GetStringi(GL_EXTENSIONS, i);
+            if (name)
+                exts[i] = gloam_hash_string(name, strlen(name));
+        }
+        gloam_sort_hashes(exts, num_exts);
+        *out_exts     = exts;
+        *out_num_exts = num_exts;
+        return 1;
+    }
 #endif
+    /* Legacy path: glGetString(GL_EXTENSIONS) — space-separated string. */
     {
-        /* Legacy path: glGetString(GL_EXTENSIONS) — space-separated string.
-         * Two passes: first count tokens, then hash them. */
         const char *ext_str;
-        const char *cur, *next;
-        uint32_t j;
         if (!context->GetString)
             return 0;
         ext_str = (const char *)context->GetString(GL_EXTENSIONS);
         if (!ext_str)
             return 0;
-        for (j = 0; j < 2; ++j) {
-            num_exts = 0;
-            cur  = ext_str;
-            next = cur + strcspn(cur, " ");
-            while (1) {
-                size_t len;
-                cur += strspn(cur, " ");
-                if (!cur[0])
-                    break;
-                len = (size_t)(next - cur);
-                if (exts) exts[num_exts] = gloam_hash_string(cur, len);
-                ++num_exts;
-                cur  = next + strspn(next, " ");
-                next = cur  + strcspn(cur,  " ");
-            }
-            if (!exts) {
-                exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-                if (!exts)
-                    return 0;
-            }
-        }
+        return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
     }
-
-    gloam_sort_hashes(exts, num_exts);
-    *out_exts     = exts;
-    *out_num_exts = num_exts;
-    return 1;
 }
 {% elif fs.spec_name == "gles1" %}
 /* GLES 1.x: only glGetString(GL_EXTENSIONS), space-separated. */
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}
                                                               uint64_t **out_exts,
                                                               uint32_t *out_num_exts) {
-    const char *ext_str, *cur, *next;
-    uint64_t *exts = NULL;
-    uint32_t num_exts = 0, j;
+    const char *ext_str;
 
     if (!context->GetString)
         return 0;
@@ -346,32 +321,7 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     if (!ext_str)
         return 0;
 
-    for (j = 0; j < 2; ++j) {
-        num_exts = 0;
-        cur  = ext_str;
-        next = cur + strcspn(cur, " ");
-        while (1) {
-            size_t len;
-            cur += strspn(cur, " ");
-            if (!cur[0])
-                break;
-            len = (size_t)(next - cur);
-            if (exts)
-                exts[num_exts] = gloam_hash_string(cur, len);
-            ++num_exts;
-            cur  = next + strspn(next, " ");
-            next = cur  + strcspn(cur,  " ");
-        }
-        if (!exts) {
-            exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts)
-                return 0;
-        }
-    }
-    gloam_sort_hashes(exts, num_exts);
-    *out_exts     = exts;
-    *out_num_exts = num_exts;
-    return 1;
+    return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
 }
 {% elif fs.spec_name == "egl" %}
 /* EGL: concatenate client extensions (EGL_NO_DISPLAY) and display
@@ -379,11 +329,10 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}EGLDisplay display,
                                                               uint64_t **out_exts,
                                                               uint32_t *out_num_exts) {
-    const char *client_str, *display_str, *cur, *next;
+    const char *client_str, *display_str;
     char *concat = NULL;
-    uint64_t *exts = NULL;
-    uint32_t num_exts = 0, j;
     size_t client_len, display_len;
+    int result;
 
     if (!context->QueryString)
         return 0;
@@ -415,46 +364,16 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     }
     concat[pos] = '\0';
 
-    /* Two-pass: count then fill. */
-    for (j = 0; j < 2; ++j) {
-        num_exts = 0;
-        cur  = concat;
-        next = cur + strcspn(cur, " ");
-        while (1) {
-            size_t len;
-            cur += strspn(cur, " ");
-            if (!cur[0])
-                break;
-            len = (size_t)(next - cur);
-            if (exts)
-                exts[num_exts] = gloam_hash_string(cur, len);
-            ++num_exts;
-            cur  = next + strspn(next, " ");
-            next = cur  + strcspn(cur,  " ");
-        }
-        if (!exts) {
-            exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts) {
-                free(concat);
-                return 0;
-            }
-        }
-    }
-
+    result = gloam_hash_ext_string(concat, out_exts, out_num_exts);
     free(concat);
-    gloam_sort_hashes(exts, num_exts);
-    *out_exts     = exts;
-    *out_num_exts = num_exts;
-    return 1;
+    return result;
 }
 {% elif fs.spec_name == "glx" %}
 /* GLX: glXQueryExtensionsString(display, screen) — space-separated. */
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}Display *display, int screen,
                                                               uint64_t **out_exts,
                                                               uint32_t *out_num_exts) {
-    const char *ext_str, *cur, *next;
-    uint64_t *exts = NULL;
-    uint32_t num_exts = 0, j;
+    const char *ext_str;
 
     if (!context->QueryExtensionsString)
         return 0;
@@ -463,41 +382,14 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     if (!ext_str)
         return 0;
 
-    for (j = 0; j < 2; ++j) {
-        num_exts = 0;
-        cur  = ext_str;
-        next = cur + strcspn(cur, " ");
-        while (1) {
-            size_t len;
-            cur += strspn(cur, " ");
-            if (!cur[0])
-                break;
-            len = (size_t)(next - cur);
-            if (exts)
-                exts[num_exts] = gloam_hash_string(cur, len);
-            ++num_exts;
-            cur  = next + strspn(next, " ");
-            next = cur  + strcspn(cur,  " ");
-        }
-        if (!exts) {
-            exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts)
-                return 0;
-        }
-    }
-    gloam_sort_hashes(exts, num_exts);
-    *out_exts     = exts;
-    *out_num_exts = num_exts;
-    return 1;
+    return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
 }
 {% elif fs.spec_name == "wgl" %}
 /* WGL: wglGetExtensionsStringARB / wglGetExtensionsStringEXT. */
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}HDC hdc,
                                                               uint64_t **out_exts,
                                                               uint32_t *out_num_exts) {
-    const char *ext_str = NULL, *cur, *next;
-    uint64_t *exts = NULL;
-    uint32_t num_exts = 0, j;
+    const char *ext_str = NULL;
 
     if (context->GetExtensionsStringARB)
         ext_str = (const char *)context->GetExtensionsStringARB(hdc);
@@ -508,32 +400,7 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     if (!ext_str)
         return 0;
 
-    for (j = 0; j < 2; ++j) {
-        num_exts = 0;
-        cur  = ext_str;
-        next = cur + strcspn(cur, " ");
-        while (1) {
-            size_t len;
-            cur += strspn(cur, " ");
-            if (!cur[0])
-                break;
-            len = (size_t)(next - cur);
-            if (exts)
-                exts[num_exts] = gloam_hash_string(cur, len);
-            ++num_exts;
-            cur  = next + strspn(next, " ");
-            next = cur  + strcspn(cur,  " ");
-        }
-        if (!exts) {
-            exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-            if (!exts)
-                return 0;
-        }
-    }
-    gloam_sort_hashes(exts, num_exts);
-    *out_exts     = exts;
-    *out_num_exts = num_exts;
-    return 1;
+    return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
 }
 {% elif fs.spec_name == "vk" %}
 /* Enumerate Vulkan extensions and return a heap-allocated, sorted array of
