@@ -407,12 +407,10 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 }
 {% elif fs.spec_name == "vk" %}
 /* Enumerate Vulkan extensions and return a heap-allocated, sorted array of
- * XXH3-64 hashes.  Merges instance extensions (always) and device extensions
- * (when physical_device is non-null) into one flat array.
- *
- * The idempotency flags on the context (vk_found_instance_exts /
- * vk_found_device_exts) are set here and tested by find_extensions so that
- * repeated calls on the same context don't re-enumerate unnecessarily. */
+ * XXH3-64 hashes.  Only enumerates scopes not yet cached on the context:
+ * instance extensions are skipped if vk_found_instance_exts is set, device
+ * extensions are skipped if vk_found_device_exts is set.  The caller
+ * (find_extensions) uses |= when merging results so bits only accumulate. */
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}
                                                               VkPhysicalDevice physical_device,
                                                               uint64_t **out_exts,
@@ -421,11 +419,13 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     VkExtensionProperties *props = NULL;
     uint64_t *exts = NULL;
 
-    if (!context->EnumerateInstanceExtensionProperties)
-        return 0;
-
-    context->EnumerateInstanceExtensionProperties(NULL, &inst_count, NULL);
-    if (physical_device != NULL && context->EnumerateDeviceExtensionProperties != NULL)
+    if (!context->vk_found_instance_exts) {
+        if (!context->EnumerateInstanceExtensionProperties)
+            return 0;
+        context->EnumerateInstanceExtensionProperties(NULL, &inst_count, NULL);
+    }
+    if (physical_device != NULL && !context->vk_found_device_exts &&
+            context->EnumerateDeviceExtensionProperties != NULL)
         context->EnumerateDeviceExtensionProperties(physical_device, NULL, &dev_count, NULL);
 
     total = inst_count + dev_count;
@@ -446,12 +446,13 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
         return 0;
     }
 
-    context->EnumerateInstanceExtensionProperties(NULL, &inst_count, props);
-    for (i = 0; i < inst_count; ++i)
-        exts[i] = gloam_hash_string(props[i].extensionName,
-                                    strlen(props[i].extensionName));
-    if (inst_count)
+    if (inst_count) {
+        context->EnumerateInstanceExtensionProperties(NULL, &inst_count, props);
+        for (i = 0; i < inst_count; ++i)
+            exts[i] = gloam_hash_string(props[i].extensionName,
+                                        strlen(props[i].extensionName));
         context->vk_found_instance_exts = 1;
+    }
 
     if (dev_count) {
         context->EnumerateDeviceExtensionProperties(physical_device, NULL, &dev_count, props);
@@ -475,18 +476,19 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg(', ')
     uint64_t *exts = NULL;
     uint32_t  num_exts = 0, i;
 
-    /* Skip re-enumeration if we already have the right scope of extensions. */
-    if (physical_device != NULL && context->vk_found_device_exts)
-        return 1;
-    if (physical_device == NULL && context->vk_found_instance_exts)
+    /* Skip if there is nothing new to enumerate. */
+    if (context->vk_found_instance_exts &&
+        (physical_device == NULL || context->vk_found_device_exts))
         return 1;
 
     if (!gloam_{{ fs.spec_name }}_get_extensions_{{ api }}(context, physical_device, &exts, &num_exts))
         return 0;
 
+    /* |= so that bits from a previous call (instance-only) are preserved
+       when this call adds device extensions. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_{{ api }}); ++i) {
         const uint16_t extIdx = kExtIdx_{{ api }}[i];
-        context->extArray[extIdx] = gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
+        context->extArray[extIdx] |= gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
     }
 
     free(exts);
