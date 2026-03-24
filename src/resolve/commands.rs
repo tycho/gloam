@@ -90,9 +90,7 @@ pub(super) fn build_command(
 /// Build a map from command name → platform protection macro, derived from
 /// extensions.  A single pass over all extensions replaces the previous
 /// per-command linear scan (O(cmds × exts × requires) → O(exts × requires)).
-pub(super) fn build_command_protect_map<'a>(
-    exts: &[SelectedExt<'a>],
-) -> HashMap<&'a str, String> {
+pub(super) fn build_command_protect_map<'a>(exts: &[SelectedExt<'a>]) -> HashMap<&'a str, String> {
     let mut map = HashMap::new();
     for ext in exts {
         if let Some(protect) = ext.raw.protect.first() {

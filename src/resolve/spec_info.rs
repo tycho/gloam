@@ -151,7 +151,7 @@ pub(super) fn xml_api_names(requests: &[ApiRequest]) -> Vec<String> {
 
 /// Build the set of canonical API name strings for fast membership testing
 /// in extension selection.
-pub(super) fn build_api_set<'a>(requests: &'a [ApiRequest]) -> HashSet<&'a str> {
+pub(super) fn build_api_set(requests: &[ApiRequest]) -> HashSet<&str> {
     let mut api_set: HashSet<&str> = requests.iter().map(|r| r.name.as_str()).collect();
     // The Khronos XML uses "vulkan" in supported= attributes, but our
     // canonical name is "vk".  Insert the XML form so contains() lookups

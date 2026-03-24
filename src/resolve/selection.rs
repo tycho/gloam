@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::cli::{ApiRequest, ExtensionFilter, canonical_api_name};
 use crate::ir::RawSpec;
 
-use super::spec_info::{api_order, build_api_set, ResolveConfig};
+use super::spec_info::{ResolveConfig, api_order, build_api_set};
 use super::types::SelectionReason;
 
 // ---------------------------------------------------------------------------
@@ -206,7 +206,13 @@ pub(super) fn select_extensions<'a>(
     };
 
     if want_promoted {
-        promoted_pass(raw, &api_set, per_api_core_cmds, &cmd_to_alias, &mut selected);
+        promoted_pass(
+            raw,
+            &api_set,
+            per_api_core_cmds,
+            &cmd_to_alias,
+            &mut selected,
+        );
     }
 
     if want_predecessors {

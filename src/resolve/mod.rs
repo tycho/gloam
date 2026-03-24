@@ -21,7 +21,8 @@ mod typedefs;
 // Public types — re-exported so external callers use `crate::resolve::FeatureSet` etc.
 pub mod types;
 pub use types::{
-    CmdPfnEntry, Command, ExtGuardEntry, Extension, Feature, FeatureSet, PfnRange, ScopeBoundaries, SelectionReason, SerVersion,
+    CmdPfnEntry, Command, ExtGuardEntry, Extension, Feature, FeatureSet, PfnRange, ScopeBoundaries,
+    SelectionReason, SerVersion,
 };
 
 use std::collections::HashMap;
@@ -35,7 +36,9 @@ use crate::ir::RawSpec;
 use crate::parse;
 use crate::parse::commands::infer_vulkan_scope;
 
-use commands::{build_alias_pairs, build_command, build_command_protect_map, optimize_command_order};
+use commands::{
+    build_alias_pairs, build_command, build_command_protect_map, optimize_command_order,
+};
 use enums::{build_enum_groups, build_flat_enums};
 use pfn::{build_ext_pfn_ranges, build_feature_pfn_ranges};
 use protect::{group_by_protection, group_by_protection_pairs};
@@ -282,7 +285,13 @@ fn resolve_feature_set(
         };
 
     // -- Types ----------------------------------------------------------
-    let types = build_type_list(raw, &reqs.req_types, spec_name, spec.is_vulkan, &selected_exts);
+    let types = build_type_list(
+        raw,
+        &reqs.req_types,
+        spec_name,
+        spec.is_vulkan,
+        &selected_exts,
+    );
 
     // -- Enums ----------------------------------------------------------
     let flat_enums = build_flat_enums(raw, &reqs.req_enums, spec.is_vulkan);
