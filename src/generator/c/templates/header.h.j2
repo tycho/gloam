@@ -242,7 +242,7 @@ typedef {{ cmd.return_type }} (VKAPI_PTR *{{ cmd.pfn_type }})({{ cmd.params_str 
    Anonymous structs inside the unions are a C11 / GCC extension; they are
    universally supported on our target compilers. */
 typedef struct {{ fs.context_name }} {
-{% if not (fs.is_vulkan and unchecked) %}
+{%- if not (fs.is_vulkan and unchecked) %}
     union {
         unsigned char featArray[{{ fs.features | length }}];
         struct {
@@ -261,7 +261,7 @@ typedef struct {{ fs.context_name }} {
         };
     };
 {% endif %}
-{% endif %}
+{%- endif %}
     union {
         void *pfnArray[{{ fs.commands | length }}];
         struct {
@@ -324,7 +324,7 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 {%- endif %}
 
 /* ---- Extension presence macros ------------------------------------------ */
-{% if not (fs.is_vulkan and unchecked) %}
+{%- if not (fs.is_vulkan and unchecked) %}
 {% for group in fs.ext_guard_groups %}
 {{- u.protect_begin(group.protect) -}}
 {% for ext in group.items -%}
@@ -332,7 +332,7 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 {% endfor -%}
 {{- u.protect_end(group.protect) -}}
 {%- endfor %}
-{% endif %}
+{%- endif %}
 
 /* ---- Dispatch macros and IntelliSense prototypes -------------------------
    Under __INTELLISENSE__ we expose real function declarations so IDEs can
