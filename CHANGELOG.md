@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/tycho/gloam/compare/0.2.4...0.3.0) - 2026-03-24
+
+### Added
+
+- *(vulkan)* implement **--unchecked** mode: allows creating a Vulkan loader
+  similar to Volk, with no extension or version detection. Many Vulkan users
+  prefer to do extension detection themselves, because they need to set up
+  various per-extension context creation structures anyway. This version is
+  much smaller in terms of binary size (even though we are already very small).
+  We're roughly half the size of Volk overall right now.
+
+### Fixed
+
+- *(header)* add protections around VK extension guard macros and extension
+  version/name
+
+### Other
+
+- *(bundled)* treat `glsl_exts.xml` in this repo as the canon version, since it
+  doesn't exist in any real upstream source. It's just a list of GLSL-only
+  extensions that aren't represented in the Khronos XML files.
+- *(template)* move extension string hashing to common function
+- *(refactoring)* refactored much of the Rust code to be easier to reason about
+
 ## [0.2.4](https://github.com/tycho/gloam/compare/0.2.3...0.2.4) - 2026-03-23
 
 ### Added
