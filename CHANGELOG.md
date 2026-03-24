@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5](https://github.com/tycho/gloam/compare/0.2.4...0.2.5) - 2026-03-24
+
+### Added
+
+- *(vulkan)* implement --unchecked mode
+
+### Fixed
+
+- *(template)* silence warning about unused gloam_hash_ext_string for Vulkan
+- *(header)* add protections around VK extension guard macros and extension version/name
+- *(bundled)* treat glsl_exts in this repo as canon version
+
+### Other
+
+- *(clippy)* do clippy cleanup and reformatting
+- *(template)* fix a bunch of whitespace issues
+- *(template)* move extension string hashing to common function
+- *(generator)* refactor c generate function
+- *(resolve)* refactor into split-out module sources
+
 ## [0.2.4](https://github.com/tycho/gloam/compare/0.2.3...0.2.4) - 2026-03-23
 
 ### Added
