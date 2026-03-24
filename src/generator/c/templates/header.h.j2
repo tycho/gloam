@@ -242,7 +242,6 @@ typedef {{ cmd.return_type }} (VKAPI_PTR *{{ cmd.pfn_type }})({{ cmd.params_str 
    Anonymous structs inside the unions are a C11 / GCC extension; they are
    universally supported on our target compilers. */
 typedef struct {{ fs.context_name }} {
-{%- if not (fs.is_vulkan and unchecked) %}
     union {
         unsigned char featArray[{{ fs.features | length }}];
         struct {
@@ -261,7 +260,6 @@ typedef struct {{ fs.context_name }} {
         };
     };
 {% endif %}
-{%- endif %}
     union {
         void *pfnArray[{{ fs.commands | length }}];
         struct {
@@ -295,21 +293,12 @@ typedef struct {{ fs.context_name }} {
        for closing it in gloamVulkanFinalize / gloamLoaderUnload. */
     uint8_t gloam_loader_owns_handle;
 {% endif %}
-{% if fs.is_vulkan and not unchecked %}
     /* Vulkan discovery-path metadata — used by gloamLoaderLoadVulkanContext to make
        repeated calls additive without re-enumerating already-cached scopes. */
     uint32_t vk_instance_version;    /* cached EnumerateInstanceVersion result        */
     uint32_t vk_device_version;      /* cached GetPhysicalDeviceProperties.apiVersion */
     uint8_t  vk_found_instance_exts; /* set once instance extensions enumerated       */
     uint8_t  vk_found_device_exts;   /* set once device extensions enumerated         */
-{% elif fs.is_vulkan and unchecked %}
-    /* Unchecked-mode load progress flags.  Each flag is set after its scope's
-       PFN range has been loaded so that repeated calls are idempotent and
-       don't redundantly walk the driver's strcmp chain again. */
-    uint8_t vk_loaded_global;   /* Unknown + Global scopes loaded  */
-    uint8_t vk_loaded_instance; /* Instance scope loaded           */
-    uint8_t vk_loaded_device;   /* Device scope loaded             */
-{% endif %}
 } {{ fs.context_name }};
 
 /* Global context instance — a value, not a pointer, so the compiler knows
@@ -318,14 +307,11 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 
 /* ---- Feature presence macros --------------------------------------------
    Test whether a versioned feature was detected at load time. */
-{%- if not (fs.is_vulkan and unchecked) %}
 {%- for feat in fs.features %}
 #define GLOAM_{{ feat.full_name }} (gloam_{{ fs.spec_name }}_context.{{ feat.short_name }})
 {%- endfor %}
-{%- endif %}
 
 /* ---- Extension presence macros ------------------------------------------ */
-{%- if not (fs.is_vulkan and unchecked) %}
 {% for group in fs.ext_guard_groups %}
 {{- u.protect_begin(group.protect) -}}
 {% for ext in group.items -%}
@@ -333,7 +319,6 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 {% endfor -%}
 {{- u.protect_end(group.protect) -}}
 {%- endfor %}
-{%- endif %}
 
 /* ---- Dispatch macros and IntelliSense prototypes -------------------------
    Under __INTELLISENSE__ we expose real function declarations so IDEs can

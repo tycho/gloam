@@ -31,8 +31,6 @@ pub fn generate(
     let preamble = preamble::build_preamble(fs, command_line);
 
     let names = FnNameLayout::build(fs);
-    let sb = fs.scope_boundaries.unwrap_or_default();
-    let offset_groups = build_offset_groups(fs, args, &names);
 
     let include_dir = out.join("include");
     let gloam_dir = include_dir.join("gloam");
@@ -46,10 +44,6 @@ pub fn generate(
         guard                 => format!("{}_H", stem.to_uppercase()),
         alias                 => args.alias,
         loader                => args.loader,
-        unchecked             => args.unchecked,
-        sb                    => sb,
-        unchecked_sentinel    => names.sentinel,
-        offset_groups         => &offset_groups,
         preamble              => &preamble,
         fn_name_offsets       => &names.offsets,
         fn_name_offset_type   => names.offset_type,
@@ -64,7 +58,7 @@ pub fn generate(
         env.get_template("source.c.j2")?.render(&ctx)?,
     )?;
 
-    copy_auxiliary_headers(fs, args, &include_dir, use_fetch)?;
+    copy_auxiliary_headers(fs, &include_dir, use_fetch)?;
 
     Ok(())
 }
@@ -84,10 +78,6 @@ struct FnNameLayout {
     offsets: Vec<u32>,
     /// C type for the offset table: "uint16_t" or "uint32_t".
     offset_type: &'static str,
-    /// Sentinel value for platform-guarded commands not enabled on the
-    /// current platform.  Maximum value of the offset type so it can
-    /// never be a valid string offset.
-    sentinel: u64,
 }
 
 impl FnNameLayout {
@@ -98,75 +88,16 @@ impl FnNameLayout {
             offsets.push(pos);
             pos += cmd.name.len() as u32 + 1; // +1 for NUL
         }
-        let blob_size = pos;
-
-        let (offset_type, sentinel) = if blob_size <= u16::MAX as u32 {
-            ("uint16_t", u16::MAX as u64)
+        let offset_type = if pos <= u16::MAX as u32 {
+            "uint16_t"
         } else {
-            ("uint32_t", u32::MAX as u64)
+            "uint32_t"
         };
-
         Self {
             offsets,
             offset_type,
-            sentinel,
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Unchecked Vulkan offset groups
-// ---------------------------------------------------------------------------
-
-/// Pre-computed grouped offset table entry for unchecked Vulkan mode.
-///
-/// Commands sorted by (guarded, scope, protect, alpha) are coalesced into
-/// runs sharing the same protect macro so the template can emit one
-/// `#if`/`#else`/`#endif` block per run rather than one per command.
-#[derive(serde::Serialize)]
-struct OffsetGroup {
-    /// Platform protect macro.  Empty string = unguarded.
-    protect: String,
-    entries: Vec<OffsetEntry>,
-}
-
-#[derive(serde::Serialize)]
-struct OffsetEntry {
-    index: u16,
-    offset: u32,
-    name: String,
-    /// True for the final entry in the entire table (so the template can
-    /// omit the trailing comma).
-    last: bool,
-}
-
-fn build_offset_groups(fs: &FeatureSet, args: &CArgs, names: &FnNameLayout) -> Vec<OffsetGroup> {
-    if !(args.unchecked && fs.is_vulkan) {
-        return Vec::new();
-    }
-
-    let total = fs.commands.len();
-    let mut groups: Vec<OffsetGroup> = Vec::new();
-    for (i, cmd) in fs.commands.iter().enumerate() {
-        let protect = cmd.protect.clone().unwrap_or_default();
-        let entry = OffsetEntry {
-            index: cmd.index,
-            offset: names.offsets[cmd.index as usize],
-            name: cmd.name.clone(),
-            last: i + 1 == total,
-        };
-        if let Some(last_group) = groups.last_mut()
-            && last_group.protect == protect
-        {
-            last_group.entries.push(entry);
-            continue;
-        }
-        groups.push(OffsetGroup {
-            protect,
-            entries: vec![entry],
-        });
-    }
-    groups
 }
 
 // ---------------------------------------------------------------------------
@@ -178,17 +109,9 @@ fn build_offset_groups(fs: &FeatureSet, args: &CArgs, names: &FnNameLayout) -> V
 /// found inside them.  This catches implicit dependencies like
 /// `vulkan_video_codecs_common.h` which are `#include`'d by other vk_video
 /// headers but never declared in the XML spec.
-fn copy_auxiliary_headers(
-    fs: &FeatureSet,
-    args: &CArgs,
-    include_dir: &Path,
-    use_fetch: bool,
-) -> Result<()> {
-    // xxhash.h is always needed by the generated .c (extension hash search),
-    // unless we are in unchecked Vulkan mode which emits no hash search code.
-    let need_xxhash = !(args.unchecked && fs.is_vulkan);
+fn copy_auxiliary_headers(fs: &FeatureSet, include_dir: &Path, use_fetch: bool) -> Result<()> {
+    // xxhash.h is always needed by the generated .c (extension hash search).
     let mut queue: Vec<String> = std::iter::once("xxhash.h".to_string())
-        .filter(|_| need_xxhash)
         .chain(fs.required_headers.iter().cloned())
         .collect();
     let mut visited: HashSet<String> = HashSet::new();
