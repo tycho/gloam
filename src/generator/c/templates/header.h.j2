@@ -133,7 +133,7 @@ struct _cl_event;
 #define {{ feat.full_name }} 1
 {% endfor -%}
 {% endif -%}
-{%- if not fs.is_vulkan and fs.ext_guard_groups | length > 0 %}
+{%- if fs.ext_guard_groups | length > 0 %}
 /* ---- Extension compile-time guards ---------------------------------------
    These mirror the definitions in standard glext.h/gl2ext.h/eglext.h so
    that code guarded by e.g. #ifdef GL_ARB_draw_indirect compiles correctly
@@ -148,8 +148,18 @@ struct _cl_event;
 {% endif -%}
 {%- if fs.flat_enums | length > 0 -%}
 /* ---- Constants ----------------------------------------------------------- */
-{% for enum in fs.flat_enums -%}
+{% for group in fs.flat_enum_groups -%}
+{% if group.protect | length > 0 -%}
+#if defined({{ group.protect | join(") && defined(") }})
+{% for enum in group.items -%}
 #define {{ enum.name }} {{ enum.value }}{% if enum.comment %} /* {{ enum.comment }} */{% endif %}
+{% endfor -%}
+#endif
+{% else -%}
+{% for enum in group.items -%}
+#define {{ enum.name }} {{ enum.value }}{% if enum.comment %} /* {{ enum.comment }} */{% endif %}
+{% endfor -%}
+{% endif -%}
 {% endfor -%}
 {% endif -%}
 {%- if fs.enum_groups | length > 0 %}

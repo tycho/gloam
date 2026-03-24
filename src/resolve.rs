@@ -97,6 +97,9 @@ pub struct FeatureSet {
     /// Commands, grouped by consecutive protection (for PFN typedefs,
     /// IntelliSense prototypes, and dispatch macros).
     pub cmd_pfn_groups: Vec<ProtectedGroup<CmdPfnEntry>>,
+    /// Flat enum constants grouped by consecutive protection, for the
+    /// constants section of the header.
+    pub flat_enum_groups: Vec<ProtectedGroup<FlatEnum>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -175,11 +178,13 @@ pub struct TypeDef {
     pub protect: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FlatEnum {
     pub name: String,
     pub value: String,
     pub comment: String,
+    /// Platform protection macros.  Empty = unconditional.
+    pub protect: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -829,6 +834,8 @@ fn resolve_feature_set(
         groups
     };
 
+    let flat_enum_groups = group_by_protection(flat_enums.iter().cloned(), |e| e.protect.clone());
+
     Ok(FeatureSet {
         spec_name: spec_name.clone(),
         display_name: display_name.to_string(),
@@ -854,6 +861,7 @@ fn resolve_feature_set(
         type_groups,
         ext_guard_groups,
         cmd_pfn_groups,
+        flat_enum_groups,
     })
 }
 
@@ -2280,6 +2288,7 @@ fn normalize_raw_c(raw: &str) -> String {
 }
 
 fn build_flat_enums(raw: &RawSpec, req_enums: &HashSet<String>, is_vulkan: bool) -> Vec<FlatEnum> {
+    let enum_protect = build_ext_enum_protections(raw);
     raw.flat_enums
         .iter()
         // For Vulkan, all flat enums are API constants (VK_MAX_DESCRIPTION_SIZE
@@ -2288,12 +2297,41 @@ fn build_flat_enums(raw: &RawSpec, req_enums: &HashSet<String>, is_vulkan: bool)
         .filter(|(name, _)| is_vulkan || req_enums.contains(*name))
         .filter_map(|(_, e)| {
             let value = e.value.as_deref().or(e.alias.as_deref())?;
+            let protect = enum_protect
+                .get(e.name.as_str())
+                .cloned()
+                .unwrap_or_default();
             Some(FlatEnum {
                 name: e.name.clone(),
                 value: value.to_string(),
                 comment: e.comment.clone(),
+                protect,
             })
         })
+        .collect()
+}
+
+/// Build a map from enum constant name → platform protection macros.
+///
+/// An enum constant inherits the protection of the extension whose `<require>`
+/// block first introduces it.  If a constant is required by multiple extensions
+/// with different (or no) protections, the `Protection` lattice collapses it to
+/// unconditional (empty), matching the type protection logic.
+fn build_ext_enum_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
+    let mut tmp: HashMap<&str, Protection> = HashMap::new();
+
+    for ext in &raw.extensions {
+        for require in &ext.requires {
+            for enum_name in &require.enums {
+                tmp.entry(enum_name.as_str())
+                    .or_insert_with(Protection::new_guarded)
+                    .add_extension(&ext.protect);
+            }
+        }
+    }
+
+    tmp.into_iter()
+        .map(|(name, prot)| (name.to_string(), prot.into_vec()))
         .collect()
 }
 
@@ -2314,6 +2352,7 @@ fn build_enum_groups(raw: &RawSpec) -> Vec<EnumGroup> {
                         name: v.name.clone(),
                         value: val.to_string(),
                         comment: v.comment.clone(),
+                        protect: vec![],
                     })
                 })
                 .collect();
@@ -2542,6 +2581,7 @@ mod tests {
             name: name.to_string(),
             value: value.to_string(),
             comment: String::new(),
+            protect: vec![],
         }
     }
 
