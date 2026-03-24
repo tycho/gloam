@@ -91,11 +91,6 @@ pub struct FeatureSet {
     /// Flat enum constants grouped by consecutive protection, for the
     /// constants section of the header.
     pub flat_enum_groups: Vec<ProtectedGroup<FlatEnum>>,
-
-    /// Scope boundary table — only populated when --unchecked is active for
-    /// a Vulkan feature set.  PFNs are sorted by scope in this mode and the
-    /// four boundaries replace the per-feature/per-extension range tables.
-    pub scope_boundaries: Option<ScopeBoundaries>,
 }
 
 #[derive(Debug, Serialize)]
@@ -205,45 +200,6 @@ pub struct PfnRange {
 pub struct AliasPair {
     pub canonical: u16,
     pub secondary: u16,
-}
-
-/// Scope boundary table for --unchecked Vulkan mode.
-///
-/// Commands are sorted (unguarded, scope, alpha) then (guarded, scope, alpha),
-/// producing this layout:
-///
-///   [unguarded Unknown | unguarded Global | unguarded Instance | unguarded Device |
-///    guarded Unknown   | guarded Global   | guarded Instance   | guarded Device  ]
-///
-/// `kScopeStart[5]` gives the start of each unguarded scope block plus the
-/// start of the entire guarded section as its sentinel.
-/// `kScopeGuarded[5]` gives the start of each guarded scope block plus `end`.
-///
-/// The loader runs tight unconditional loops over kScopeStart[s]..kScopeStart[s+1],
-/// then sentinel-checking loops over kScopeGuarded[s]..kScopeGuarded[s+1].
-#[derive(Debug, Default, Serialize, Clone, Copy)]
-pub struct ScopeBoundaries {
-    /// Start of unguarded Unknown block (always 0).
-    pub unknown: u16,
-    /// Start of unguarded Global block.
-    pub global: u16,
-    /// Start of unguarded Instance block.
-    pub instance: u16,
-    /// Start of unguarded Device block.
-    pub device: u16,
-    /// Start of the guarded section (= end of unguarded Device block).
-    /// This is kScopeStart[4].
-    pub guarded: u16,
-    /// Start of guarded Unknown block (= guarded; no platform-guarded Unknown commands).
-    pub guarded_unknown: u16,
-    /// Start of guarded Global block (= guarded; no platform-guarded Global commands).
-    pub guarded_global: u16,
-    /// Start of guarded Instance block.
-    pub guarded_instance: u16,
-    /// Start of guarded Device block.
-    pub guarded_device: u16,
-    /// Total command count (= kScopeGuarded[4]).
-    pub end: u16,
 }
 
 // ---------------------------------------------------------------------------

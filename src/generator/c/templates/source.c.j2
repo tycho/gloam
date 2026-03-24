@@ -23,7 +23,7 @@
 #endif
 {%- endif %}
 
-{% if fs.extensions | length > 0 and not (fs.is_vulkan and unchecked) -%}
+{% if fs.extensions | length > 0 -%}
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64)
 #  define XXH_VECTOR XXH_SSE2
 #  include <immintrin.h>
@@ -38,9 +38,7 @@
 #include "xxhash.h"
 {% endif %}
 {% include "impl_util.j2" %}
-{% if not (fs.is_vulkan and unchecked) -%}
 {% include "hash_search.j2" %}
-{% endif -%}
 {% if fs.is_vulkan -%}
 /* Vulkan command scope — controls which proc-addr entry point the internal
    dispatch uses. */
@@ -86,66 +84,12 @@ static const char kFnNameData_{{ fs.spec_name | spec_display }}[] =
     /* {{ fn_name_offsets[cmd.index] | rjust(5) }} */ "{{ cmd.name }}\0"
 {%- endfor %}
 ;
-{% if fs.is_vulkan and unchecked %}
-/* Sentinel: offset value used for platform-guarded commands that are not
-   enabled on this platform.  The loader's sentinel-checking loop skips any
-   slot whose offset equals this value, avoiding a wasted proc-addr lookup. */
-#define GLOAM_NA {{ unchecked_sentinel }}
-{%- endif %}
 static const {{ fn_name_offset_type }} kFnNameOffsets_{{ fs.spec_name | spec_display }}[] = {
-{%- if fs.is_vulkan and unchecked %}
-{%- for group in offset_groups %}
-{%- if group.protect %}
-#if defined({{ group.protect }})
-{%- for e in group.entries %}
-    /* {{ e.index | rjust(4) }} */ {{ e.offset | rjust(8) }}{% if not e.last %},{% endif %} /* {{ e.name }} */
-{%- endfor %}
-#else
-{%- for e in group.entries %}
-    /* {{ e.index | rjust(4) }} */ GLOAM_NA{% if not e.last %},{% endif %} /* {{ e.name }} */
-{%- endfor %}
-#endif
-{%- else %}
-{%- for e in group.entries %}
-    /* {{ e.index | rjust(4) }} */ {{ e.offset | rjust(8) }}{% if not e.last %},{% endif %} /* {{ e.name }} */
-{%- endfor %}
-{%- endif %}
-{%- endfor %}
-{%- else %}
 {%- for cmd in fs.commands %}
     /* {{ cmd.index | rjust(4) }} */ {{ fn_name_offsets[cmd.index] | rjust(5) }}{% if not loop.last %},{% endif %} /* {{ cmd.name }} */
 {%- endfor %}
-{%- endif %}
 };
-{% if fs.is_vulkan and unchecked -%}
-#undef GLOAM_NA
-{% endif %}
 {% if fs.is_vulkan -%}
-{% if unchecked -%}
-/* ---- Scope start table ---------------------------------------------------
-   Start index of each unguarded scope block.  kScopeStart[4] is the start
-   of the entire guarded section (= end of all unguarded commands). */
-static const uint16_t kScopeStart_{{ fs.spec_name | spec_display }}[5] = {
-    {{ sb.unknown  | rjust(4) }}, /* Unknown  (dlsym)                           */
-    {{ sb.global   | rjust(4) }}, /* Global   (vkGetInstanceProcAddr, NULL)     */
-    {{ sb.instance | rjust(4) }}, /* Instance (vkGetInstanceProcAddr, instance) */
-    {{ sb.device   | rjust(4) }}, /* Device   (vkGetDeviceProcAddr, device)     */
-    {{ sb.guarded  | rjust(4) }}, /* start of guarded section                   */
-};
-
-/* ---- Scope guarded-tail table --------------------------------------------
-   Start index of each platform-guarded scope block.  kScopeGuarded[4] is
-   the total command count (one-past-end sentinel).
-   Entries not enabled on this platform have GLOAM_NA in kFnNameOffsets and
-   are skipped by the sentinel-checking loop. */
-static const uint16_t kScopeGuarded_{{ fs.spec_name | spec_display }}[5] = {
-    {{ sb.guarded_unknown  | rjust(4) }}, /* Unknown  (no guarded commands; == Global)   */
-    {{ sb.guarded_global   | rjust(4) }}, /* Global   (no guarded commands; == Instance) */
-    {{ sb.guarded_instance | rjust(4) }}, /* Instance                                    */
-    {{ sb.guarded_device   | rjust(4) }}, /* Device                                      */
-    {{ sb.end              | rjust(4) }}, /* sentinel                                    */
-};
-{%- else -%}
 /* ---- Command scope table -------------------------------------------------
    Indexed in lockstep with kFnNameOffsets_{{ fs.spec_name | spec_display }}[].  Each entry is the GloamCommandScope
    value for that slot — stored as uint8_t so the whole table is one byte per
@@ -158,8 +102,7 @@ static const uint8_t kCommandScopes_{{ fs.spec_name | spec_display }}[] = {
 };
 
 {% endif -%}
-{% endif -%}
-{%- if fs.extensions | length > 0 and not (fs.is_vulkan and unchecked) -%}
+{%- if fs.extensions | length > 0 -%}
 /* ---- Extension hash table ------------------------------------------------
    One XXH3-64 hash per extension, in extArray index order.
    Pre-baked at generator time with the same algorithm used at load time. */
@@ -169,7 +112,7 @@ static const uint64_t kExtHashes_{{ fs.spec_name | spec_display }}[] = {
 {%- endfor %}
 };
 {% endif %}
-{% if fs.feature_pfn_ranges | length > 0 and not (fs.is_vulkan and unchecked) -%}
+{% if fs.feature_pfn_ranges | length > 0 -%}
 /* ---- Feature PFN range table ---------------------------------------------
    Each entry maps one feature (by featArray index) to a contiguous run of
    pfnArray slots.  The loader iterates this table and bulk-loads the run
@@ -190,35 +133,6 @@ static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamLo
     for (i = start; i < (uint16_t)(start + count); ++i) {
         const char *pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]];
         context->pfnArray[i] = (void *)getProcAddr(pfnName);
-    }
-}
-{% elif unchecked -%}
-/* ---- Vulkan unchecked scope range helpers --------------------------------
-   gloam_load_scope_range_vk: tight loop over unconditional commands.
-   gloam_load_guarded_range_vk: sentinel-checking loop over the platform-
-   guarded tail; entries with GLOAM_NA in kFnNameOffsets are skipped. */
-static void gloam_load_scope_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamVkUserptrLoadFunc load,
-                                      void *userptr, GloamCommandScope scope,
-                                      uint16_t start, uint16_t end) {
-    uint16_t i;
-    for (i = start; i < end; ++i) {
-        const {{ fn_name_offset_type }} uNameOffset = kFnNameOffsets_{{ fs.spec_name | spec_display }}[i];
-        const char *pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[uNameOffset];
-        context->pfnArray[i] = (void *)load(userptr, pfnName, scope);
-    }
-}
-
-static void gloam_load_guarded_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamVkUserptrLoadFunc load,
-                                        void *userptr, GloamCommandScope scope,
-                                        uint16_t start, uint16_t end) {
-    uint16_t i;
-    for (i = start; i < end; ++i) {
-        const {{ fn_name_offset_type }} uNameOffset = kFnNameOffsets_{{ fs.spec_name | spec_display }}[i];
-        const char *pfnName;
-        if (uNameOffset == {{ unchecked_sentinel }})
-            continue;
-        pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[uNameOffset];
-        context->pfnArray[i] = (void *)load(userptr, pfnName, scope);
     }
 }
 {% else -%}
@@ -262,7 +176,7 @@ GLOAM_NO_INLINE static void gloam_resolve_aliases_{{ fs.spec_name }}({{ u.ctx_ar
     }
 }
 {% endif %}
-{% if fs.is_vulkan and not unchecked -%}
+{% if fs.is_vulkan -%}
 /* ==========================================================================
    Vulkan enabled-path helpers (shared across per-API sections)
    ========================================================================== */
@@ -661,7 +575,7 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}Dis
     context->VERSION_1_4 = version_value >= 0x0104;
     return version_value;
 }
-{%- elif fs.spec_name == "vk" and not unchecked -%}
+{%- elif fs.spec_name == "vk" -%}
 /* Determine the Vulkan API version and set featArray bits accordingly.
  *
  * Called on every gloamLoaderLoadVulkanContext call so that version fields can be
@@ -936,84 +850,6 @@ int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr) {
     return gloamLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, hdc, getProcAddr);
 }
 {% elif fs.spec_name == "vk" %}
-{% if unchecked -%}
-/* gloamVulkanDiscoverContextUserPtr — unchecked Vulkan loader.
- *
- * No extension detection.  PFNs are pre-sorted by scope; within each scope
- * unconditional commands come first (tight loop, no sentinel check), followed
- * by platform-guarded commands (sentinel-checking loop, GLOAM_NA entries
- * skipped so no wasted proc-addr lookup for functions unavailable on this
- * platform).
- *
- * Call pattern:
- *   1. (NULL, NULL, NULL)                  — loads Unknown + Global scope.
- *   2. (instance, NULL, NULL)              — loads Instance scope.
- *   3. (instance, physical_device, device) — loads Device scope.
- *
- * Each call is idempotent: a scope already loaded on a previous call is
- * skipped so the driver's name-lookup chain is not walked redundantly.
- * physical_device is accepted for API symmetry but is not used.
- *
- * Returns 1 on success. */
-static int gloamVulkanDiscoverContextUserPtr({{ u.ctx_arg(', ') }}VkInstance instance,
-                                   VkPhysicalDevice physical_device, VkDevice device,
-                                   GloamVkUserptrLoadFunc load, void *userptr) {
-    GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
-    GLOAM_UNUSED(physical_device);
-
-    if (!context->vk_loaded_global) {
-        /* Tight loops: unconditional commands, no sentinel check needed. */
-        gloam_load_scope_range_{{ fs.spec_name }}(context, load, userptr,
-            GloamCommandScopeUnknown,
-            kScopeStart_{{ fs.spec_name | spec_display }}[0],
-            kScopeStart_{{ fs.spec_name | spec_display }}[1]);
-        gloam_load_scope_range_{{ fs.spec_name }}(context, load, userptr,
-            GloamCommandScopeGlobal,
-            kScopeStart_{{ fs.spec_name | spec_display }}[1],
-            kScopeStart_{{ fs.spec_name | spec_display }}[2]);
-
-        /* Sentinel loops: platform-guarded commands; GLOAM_NA entries skipped. */
-        gloam_load_guarded_range_{{ fs.spec_name }}(context, load, userptr,
-            GloamCommandScopeUnknown,
-            kScopeGuarded_{{ fs.spec_name | spec_display }}[0],
-            kScopeGuarded_{{ fs.spec_name | spec_display }}[1]);
-        gloam_load_guarded_range_{{ fs.spec_name }}(context, load, userptr,
-            GloamCommandScopeGlobal,
-            kScopeGuarded_{{ fs.spec_name | spec_display }}[1],
-            kScopeGuarded_{{ fs.spec_name | spec_display }}[2]);
-
-        context->vk_loaded_global = 1;
-    }
-
-    if (instance != NULL && !context->vk_loaded_instance) {
-        gloam_load_scope_range_{{ fs.spec_name }}(context, load, userptr,
-            GloamCommandScopeInstance,
-            kScopeStart_{{ fs.spec_name | spec_display }}[2],
-            kScopeStart_{{ fs.spec_name | spec_display }}[3]);
-        gloam_load_guarded_range_{{ fs.spec_name }}(context, load, userptr,
-            GloamCommandScopeInstance,
-            kScopeGuarded_{{ fs.spec_name | spec_display }}[2],
-            kScopeGuarded_{{ fs.spec_name | spec_display }}[3]);
-
-        context->vk_loaded_instance = 1;
-    }
-
-    if (device != NULL && !context->vk_loaded_device) {
-        gloam_load_scope_range_{{ fs.spec_name }}(context, load, userptr,
-            GloamCommandScopeDevice,
-            kScopeStart_{{ fs.spec_name | spec_display }}[3],
-            kScopeStart_{{ fs.spec_name | spec_display }}[4]);
-        gloam_load_guarded_range_{{ fs.spec_name }}(context, load, userptr,
-            GloamCommandScopeDevice,
-            kScopeGuarded_{{ fs.spec_name | spec_display }}[3],
-            kScopeGuarded_{{ fs.spec_name | spec_display }}[4]);
-
-        context->vk_loaded_device = 1;
-    }
-
-    return 1;
-}
-{% else -%}
 {% if fs.extensions | length > 0 and subset | length > 0 %}
 /* Hash user-provided extension name arrays, search against kExtHashes, and
  * set the corresponding extArray bits.  Uses |= so bits from a previous
@@ -1276,7 +1112,6 @@ void gloamVulkanFinalizeContext({{ u.ctx_arg() }}) {
 void gloamVulkanFinalize(void) {
     gloamVulkanFinalizeContext(&gloam_{{ fs.spec_name }}_context);
 }
-{% endif %}
 {% endif %}
 {% endif %}
 {% endfor %}{# end for api in fs.apis #}

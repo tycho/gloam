@@ -90,20 +90,6 @@ pub struct CArgs {
     /// Include a built-in dlopen/LoadLibrary convenience loader layer.
     #[arg(long)]
     pub loader: bool,
-
-    /// Skip extension detection at load time (Vulkan only).
-    ///
-    /// Sorts all entrypoints by command scope (Unknown → Global → Instance →
-    /// Device) and loads every slot unconditionally from the matching proc-addr
-    /// function when the corresponding handle is provided.  No heap allocation,
-    /// no vkEnumerateInstanceExtensionProperties / vkEnumerateDeviceExtensionProperties
-    /// calls, and no per-extension presence macros in the generated header.
-    ///
-    /// The caller is responsible for its own extension bookkeeping and must
-    /// not call entrypoints whose extensions the driver does not support.
-    /// Incompatible with --alias.  Only valid when --api targets Vulkan.
-    #[arg(long)]
-    pub unchecked: bool,
 }
 
 impl Cli {

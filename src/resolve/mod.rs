@@ -21,8 +21,8 @@ mod typedefs;
 // Public types — re-exported so external callers use `crate::resolve::FeatureSet` etc.
 pub mod types;
 pub use types::{
-    CmdPfnEntry, Command, ExtGuardEntry, Extension, Feature, FeatureSet, PfnRange, ScopeBoundaries,
-    SelectionReason, SerVersion,
+    CmdPfnEntry, Command, ExtGuardEntry, Extension, Feature, FeatureSet, PfnRange, SelectionReason,
+    SerVersion,
 };
 
 use std::collections::HashMap;
@@ -61,9 +61,6 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
     let alias = match &cli.generator {
         crate::cli::Generator::C(c) => c.alias,
     };
-    let unchecked = match &cli.generator {
-        crate::cli::Generator::C(c) => c.unchecked,
-    };
 
     let mut feature_sets = Vec::new();
 
@@ -85,7 +82,6 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
                 want_aliases: alias,
                 want_promoted: promoted,
                 want_predecessors: predecessors,
-                unchecked,
             };
             let fs = resolve_feature_set(&raw, reqs, &config)?;
             feature_sets.push(fs);
@@ -102,7 +98,6 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
                 want_aliases: alias,
                 want_promoted: promoted,
                 want_predecessors: predecessors,
-                unchecked,
             };
             let fs = resolve_feature_set(&raw, std::slice::from_ref(req), &config)?;
             feature_sets.push(fs);
@@ -149,52 +144,19 @@ fn resolve_feature_set(
     // -- Commands -------------------------------------------------------
     let cmd_protect_map = build_command_protect_map(&selected_exts);
 
-    // Extract command name lists from the collector.  These owned Vecs must
-    // live in the function scope so that `all_cmd_names: Vec<&str>` can
-    // borrow from them regardless of which branch is taken.
+    // Extract command name lists from the collector.
     let core_names = reqs.core_command_names();
     let ext_names = reqs.ext_command_names();
 
-    // Storage for the optimized name list in normal mode; unused in
-    // unchecked mode but must live as long as all_cmd_names.
-    let optimized_names: Vec<String>;
-
-    let all_cmd_names: Vec<&str> = if spec.is_vulkan && config.unchecked {
-        // Combine core + ext, sort by (guarded, scope, protect, alpha).
-        let mut names: Vec<&str> = core_names
-            .iter()
-            .map(String::as_str)
-            .chain(ext_names.iter().map(String::as_str))
-            .collect();
-        names.sort_by(|a, b| {
-            let scope_key = |name: &&str| -> u8 {
-                raw.commands
-                    .get(*name)
-                    .map(|c| infer_vulkan_scope(c) as u8)
-                    .unwrap_or(4)
-            };
-            let guarded_key = |name: &&str| -> u8 { cmd_protect_map.contains_key(*name) as u8 };
-            let protect_key = |name: &&str| -> &str {
-                cmd_protect_map.get(*name).map(|s| s.as_str()).unwrap_or("")
-            };
-            guarded_key(a)
-                .cmp(&guarded_key(b))
-                .then_with(|| scope_key(a).cmp(&scope_key(b)))
-                .then_with(|| protect_key(a).cmp(protect_key(b)))
-                .then_with(|| a.cmp(b))
-        });
-        names
-    } else {
-        let (sorted_core, sorted_ext) = optimize_command_order(
-            &core_names,
-            &ext_names,
-            &selected_features,
-            &selected_exts,
-            requests,
-        );
-        optimized_names = sorted_core.into_iter().chain(sorted_ext).collect();
-        optimized_names.iter().map(String::as_str).collect()
-    };
+    let (sorted_core, sorted_ext) = optimize_command_order(
+        &core_names,
+        &ext_names,
+        &selected_features,
+        &selected_exts,
+        requests,
+    );
+    let optimized_names: Vec<String> = sorted_core.into_iter().chain(sorted_ext).collect();
+    let all_cmd_names: Vec<&str> = optimized_names.iter().map(String::as_str).collect();
 
     // Vulkan type expansion (needs all_cmd_names).
     if spec.is_vulkan {
@@ -262,27 +224,17 @@ fn resolve_feature_set(
         .map(|e| (e.name.as_str(), e.index))
         .collect();
 
-    // -- PFN ranges / scope boundaries ---------------------------------
-    let (feature_pfn_ranges, ext_pfn_ranges, ext_subset_indices, scope_boundaries) =
-        if spec.is_vulkan && config.unchecked {
-            let sb = compute_scope_boundaries(raw, &commands);
-            let empty_ranges: IndexMap<String, Vec<PfnRange>> = IndexMap::new();
-            let empty_indices: IndexMap<String, Vec<u16>> = IndexMap::new();
-            (Vec::new(), empty_ranges, empty_indices, Some(sb))
-        } else {
-            let feat_ranges = build_feature_pfn_ranges(&selected_features, &features, &commands);
-            let mut ext_ranges: IndexMap<String, Vec<PfnRange>> = IndexMap::new();
-            let mut ext_indices: IndexMap<String, Vec<u16>> = IndexMap::new();
+    // -- PFN ranges ------------------------------------------------------
+    let feature_pfn_ranges = build_feature_pfn_ranges(&selected_features, &features, &commands);
+    let mut ext_pfn_ranges: IndexMap<String, Vec<PfnRange>> = IndexMap::new();
+    let mut ext_subset_indices: IndexMap<String, Vec<u16>> = IndexMap::new();
 
-            for api in &api_names {
-                let (ranges, indices) =
-                    build_ext_pfn_ranges(api, &selected_exts, &ext_index_map, &commands);
-                ext_ranges.insert(api.clone(), ranges);
-                ext_indices.insert(api.clone(), indices);
-            }
-
-            (feat_ranges, ext_ranges, ext_indices, None)
-        };
+    for api in &api_names {
+        let (ranges, indices) =
+            build_ext_pfn_ranges(api, &selected_exts, &ext_index_map, &commands);
+        ext_pfn_ranges.insert(api.clone(), ranges);
+        ext_subset_indices.insert(api.clone(), indices);
+    }
 
     // -- Types ----------------------------------------------------------
     let types = build_type_list(
@@ -382,7 +334,6 @@ fn resolve_feature_set(
         ext_guard_groups,
         cmd_pfn_groups,
         flat_enum_groups,
-        scope_boundaries,
     })
 }
 
@@ -404,76 +355,5 @@ fn build_extension(index: u16, e: &SelectedExt<'_>) -> Extension {
         hash,
         protect: e.raw.protect.clone(),
         reason: e.reason,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Scope boundaries (--unchecked Vulkan mode)
-// ---------------------------------------------------------------------------
-
-fn compute_scope_boundaries(raw: &RawSpec, commands: &[Command]) -> ScopeBoundaries {
-    let mut global_start: Option<u16> = None;
-    let mut instance_start: Option<u16> = None;
-    let mut device_start: Option<u16> = None;
-    let mut guarded_start: Option<u16> = None;
-    let mut guarded_global_start: Option<u16> = None;
-    let mut guarded_instance_start: Option<u16> = None;
-    let mut guarded_device_start: Option<u16> = None;
-
-    for cmd in commands {
-        let is_guarded = cmd.protect.is_some();
-        let ordinal = raw
-            .commands
-            .get(cmd.name.as_str())
-            .map(|c| infer_vulkan_scope(c) as u8)
-            .unwrap_or(0);
-
-        if !is_guarded {
-            if global_start.is_none() && ordinal >= 1 {
-                global_start = Some(cmd.index);
-            }
-            if instance_start.is_none() && ordinal >= 2 {
-                instance_start = Some(cmd.index);
-            }
-            if device_start.is_none() && ordinal >= 3 {
-                device_start = Some(cmd.index);
-            }
-        } else {
-            if guarded_start.is_none() {
-                guarded_start = Some(cmd.index);
-            }
-            if guarded_global_start.is_none() && ordinal >= 1 {
-                guarded_global_start = Some(cmd.index);
-            }
-            if guarded_instance_start.is_none() && ordinal >= 2 {
-                guarded_instance_start = Some(cmd.index);
-            }
-            if guarded_device_start.is_none() && ordinal >= 3 {
-                guarded_device_start = Some(cmd.index);
-            }
-        }
-    }
-
-    let end = commands.len() as u16;
-    let device_start = device_start.unwrap_or(guarded_start.unwrap_or(end));
-    let instance_start = instance_start.unwrap_or(device_start);
-    let global_start = global_start.unwrap_or(instance_start);
-    let guarded = guarded_start.unwrap_or(end);
-    let guarded_device = guarded_device_start.unwrap_or(end);
-    let guarded_instance = guarded_instance_start.unwrap_or(guarded_device);
-    let guarded_global = guarded_global_start.unwrap_or(guarded_instance);
-    let guarded_unknown = guarded;
-
-    ScopeBoundaries {
-        unknown: 0,
-        global: global_start,
-        instance: instance_start,
-        device: device_start,
-        guarded,
-        guarded_unknown,
-        guarded_global,
-        guarded_instance,
-        guarded_device,
-        end,
     }
 }

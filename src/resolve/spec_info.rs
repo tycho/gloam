@@ -51,7 +51,6 @@ pub(super) struct ResolveConfig<'a> {
     pub want_aliases: bool,
     pub want_promoted: bool,
     pub want_predecessors: bool,
-    pub unchecked: bool,
 }
 
 // ---------------------------------------------------------------------------
