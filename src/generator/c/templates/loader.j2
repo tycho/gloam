@@ -359,17 +359,7 @@ void gloamLoaderReset{{ api | api_display }}(void) {
 }
 {%- endfor %}
 {% elif fs.spec_name == "vk" %}
-/* ---- Vulkan built-in loader --------------------------------------------- */
-
-static const char * const gloam_vk_lib_names[] = {
-#if defined(__APPLE__)
-    "libvulkan.dylib", "libvulkan.1.dylib", "libMoltenVK.dylib",
-#elif defined(_WIN32) || defined(__CYGWIN__)
-    "vulkan-1.dll",
-#else
-    "libvulkan.so.1", "libvulkan.so",
-#endif
-};
+/* ---- Vulkan built-in discovery loader ----------------------------------- */
 
 /* The built-in loader threads instance and device handles through this struct
    so that a single scope-aware callback can serve all dispatch paths. */
@@ -403,16 +393,8 @@ static GloamAPIProc gloam_vk_get_proc(void *vuserptr, const char *name, GloamCom
 /* gloamLoaderLoadVulkanContext
  *
  * Opens the Vulkan library into context->gloam_loader_handle if it is not
- * already set, then delegates to gloamLoadVulkanContextUserPtr.  Follows the
- * same additive multi-call contract as the underlying load function.
- *
- * Caller-managed handle pattern:
- *   context->gloam_loader_handle = my_vk_handle;   // pre-populate
- *   gloamLoaderLoadVulkanContext(context, ...);    // dlopen skipped
- *   // ... later, during cleanup:
- *   context->gloam_loader_handle = NULL;            // relinquish ownership
- *   gloamLoaderUnloadVulkanContext(context);       // won't dlclose
- */
+ * already set, then delegates to gloamVulkanDiscoverContextUserPtr.  Follows
+ * the same additive multi-call contract as the underlying discover function. */
 int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance,
                                   VkPhysicalDevice physical_device, VkDevice device) {
     struct gloam_vk_userptr userptr;
@@ -434,8 +416,7 @@ int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance,
     userptr.device                 = device;
     userptr.get_instance_proc_addr =
         (PFN_vkGetInstanceProcAddr)gloam_dlsym(handle, "vkGetInstanceProcAddr");
-    userptr.get_device_proc_addr   =
-        (PFN_vkGetDeviceProcAddr)gloam_dlsym(handle, "vkGetDeviceProcAddr");
+    userptr.get_device_proc_addr   = NULL;
 
     if (!userptr.get_instance_proc_addr) {
         if (did_open) {
@@ -445,7 +426,14 @@ int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance,
         return 0;
     }
 
-    version = gloamLoadVulkanContextUserPtr(context, instance, physical_device, device,
+    /* Get vkGetDeviceProcAddr through the instance when available. */
+    if (instance != NULL) {
+        userptr.get_device_proc_addr =
+            (PFN_vkGetDeviceProcAddr)userptr.get_instance_proc_addr(
+                instance, "vkGetDeviceProcAddr");
+    }
+
+    version = gloamVulkanDiscoverContextUserPtr(context, instance, physical_device, device,
                                              gloam_vk_get_proc, &userptr);
     if (!version && did_open) {
         gloam_dlclose(handle);
