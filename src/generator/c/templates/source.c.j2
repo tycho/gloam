@@ -65,11 +65,11 @@ static const char kFnNameData_{{ fs.spec_name | spec_display }}[] =
 /* Sentinel: offset value used for platform-guarded commands that are not
    enabled on this platform.  The loader's sentinel-checking loop skips any
    slot whose offset equals this value, avoiding a wasted proc-addr lookup. */
-#define GLOAM_NA {{ vk_unchecked_sentinel }}
+#define GLOAM_NA {{ unchecked_sentinel }}
 {% endif -%}
 static const {{ fn_name_offset_type }} kFnNameOffsets_{{ fs.spec_name | spec_display }}[] = {
 {%- if fs.is_vulkan and unchecked %}
-{%- for group in vk_offset_groups %}
+{%- for group in offset_groups %}
 {%- if group.protect %}
 #if defined({{ group.protect }})
 {%- for e in group.entries %}
@@ -102,11 +102,11 @@ static const {{ fn_name_offset_type }} kFnNameOffsets_{{ fs.spec_name | spec_dis
    Start index of each unguarded scope block.  kScopeStart[4] is the start
    of the entire guarded section (= end of all unguarded commands). */
 static const uint16_t kScopeStart_{{ fs.spec_name | spec_display }}[5] = {
-    {{ vk_sb_unknown  | rjust(4) }}, /* Unknown  (dlsym)                          */
-    {{ vk_sb_global   | rjust(4) }}, /* Global   (vkGetInstanceProcAddr, NULL)     */
-    {{ vk_sb_instance | rjust(4) }}, /* Instance (vkGetInstanceProcAddr, instance) */
-    {{ vk_sb_device   | rjust(4) }}, /* Device   (vkGetDeviceProcAddr, device)     */
-    {{ vk_sb_guarded  | rjust(4) }}, /* start of guarded section                  */
+    {{ sb.unknown  | rjust(4) }}, /* Unknown  (dlsym)                          */
+    {{ sb.global   | rjust(4) }}, /* Global   (vkGetInstanceProcAddr, NULL)     */
+    {{ sb.instance | rjust(4) }}, /* Instance (vkGetInstanceProcAddr, instance) */
+    {{ sb.device   | rjust(4) }}, /* Device   (vkGetDeviceProcAddr, device)     */
+    {{ sb.guarded  | rjust(4) }}, /* start of guarded section                  */
 };
 
 /* ---- Scope guarded-tail table --------------------------------------------
@@ -115,11 +115,11 @@ static const uint16_t kScopeStart_{{ fs.spec_name | spec_display }}[5] = {
    Entries not enabled on this platform have GLOAM_NA in kFnNameOffsets and
    are skipped by the sentinel-checking loop. */
 static const uint16_t kScopeGuarded_{{ fs.spec_name | spec_display }}[5] = {
-    {{ vk_sg_unknown  | rjust(4) }}, /* Unknown  (no guarded commands; == Global)  */
-    {{ vk_sg_global   | rjust(4) }}, /* Global   (no guarded commands; == Instance)*/
-    {{ vk_sg_instance | rjust(4) }}, /* Instance                                  */
-    {{ vk_sg_device   | rjust(4) }}, /* Device                                    */
-    {{ vk_sg_end      | rjust(4) }}, /* sentinel                                  */
+    {{ sb.guarded_unknown  | rjust(4) }}, /* Unknown  (no guarded commands; == Global)  */
+    {{ sb.guarded_global   | rjust(4) }}, /* Global   (no guarded commands; == Instance)*/
+    {{ sb.guarded_instance | rjust(4) }}, /* Instance                                  */
+    {{ sb.guarded_device   | rjust(4) }}, /* Device                                    */
+    {{ sb.end      | rjust(4) }}, /* sentinel                                  */
 };
 {% else -%}
 /* ---- Command scope table -------------------------------------------------
@@ -186,7 +186,7 @@ static void gloam_load_guarded_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}Glo
                                         uint16_t start, uint16_t end) {
     uint16_t i;
     for (i = start; i < end; ++i) {
-        if (kFnNameOffsets_{{ fs.spec_name | spec_display }}[i] != {{ vk_unchecked_sentinel }})
+        if (kFnNameOffsets_{{ fs.spec_name | spec_display }}[i] != {{ unchecked_sentinel }})
             context->pfnArray[i] = (void *)load(userptr,
                 &kFnNameData_{{ fs.spec_name | spec_display }}[kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]],
                 scope);

@@ -221,7 +221,7 @@ pub struct AliasPair {
 ///
 /// The loader runs tight unconditional loops over kScopeStart[s]..kScopeStart[s+1],
 /// then sentinel-checking loops over kScopeGuarded[s]..kScopeGuarded[s+1].
-#[derive(Debug, Serialize, Clone, Copy)]
+#[derive(Debug, Default, Serialize, Clone, Copy)]
 pub struct ScopeBoundaries {
     /// Start of unguarded Unknown block (always 0).
     pub unknown: u16,
