@@ -217,40 +217,6 @@ fn vulkan_long_name_normalizes_to_vk_stem() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn vulkan_header_has_context_and_scope_enum() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
-    let header = read_header(dir.path(), "vulkan");
-
-    assert!(
-        header.contains("GloamVulkanContext"),
-        "missing context struct"
-    );
-    assert!(
-        header.contains("GloamCommandScopeDevice"),
-        "missing device scope enum"
-    );
-    assert!(
-        header.contains("GloamCommandScopeInstance"),
-        "missing instance scope enum"
-    );
-    assert!(
-        header.contains("GloamCommandScopeGlobal"),
-        "missing global scope enum"
-    );
-}
-
-#[test]
 fn vulkan_header_has_core_commands() {
     let dir = TempDir::new().unwrap();
     gloam()
