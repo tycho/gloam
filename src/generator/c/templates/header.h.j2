@@ -30,7 +30,7 @@
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
-{%- elif fs.spec_name == "vk" %}
+{%- elif fs.spec_name == "vk" and not external_headers %}
 {{ u.header_error("VULKAN_H_",      "Vulkan (vulkan.h)",      "vulkan") }}
 {{ u.header_error("VULKAN_CORE_H_", "Vulkan (vulkan_core.h)", "vulkan") }}
 {%- elif fs.spec_name == "egl" %}
@@ -59,6 +59,17 @@
 #  define GLOAM_HAS_ENUM_BASE_TYPE 0
 #endif
 #endif
+{% if fs.is_vulkan %}
+#ifndef GLOAM_FORCE_INLINE
+#if defined(_MSC_VER)
+#  define GLOAM_FORCE_INLINE static __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#  define GLOAM_FORCE_INLINE static inline __attribute__((always_inline))
+#else
+#  define GLOAM_FORCE_INLINE static inline
+#endif
+#endif
+{% endif %}
 {% if fs.spec_name == "glx" %}
 #ifdef GLOAM_PLATFORM_LINUX
 
@@ -81,6 +92,108 @@
 #undef wglUseFontBitmaps
 #undef wglUseFontOutlines
 {% endif %}
+{% if fs.is_vulkan and external_headers -%}
+{# ---- External Vulkan headers mode ----------------------------------------
+   Include upstream Vulkan-Headers instead of embedding type definitions.
+   Uses forward declarations for heavyweight platform types (Win32, Xlib)
+   to avoid pulling in large/slow platform headers. -#}
+#ifndef VULKAN_H_
+#include <vulkan/vk_platform.h>
+#include <vulkan/vulkan_core.h>
+#endif
+
+#if !defined(VULKAN_H_)
+
+#ifdef VK_USE_PLATFORM_ANDROID_KHR
+#include <vulkan/vulkan_android.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_FUCHSIA
+#include <zircon/types.h>
+#include <vulkan/vulkan_fuchsia.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_IOS_MVK
+#include <vulkan/vulkan_ios.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_MACOS_MVK
+#include <vulkan/vulkan_macos.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_METAL_EXT
+#include <vulkan/vulkan_metal.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_VI_NN
+#include <vulkan/vulkan_vi.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+#include <vulkan/vulkan_wayland.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+typedef unsigned long DWORD;
+typedef const wchar_t* LPCWSTR;
+typedef void* HANDLE;
+typedef struct HINSTANCE__* HINSTANCE;
+typedef struct HWND__* HWND;
+typedef struct HMONITOR__* HMONITOR;
+typedef struct _SECURITY_ATTRIBUTES SECURITY_ATTRIBUTES;
+#include <vulkan/vulkan_win32.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_XCB_KHR
+#include <xcb/xcb.h>
+#include <vulkan/vulkan_xcb.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_XLIB_KHR
+typedef struct _XDisplay Display;
+typedef unsigned long Window;
+typedef unsigned long VisualID;
+#include <vulkan/vulkan_xlib.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_DIRECTFB_EXT
+#include <directfb.h>
+#include <vulkan/vulkan_directfb.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
+typedef struct _XDisplay Display;
+typedef unsigned long RROutput;
+#include <vulkan/vulkan_xlib_xrandr.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_GGP
+#include <ggp_c/vulkan_types.h>
+#include <vulkan/vulkan_ggp.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_SCREEN_QNX
+#include <screen/screen.h>
+#include <vulkan/vulkan_screen.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_SCI
+#include <nvscisync.h>
+#include <nvscibuf.h>
+#include <vulkan/vulkan_sci.h>
+#endif
+
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+#include <vulkan/vulkan_beta.h>
+#endif
+
+#ifdef VK_USE_PLATFORM_OHOS
+#include <vulkan/vulkan_ohos.h>
+#endif
+
+#endif /* !defined(VULKAN_H_) */
+
+{% else -%}
 #include <stddef.h>
 #include <stdint.h>
 
@@ -99,6 +212,7 @@
 {% endfor -%}
 {{ u.protect_end(group.protect) -}}
 {% endfor -%}
+{% endif -%}
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -144,6 +258,7 @@ struct _cl_context;
 struct _cl_event;
 
 {% endif %}
+{%- if not (fs.is_vulkan and external_headers) -%}
 {%- if fs.features | length > 0 -%}
 /* ---- Version feature guards ----------------------------------------------
    These mirror the upstream vulkan_core.h / gl.h definitions so that code
@@ -247,6 +362,7 @@ typedef {{ cmd.return_type }} (VKAPI_PTR *{{ cmd.pfn_type }})({{ cmd.params_str 
 {{- u.protect_end(group.protect) -}}
 {% endfor -%}
 {% endif %}
+{%- endif %}
 
 /* ---- Context struct ------------------------------------------------------
    Three anonymous unions give both indexed (array) and named (struct member)
@@ -340,10 +456,29 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 {{- u.protect_end(group.protect) -}}
 {%- endfor %}
 
-/* ---- Dispatch macros and IntelliSense prototypes -------------------------
-   Under __INTELLISENSE__ we expose real function declarations so IDEs can
-   provide parameter info and type checking.  In normal compilation the macros
-   dispatch directly through the global context struct. */
+/* ---- Dispatch ------------------------------------------------------------ */
+{% if fs.is_vulkan -%}
+{# Vulkan: force-inlined function wrappers that dispatch through the global
+   context struct.  Unlike #define macros, these don't pollute the preprocessor
+   namespace (avoids collisions with VMA, etc.).  Guarded by VK_NO_PROTOTYPES
+   so users who want raw PFN access can suppress them. #}
+#ifndef VK_NO_PROTOTYPES
+{% for group in fs.cmd_pfn_groups -%}
+{% if group.protect | length > 0 -%}
+#if defined({{ group.protect | join(") && defined(") }})
+{% endif -%}
+{% for cmd in group.items -%}
+GLOAM_FORCE_INLINE {{ cmd.return_type }} {{ cmd.name }}({{ cmd.params_str }}) {
+    {% if cmd.return_type != "void" %}return {% endif %}gloam_{{ fs.spec_name }}_context.{{ cmd.short_name }}({{ cmd.params | map(attribute="name") | join(", ") }});
+}
+{% endfor -%}
+{% if group.protect | length > 0 -%}
+#endif
+{% endif -%}
+{% endfor -%}
+#endif /* VK_NO_PROTOTYPES */
+{% else -%}
+{# GL/EGL/GLX/WGL: macro dispatch with IntelliSense prototypes for IDE support. #}
 #ifdef __INTELLISENSE__
 {% for group in fs.cmd_pfn_groups -%}
 {% if group.protect | length > 0 -%}
@@ -369,6 +504,7 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 {% endif -%}
 {% endfor -%}
 #endif /* __INTELLISENSE__ */
+{% endif -%}
 
 /* ---- API declarations ---------------------------------------------------- */
 

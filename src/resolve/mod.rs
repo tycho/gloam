@@ -302,6 +302,7 @@ fn resolve_feature_set(
                 pfn_type: c.pfn_type.clone(),
                 return_type: c.return_type.clone(),
                 params_str: c.params_str.clone(),
+                params: c.params.clone(),
             },
         )
     }));

@@ -153,7 +153,7 @@ pub struct Command {
     pub name_offset: u32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Param {
     pub type_raw: String,
     pub name: String,
@@ -244,6 +244,8 @@ pub struct CmdPfnEntry {
     pub pfn_type: String,
     pub return_type: String,
     pub params_str: String,
+    /// Individual parameters for inline function dispatch wrappers.
+    pub params: Vec<Param>,
 }
 
 // ---------------------------------------------------------------------------

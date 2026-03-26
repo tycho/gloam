@@ -44,6 +44,7 @@ pub fn generate(
         guard                 => format!("{}_H", stem.to_uppercase()),
         alias                 => args.alias,
         loader                => args.loader,
+        external_headers      => args.external_headers,
         preamble              => &preamble,
         fn_name_offsets       => &names.offsets,
         fn_name_offset_type   => names.offset_type,
@@ -58,7 +59,7 @@ pub fn generate(
         env.get_template("source.c.j2")?.render(&ctx)?,
     )?;
 
-    copy_auxiliary_headers(fs, &include_dir, use_fetch)?;
+    copy_auxiliary_headers(fs, &include_dir, use_fetch, args.external_headers)?;
 
     Ok(())
 }
@@ -109,10 +110,25 @@ impl FnNameLayout {
 /// found inside them.  This catches implicit dependencies like
 /// `vulkan_video_codecs_common.h` which are `#include`'d by other vk_video
 /// headers but never declared in the XML spec.
-fn copy_auxiliary_headers(fs: &FeatureSet, include_dir: &Path, use_fetch: bool) -> Result<()> {
+///
+/// When `external_headers` is true the Vulkan type-definition headers
+/// (vk_platform.h, vk_video/*) come from the system include path, so we
+/// skip bundling them.  xxhash.h is still needed by the generated .c.
+fn copy_auxiliary_headers(
+    fs: &FeatureSet,
+    include_dir: &Path,
+    use_fetch: bool,
+    external_headers: bool,
+) -> Result<()> {
     // xxhash.h is always needed by the generated .c (extension hash search).
     let mut queue: Vec<String> = std::iter::once("xxhash.h".to_string())
-        .chain(fs.required_headers.iter().cloned())
+        .chain(if external_headers && fs.is_vulkan {
+            // External-headers mode: Vulkan auxiliary headers (vk_platform.h,
+            // vk_video/*) are provided by the system Vulkan-Headers package.
+            Vec::new().into_iter()
+        } else {
+            fs.required_headers.clone().into_iter()
+        })
         .collect();
     let mut visited: HashSet<String> = HashSet::new();
 

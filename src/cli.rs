@@ -90,6 +90,13 @@ pub struct CArgs {
     /// Include a built-in dlopen/LoadLibrary convenience loader layer.
     #[arg(long)]
     pub loader: bool,
+
+    /// Use upstream Vulkan-Headers instead of embedding type definitions.
+    /// When set, the generated header includes <vulkan/vulkan_core.h> and
+    /// platform-specific headers rather than emitting its own types, enums,
+    /// and PFN typedefs.  Only meaningful for Vulkan builds.
+    #[arg(long)]
+    pub external_headers: bool,
 }
 
 impl Cli {
