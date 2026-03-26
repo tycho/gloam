@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3](https://github.com/tycho/gloam/compare/0.4.2...0.4.3) - 2026-03-26
+
+### Added
+
+- *(c)* implement GetInstanceVersion/GetLoadedInstance/GetLoadedDevice for Vulkan
+
 ## [0.4.2](https://github.com/tycho/gloam/compare/0.4.1...0.4.2) - 2026-03-26
 
 ### Fixed
