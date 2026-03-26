@@ -308,13 +308,17 @@ typedef struct {{ fs.context_name }} {
     /* Non-zero if gloam opened the library handle itself and is responsible
        for closing it in gloamVulkanFinalize / gloamLoaderUnload. */
     uint8_t gloam_loader_owns_handle;
-{% endif %}
+    /* The last VkInstance this context loaded entry points from */
+    VkInstance vk_loaded_instance;
+    /* The last VkDevice this context loaded entry points from */
+    VkDevice vk_loaded_device;
     /* Vulkan discovery-path metadata — used by gloamLoaderLoadVulkanContext to make
        repeated calls additive without re-enumerating already-cached scopes. */
     uint32_t vk_instance_version;    /* cached EnumerateInstanceVersion result        */
     uint32_t vk_device_version;      /* cached GetPhysicalDeviceProperties.apiVersion */
     uint8_t  vk_found_instance_exts; /* set once instance extensions enumerated       */
     uint8_t  vk_found_device_exts;   /* set once device extensions enumerated         */
+{% endif -%}
 } {{ fs.context_name }};
 
 /* Global context instance — a value, not a pointer, so the compiler knows
@@ -415,14 +419,18 @@ int  gloamVulkanInitialize(void *library_handle);
 {% endif -%}
 void gloamVulkanInitializeCustomContext({{ u.ctx_arg(', ') }}PFN_vkGetInstanceProcAddr getInstanceProcAddr);
 void gloamVulkanInitializeCustom(PFN_vkGetInstanceProcAddr getInstanceProcAddr);
+uint32_t gloamVulkanGetInstanceVersionContext({{ u.ctx_arg() }});
+uint32_t gloamVulkanGetInstanceVersion(void);
 int  gloamVulkanLoadInstanceContext({{ u.ctx_arg(', ') }}VkInstance instance, uint32_t api_version, uint32_t num_instance_extensions, const char *const *instance_extensions);
 int  gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version, uint32_t num_instance_extensions, const char *const *instance_extensions);
+VkInstance gloamVulkanGetLoadedInstanceContext({{ u.ctx_arg() }});
+VkInstance gloamVulkanGetLoadedInstance(void);
 int  gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device, VkPhysicalDevice physical_device, uint32_t num_device_extensions, const char *const *device_extensions);
 int  gloamVulkanLoadDevice(VkDevice device, VkPhysicalDevice physical_device, uint32_t num_device_extensions, const char *const *device_extensions);
-{% if loader -%}
+VkDevice gloamVulkanGetLoadedDeviceContext({{ u.ctx_arg() }});
+VkDevice gloamVulkanGetLoadedDevice(void);
 void gloamVulkanFinalizeContext({{ u.ctx_arg() }});
 void gloamVulkanFinalize(void);
-{% endif -%}
 {% endif %}
 {% endfor -%}
 

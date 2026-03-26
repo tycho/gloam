@@ -1036,6 +1036,7 @@ int gloamVulkanLoadInstanceContext({{ u.ctx_arg(', ') }}VkInstance instance,
 {% if alias and fs.alias_pairs | length > 0 %}
     gloam_resolve_aliases_{{ fs.spec_name }}(context);
 {% endif %}
+    context->vk_loaded_instance = instance;
     GLOAM_UNUSED(num_instance_extensions);
     GLOAM_UNUSED(instance_extensions);
     return 1;
@@ -1090,6 +1091,7 @@ int gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device,
 {% if alias and fs.alias_pairs | length > 0 %}
     gloam_resolve_aliases_{{ fs.spec_name }}(context);
 {% endif %}
+    context->vk_loaded_device = device;
     GLOAM_UNUSED(num_device_extensions);
     GLOAM_UNUSED(device_extensions);
     return 1;
@@ -1103,19 +1105,54 @@ int gloamVulkanLoadDevice(VkDevice device,
         physical_device, num_device_extensions, device_extensions);
 }
 
-{% if loader %}
+uint32_t gloamGetInstanceVersionContext({{ u.ctx_arg() }})
+{
+#if defined(VK_VERSION_1_1)
+	uint32_t apiVersion = 0;
+	if (context->EnumerateInstanceVersion && context->EnumerateInstanceVersion(&apiVersion) == VK_SUCCESS)
+		return apiVersion;
+#endif
+
+	if (context->CreateInstance)
+		return VK_API_VERSION_1_0;
+
+	return 0;
+}
+
+uint32_t gloamGetInstanceVersion(void)
+{
+	return gloamGetInstanceVersionContext(&gloam_{{ fs.spec_name }}_context);
+}
+
+VkDevice gloamVulkanGetLoadedDeviceContext({{ u.ctx_arg() }}) {
+	return context->vk_loaded_device;
+}
+
+VkDevice gloamVulkanGetLoadedDevice(void) {
+	return gloamVulkanGetLoadedDeviceContext(&gloam_{{ fs.spec_name }}_context);
+}
+
+VkInstance gloamVulkanGetLoadedInstanceContext({{ u.ctx_arg() }}) {
+	return context->vk_loaded_instance;
+}
+
+VkInstance gloamVulkanGetLoadedInstance(void) {
+	return gloamVulkanGetLoadedInstanceContext(&gloam_{{ fs.spec_name }}_context);
+}
+
 /* gloamVulkanFinalizeContext — close library handle if gloam owns it, zero
  * the context. */
 void gloamVulkanFinalizeContext({{ u.ctx_arg() }}) {
+{% if loader %}
     if (context->gloam_loader_owns_handle && context->gloam_loader_handle)
         gloam_dlclose(context->gloam_loader_handle);
+{% endif %}
     memset(context, 0, sizeof(*context));
 }
 
 void gloamVulkanFinalize(void) {
     gloamVulkanFinalizeContext(&gloam_{{ fs.spec_name }}_context);
 }
-{% endif %}
 {% endif %}
 {% endfor %}{# end for api in fs.apis #}
 
