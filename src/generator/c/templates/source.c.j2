@@ -1105,7 +1105,7 @@ int gloamVulkanLoadDevice(VkDevice device,
         physical_device, num_device_extensions, device_extensions);
 }
 
-uint32_t gloamGetInstanceVersionContext({{ u.ctx_arg() }})
+uint32_t gloamVulkanGetInstanceVersionContext({{ u.ctx_arg() }})
 {
 #if defined(VK_VERSION_1_1)
 	uint32_t apiVersion = 0;
@@ -1119,9 +1119,9 @@ uint32_t gloamGetInstanceVersionContext({{ u.ctx_arg() }})
 	return 0;
 }
 
-uint32_t gloamGetInstanceVersion(void)
+uint32_t gloamVulkanGetInstanceVersion(void)
 {
-	return gloamGetInstanceVersionContext(&gloam_{{ fs.spec_name }}_context);
+	return gloamVulkanGetInstanceVersionContext(&gloam_{{ fs.spec_name }}_context);
 }
 
 VkDevice gloamVulkanGetLoadedDeviceContext({{ u.ctx_arg() }}) {
