@@ -106,7 +106,10 @@ fn resolve_literal_values(values: &mut [FlatEnum]) {
     // Build a name→literal map as we go (topo order guarantees targets are resolved first).
     let mut literals: HashMap<String, String> = HashMap::new();
     for v in values.iter_mut() {
-        let resolved = literals.get(&v.value).cloned().unwrap_or_else(|| v.value.clone());
+        let resolved = literals
+            .get(&v.value)
+            .cloned()
+            .unwrap_or_else(|| v.value.clone());
         v.literal_value = resolved.clone();
         literals.insert(v.name.clone(), resolved);
     }

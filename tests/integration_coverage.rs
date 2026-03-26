@@ -104,11 +104,7 @@ fn collect_files(root: &Path) -> Vec<std::path::PathBuf> {
     files
 }
 
-fn collect_files_recursive(
-    base: &Path,
-    dir: &Path,
-    out: &mut Vec<std::path::PathBuf>,
-) {
+fn collect_files_recursive(base: &Path, dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -147,10 +143,7 @@ fn assert_deterministic(args: &[&str]) {
     let files_a = collect_files(dir_a.path());
     let files_b = collect_files(dir_b.path());
 
-    assert_eq!(
-        files_a, files_b,
-        "file lists differ between runs"
-    );
+    assert_eq!(files_a, files_b, "file lists differ between runs");
     assert!(!files_a.is_empty(), "no files generated");
 
     let path_a = dir_a.path().to_str().unwrap();
@@ -164,7 +157,8 @@ fn assert_deterministic(args: &[&str]) {
         let content_a = normalize_for_determinism(&raw_a, path_a);
         let content_b = normalize_for_determinism(&raw_b, path_b);
         assert_eq!(
-            content_a, content_b,
+            content_a,
+            content_b,
             "file {} differs between runs (after normalizing out-path)",
             rel.display()
         );
@@ -452,13 +446,7 @@ fn unknown_api_name_fails() {
 fn empty_api_value_fails() {
     let dir = TempDir::new().unwrap();
     gloam()
-        .args([
-            "--api",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
+        .args(["--api", "", "--out-path", dir.path().to_str().unwrap(), "c"])
         .assert()
         .failure();
 }

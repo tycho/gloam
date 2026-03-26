@@ -232,10 +232,7 @@ fn main() {
 
     // Expose the target triple to integration tests via env!("TARGET").
     // The cc crate needs this to find the correct compiler.
-    println!(
-        "cargo:rustc-env=TARGET={}",
-        env::var("TARGET").unwrap()
-    );
+    println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let dest = out_dir.join("build_info.rs");
