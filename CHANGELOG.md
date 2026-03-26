@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/tycho/gloam/compare/0.4.0...0.4.1) - 2026-03-26
+
+### Added
+
+- *(tests)* add better integration test coverage
+
+### Fixed
+
+- *(c)* fix warnings about APIENTRY redefinition and implicit int-to-char conversion
+- *(c)* ensure we can compile on MSVC in pre-C23 mode
+- *(c)* compatible with compiling under Cygwin
+
+### Other
+
+- run 'cargo fmt'
+- *(doc)* improve README and add contribution guides
+
 ## [0.4.0](https://github.com/tycho/gloam/compare/0.3.0...0.4.0) - 2026-03-24
 
 ### Added
