@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/tycho/gloam/compare/0.4.0...0.4.1) - 2026-03-26
+
+### Added
+
+- *(tests)* add better integration test coverage
+
+### Fixed
+
+- *(c)* Visual Studio warnings about APIENTRY redefinition and implicit int-to-char conversion
+- *(c)* build on Visual Studio in C11 mode (enum aliasing)
+- *(c)* 'cargo test' from within Cygwin
+
+### Other
+
+- *(doc)* improve README and add contribution guides
+
 ## [0.4.0](https://github.com/tycho/gloam/compare/0.3.0...0.4.0) - 2026-03-24
 
 ### Added
