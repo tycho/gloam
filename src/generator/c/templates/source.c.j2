@@ -2,28 +2,29 @@
 {{ preamble }}
 {% if fs.spec_name == "wgl" %}
 #include <gloam/gl.h>
-{% endif %}
+{%- endif %}
 #include <gloam/{{ stem }}.h>
 {% if fs.spec_name == "glx" %}
 #ifdef GLOAM_PLATFORM_LINUX
-{% elif fs.spec_name == "wgl" %}
+{%- elif fs.spec_name == "wgl" %}
 #ifdef GLOAM_PLATFORM_WINDOWS
-{% endif %}
-
-#include <stdlib.h>  /* calloc, free    */
-#include <stddef.h>
-#include <stdio.h>   /* sscanf          */
-#include <string.h>  /* strlen, strncmp */
-{% if loader -%}
-#ifdef GLOAM_PLATFORM_WINDOWS
+{%- endif %}
+{%- if loader and fs.spec_name != "wgl" %}
+#if defined(__CYGWIN__) || defined(_WIN32)
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
 #  endif
+#  undef APIENTRY       /* fix macro redefinition warning */
 #  include <windows.h>  /* LoadLibrary, GetProcAddress */
 #else
 #  include <dlfcn.h> /* dlopen, dlsym, dlclose */
 #endif
 {%- endif %}
+
+#include <stdlib.h>  /* calloc, free    */
+#include <stddef.h>
+#include <stdio.h>   /* sscanf          */
+#include <string.h>  /* strlen, strncmp */
 
 {% if fs.extensions | length > 0 -%}
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64)
@@ -190,7 +191,7 @@ static void gloam_vk_apply_version({{ u.ctx_arg(', ') }}uint32_t api_version) {
     const uint16_t version_value = (uint16_t)(
         (((api_version >> 22) & 0x7fu) << 8) | ((api_version >> 12) & 0x3ffu));
 {% for feat in fs.features %}
-    context->{{ feat.short_name }} = (version_value >= {{ feat.packed | hex4 }});
+    context->{{ feat.short_name }} = (unsigned char)(version_value >= {{ feat.packed | hex4 }});
 {%- endfor %}
 }
 
@@ -502,7 +503,7 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg(', ')
        when this call adds device extensions. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_{{ api }}); ++i) {
         const uint16_t extIdx = kExtIdx_{{ api }}[i];
-        context->extArray[extIdx] |= gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
+        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
     }
 
     free(exts);
@@ -518,7 +519,7 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg() }}{
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_{{ api }}); ++i) {
         const uint16_t extIdx = kExtIdx_{{ api }}[i];
-        context->extArray[extIdx] = gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
+        context->extArray[extIdx] = (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
     }
 
     free(exts);
@@ -549,7 +550,7 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }}) {
     GLOAM_IMPL_UTIL_SSCANF(version, "%d.%d", &major, &minor);
     version_value = (unsigned short)((major << 8) | minor);
 {% for feat in fs.features | selectattr("api", "equalto", api) %}
-    context->{{ feat.short_name }} = (version_value >= {{ feat.packed | hex4 }});
+    context->{{ feat.short_name }} = (unsigned char)(version_value >= {{ feat.packed | hex4 }});
 {%- endfor %}
 
     return (int)version_value;
@@ -570,11 +571,11 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}Dis
     }
     context->QueryVersion(*display, &major, &minor);
     version_value = (major << 8U) | minor;
-    context->VERSION_1_0 = version_value >= 0x0100;
-    context->VERSION_1_1 = version_value >= 0x0101;
-    context->VERSION_1_2 = version_value >= 0x0102;
-    context->VERSION_1_3 = version_value >= 0x0103;
-    context->VERSION_1_4 = version_value >= 0x0104;
+    context->VERSION_1_0 = (unsigned char)(version_value >= 0x0100);
+    context->VERSION_1_1 = (unsigned char)(version_value >= 0x0101);
+    context->VERSION_1_2 = (unsigned char)(version_value >= 0x0102);
+    context->VERSION_1_3 = (unsigned char)(version_value >= 0x0103);
+    context->VERSION_1_4 = (unsigned char)(version_value >= 0x0104);
     return version_value;
 }
 {%- elif fs.spec_name == "vk" -%}
@@ -629,7 +630,7 @@ static int gloam_vk_find_core({{ u.ctx_arg(', ') }}VkPhysicalDevice physical_dev
 
     version_value = (uint16_t)((major << 8) | minor);
 {% for feat in fs.features %}
-    context->{{ feat.short_name }} = (version_value >= {{ feat.packed | hex4 }});
+    context->{{ feat.short_name }} = (unsigned char)(version_value >= {{ feat.packed | hex4 }});
 {%- endfor %}
 
     return (int)version_value;
@@ -642,7 +643,7 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }}) {
     unsigned short version_value;
     version_value = (unsigned short)((major << 8) | minor);
 {% for feat in fs.features | selectattr("api", "equalto", api) %}
-    context->{{ feat.short_name }} = (version_value >= {{ feat.packed | hex4 }});
+    context->{{ feat.short_name }} = (unsigned char)(version_value >= {{ feat.packed | hex4 }});
 {%- endfor %}
 
     return (int)version_value;
@@ -662,7 +663,7 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}EGL
     GLOAM_IMPL_UTIL_SSCANF(version, "%d.%d", &major, &minor);
     version_value = (unsigned short)((major << 8) | minor);
 {% for feat in fs.features | selectattr("api", "equalto", api) %}
-    context->{{ feat.short_name }} = (version_value >= {{ feat.packed | hex4 }});
+    context->{{ feat.short_name }} = (unsigned char)(version_value >= {{ feat.packed | hex4 }});
 {%- endfor %}
 
     return (int)version_value;
@@ -876,7 +877,7 @@ static int gloam_vk_apply_extensions_{{ api }}({{ u.ctx_arg(', ') }}
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_{{ api }}); ++i) {
         const uint16_t extIdx = kExtIdx_{{ api }}[i];
-        context->extArray[extIdx] |= gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
+        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
     }
 
     free(exts);

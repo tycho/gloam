@@ -69,12 +69,14 @@
 #include <gloam/gl.h>
 {% elif fs.spec_name == "wgl" %}
 #ifdef GLOAM_PLATFORM_WINDOWS
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 
 #include <gloam/gl.h>
+
 /* These are defined in wingdi.h and we're redefining them. */
 #undef wglUseFontBitmaps
 #undef wglUseFontOutlines
@@ -84,20 +86,19 @@
 
 {% for hdr in fs.required_headers -%}
 #include "{{ hdr }}"
-{% endfor -%}
-
+{% endfor %}
 {# Platform / WSI system headers: include-category types whose protection
    guards were inferred at generation time from which extensions require them.
    An empty protect list means the include is unconditional.
    Consecutive types sharing the same guard are coalesced into a single
-   #ifdef/#endif block by the resolver. #}
-{%- for group in fs.include_type_groups -%}
+   #ifdef/#endif block by the resolver. -#}
+{% for group in fs.include_type_groups -%}
 {{ u.protect_begin(group.protect) -}}
 {% for type in group.items -%}
 {{ type.raw_c }}
 {% endfor -%}
 {{ u.protect_end(group.protect) -}}
-{% endfor %}
+{% endfor -%}
 #ifdef __cplusplus
 extern "C" {
 #endif
