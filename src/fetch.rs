@@ -155,7 +155,9 @@ fn fetch_spec(spec_name: &str) -> Result<SpecSources> {
 }
 
 fn auxiliary_url(path: &str) -> Option<String> {
-    if path.starts_with("vk_video/") || path == "vk_platform.h" {
+    if path.starts_with("vk_video/") {
+        Some(format!("{}{}", BASE_VK_HEADERS, path))
+    } else if path == "vk_platform.h" {
         Some(format!("{}vulkan/{}", BASE_VK_HEADERS, path))
     } else if path.starts_with("KHR/") || path.starts_with("EGL/") {
         Some(format!("{}{}", BASE_EGL, path))
@@ -173,4 +175,82 @@ fn fetch_text(url: &str) -> Result<String> {
         .error_for_status()
         .with_context(|| format!("HTTP error from {}", url))?;
     Ok(resp.text()?)
+}
+
+#[cfg(all(test, feature = "fetch"))]
+mod tests {
+    use super::*;
+
+    /// Collect every remote URL that `--fetch` mode may request, then HEAD each
+    /// one to verify it still resolves.  This catches stale base-paths and
+    /// renamed upstream files before they break real generation runs.
+    #[test]
+    fn remote_urls_are_reachable() {
+        // -- spec XMLs (fetch_spec) ------------------------------------------
+        let spec_urls = vec![
+            format!("{}gl.xml", BASE_GL),
+            format!("{}glx.xml", BASE_GL),
+            format!("{}wgl.xml", BASE_GL),
+            format!("{}egl.xml", BASE_EGL),
+            format!("{}vk.xml", BASE_VK),
+        ];
+
+        // -- supplemental XMLs -----------------------------------------------
+        let supplemental_urls = vec![
+            GLSL_EXTS_URL.to_string(),
+            format!("{}gl_angle_ext.xml", BASE_ANGLE),
+            format!("{}egl_angle_ext.xml", BASE_ANGLE),
+        ];
+
+        // -- auxiliary headers (auxiliary_url) --------------------------------
+        // One representative URL per branch in auxiliary_url(), plus every
+        // bundled vk_video header since those are dictated by the Vulkan spec
+        // and new ones appear (or move) over time.
+        let auxiliary_urls: Vec<String> = vec![
+            "vk_platform.h",
+            "KHR/khrplatform.h",
+            "EGL/eglplatform.h",
+            "xxhash.h",
+            "vk_video/vulkan_video_codecs_common.h",
+            "vk_video/vulkan_video_codec_h264std.h",
+            "vk_video/vulkan_video_codec_h264std_decode.h",
+            "vk_video/vulkan_video_codec_h264std_encode.h",
+            "vk_video/vulkan_video_codec_h265std.h",
+            "vk_video/vulkan_video_codec_h265std_decode.h",
+            "vk_video/vulkan_video_codec_h265std_encode.h",
+            "vk_video/vulkan_video_codec_av1std.h",
+            "vk_video/vulkan_video_codec_av1std_decode.h",
+            "vk_video/vulkan_video_codec_av1std_encode.h",
+            "vk_video/vulkan_video_codec_vp9std.h",
+            "vk_video/vulkan_video_codec_vp9std_decode.h",
+        ]
+        .into_iter()
+        .map(|p| auxiliary_url(p).expect(&format!("no URL mapping for '{}'", p)))
+        .collect();
+
+        let all_urls = spec_urls
+            .into_iter()
+            .chain(supplemental_urls)
+            .chain(auxiliary_urls);
+
+        let client = reqwest::blocking::Client::new();
+        let mut failures = Vec::new();
+
+        for url in all_urls {
+            let result = client
+                .head(&url)
+                .send()
+                .and_then(|r| r.error_for_status());
+
+            if let Err(e) = result {
+                failures.push(format!("  {} — {}", url, e));
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "the following remote URLs are unreachable:\n{}",
+            failures.join("\n")
+        );
+    }
 }
