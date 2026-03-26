@@ -202,6 +202,7 @@ fn build_env() -> Result<Environment<'static>> {
     env.add_filter("spec_display", filter_spec_display);
     env.add_filter("c_ident", filter_c_ident);
     env.add_filter("vk_max_enum_name", filter_enum_max_name);
+    env.add_filter("ull", filter_ull);
 
     Ok(env)
 }
@@ -239,6 +240,22 @@ fn filter_c_ident(value: Value) -> String {
     let s = value.as_str().unwrap_or("");
     if s.starts_with(|c: char| c.is_ascii_digit()) {
         format!("_{s}")
+    } else {
+        s.to_string()
+    }
+}
+
+/// Append `ULL` suffix to a value if it is a numeric literal (decimal, hex,
+/// or negative).  Alias references (identifiers) are left unchanged.
+/// Used for 64-bit enum constants in the pre-C23 `#define` path.
+fn filter_ull(value: Value) -> String {
+    let s = value.as_str().unwrap_or("");
+    let trimmed = s.strip_prefix('-').unwrap_or(s);
+    let is_numeric = trimmed.starts_with(|c: char| c.is_ascii_digit())
+        || trimmed.starts_with("0x")
+        || trimmed.starts_with("0X");
+    if is_numeric {
+        format!("{s}ULL")
     } else {
         s.to_string()
     }
@@ -401,5 +418,34 @@ mod tests {
         assert_eq!(filter_hex4(Value::from(0x0303_i64)), "0x0303");
         assert_eq!(filter_hex4(Value::from(0x0100_i64)), "0x0100");
         assert_eq!(filter_hex4(Value::from(0_i64)), "0x0000");
+    }
+
+    // ---- filter_ull ----
+
+    fn ull(s: &str) -> String {
+        filter_ull(Value::from(s))
+    }
+
+    #[test]
+    fn ull_appends_to_decimal() {
+        assert_eq!(ull("0"), "0ULL");
+        assert_eq!(ull("42"), "42ULL");
+    }
+
+    #[test]
+    fn ull_appends_to_hex() {
+        assert_eq!(ull("0x0000000000000001"), "0x0000000000000001ULL");
+        assert_eq!(ull("0X1F"), "0X1FULL");
+    }
+
+    #[test]
+    fn ull_appends_to_negative() {
+        assert_eq!(ull("-1"), "-1ULL");
+    }
+
+    #[test]
+    fn ull_leaves_identifier_unchanged() {
+        assert_eq!(ull("VK_PIPELINE_STAGE_2_NONE"), "VK_PIPELINE_STAGE_2_NONE");
+        assert_eq!(ull("VK_ACCESS_2_NONE_KHR"), "VK_ACCESS_2_NONE_KHR");
     }
 }

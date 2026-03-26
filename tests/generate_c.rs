@@ -4,7 +4,6 @@
 //! They also attempt a C compile step if `cc` is available on PATH.
 
 use std::path::Path;
-use std::process::Command;
 
 use tempfile::TempDir;
 
@@ -16,61 +15,60 @@ fn gloam() -> assert_cmd::Command {
     assert_cmd::Command::cargo_bin("gloam").expect("gloam binary not found")
 }
 
-/// Attempt to compile a generated C source with the system C compiler.
-/// Silently skips if `cc` is not on PATH (expected in CI, optional locally).
+/// Attempt to compile generated C sources with the system C compiler.
+/// Uses the `cc` crate for compiler detection (handles MSVC, GCC, Clang,
+/// cross-compilation toolchains, CC env override, etc.).
+/// Silently skips if no compiler is available.
 fn try_compile_c(out: &Path) {
-    // Find a .c file in out/src/.
     let src_dir = out.join("src");
-    let c_file = match std::fs::read_dir(&src_dir).ok().and_then(|mut d| {
-        d.find(|e| {
-            e.as_ref()
-                .is_ok_and(|e| e.path().extension() == Some("c".as_ref()))
-        })
-    }) {
-        Some(Ok(entry)) => entry.path(),
-        _ => return, // nothing to compile
-    };
+    let c_files: Vec<_> = std::fs::read_dir(&src_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension() == Some("c".as_ref()))
+        .collect();
 
-    let cc = match find_cc() {
-        Some(c) => c,
-        None => {
-            eprintln!("compile check skipped: no C compiler on PATH");
-            return;
+    if c_files.is_empty() {
+        return;
+    }
+
+    // The cc crate expects TARGET/HOST env vars (normally set by Cargo during
+    // build.rs).  In test context they're absent, so provide them.
+    let target = env!("TARGET");
+    let mut build = cc::Build::new();
+    build
+        .target(target)
+        .host(target)
+        .opt_level(0)
+        .out_dir(&src_dir)
+        .include(out.join("include"))
+        .warnings(true)
+        .cargo_warnings(false)
+        .std("c11")
+        .flag_if_supported("-Wno-unused-function");
+
+    for f in &c_files {
+        build.file(f);
+    }
+
+    if let Err(e) = build.try_compile("gloam_test") {
+        // Distinguish "no compiler" from "compilation failed".
+        let msg = e.to_string();
+        if msg.contains("Failed to find tool")
+            || msg.contains("not found")
+            || msg.contains("couldn't find")
+        {
+            eprintln!("compile check skipped: no C compiler found");
+        } else {
+            panic!(
+                "generated C files in {} failed to compile: {}",
+                src_dir.display(),
+                e
+            );
         }
-    };
-
-    let status = Command::new(cc)
-        .args([
-            "-c",
-            "-std=c11",
-            "-Wall",
-            "-Wno-unused-function",
-            "-o",
-            "/dev/null",
-            &format!("-I{}", out.join("include").display()),
-            c_file.to_str().unwrap(),
-        ])
-        .status()
-        .expect("failed to spawn C compiler");
-
-    assert!(
-        status.success(),
-        "generated C file {} failed to compile",
-        c_file.display()
-    );
-}
-
-fn find_cc() -> Option<&'static str> {
-    ["cc", "gcc", "clang"]
-        .iter()
-        .find(|&candidate| {
-            Command::new(candidate)
-                .arg("--version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        })
-        .map(|v| v as _)
+    }
 }
 
 fn assert_c_output_exists(out: &Path, stem: &str) {

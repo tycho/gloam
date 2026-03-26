@@ -51,6 +51,14 @@
 #  define GLOAM_PLATFORM_LINUX 1
 #endif
 #endif /* GLOAM_PLATFORM_DETECTED_ */
+
+#ifndef GLOAM_HAS_ENUM_BASE_TYPE
+#if defined(__cplusplus) || (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L)
+#  define GLOAM_HAS_ENUM_BASE_TYPE 1
+#else
+#  define GLOAM_HAS_ENUM_BASE_TYPE 0
+#endif
+#endif
 {% if fs.spec_name == "glx" %}
 #ifdef GLOAM_PLATFORM_LINUX
 
@@ -177,12 +185,8 @@ struct _cl_event;
 /* ---- Vulkan enum groups -------------------------------------------------- */
 {% for group in fs.enum_groups %}
 {%- if group.bitwidth == 64 %}
-/* {{ group.name }} — 64-bit bitmask.
-   C++/C23: emitted as an enum with explicit underlying type so all values
-   are strongly typed and the tag name is valid for typedef aliases.
-   Pre-C23 C: emitted as typedef uint64_t + static const, since C99/C11 do
-   not support fixed underlying types for enums. */
-#if defined(__cplusplus) || (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L)
+/* {{ group.name }} — 64-bit; uses enum : uint64_t in C++/C23, static const otherwise. */
+#if GLOAM_HAS_ENUM_BASE_TYPE
 typedef enum {{ group.name }} : uint64_t {
 {%- for val in group.values %}
     {{ val.name }} = {{ val.value }}{% if not loop.last %},{% endif %}{% if val.comment %} /* {{ val.comment }} */{% endif %}
@@ -191,7 +195,7 @@ typedef enum {{ group.name }} : uint64_t {
 #else
 typedef uint64_t {{ group.name }};
 {%- for val in group.values %}
-static const {{ group.name }} {{ val.name | rjust(48) }} = {{ val.value }};{% if val.comment %} /* {{ val.comment }} */{% endif %}
+static const {{ group.name }} {{ val.name | rjust(48) }} = {{ val.literal_value | ull }};{% if val.comment %} /* {{ val.comment }} */{% endif %}
 {%- endfor %}
 #endif
 

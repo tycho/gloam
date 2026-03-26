@@ -173,6 +173,10 @@ pub struct TypeDef {
 pub struct FlatEnum {
     pub name: String,
     pub value: String,
+    /// Always a numeric literal, even for aliases.  Used in the pre-C23
+    /// `static const` path where referencing another variable is not a
+    /// constant expression on some compilers (MSVC C2099).
+    pub literal_value: String,
     pub comment: String,
     /// Platform protection macros.  Empty = unconditional.
     pub protect: Vec<String>,

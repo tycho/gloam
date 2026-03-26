@@ -35,6 +35,7 @@ pub(super) fn build_flat_enums(
                 .unwrap_or_default();
             Some(FlatEnum {
                 name: e.name.clone(),
+                literal_value: value.to_string(),
                 value: value.to_string(),
                 comment: e.comment.clone(),
                 protect,
@@ -78,20 +79,37 @@ pub(super) fn build_enum_groups(raw: &RawSpec) -> Vec<EnumGroup> {
                     Some(FlatEnum {
                         name: v.name.clone(),
                         value: val.to_string(),
+                        literal_value: String::new(), // resolved below
                         comment: v.comment.clone(),
                         protect: vec![],
                     })
                 })
                 .collect();
 
+            let mut sorted = sort_enum_values(raw_values);
+            resolve_literal_values(&mut sorted);
+
             EnumGroup {
                 name: g.name.clone(),
                 is_bitmask: false,
                 bitwidth: g.bitwidth.unwrap_or(32),
-                values: sort_enum_values(raw_values),
+                values: sorted,
             }
         })
         .collect()
+}
+
+/// Fill `literal_value` for each entry.  For numeric literals, it's the value
+/// itself.  For aliases (value is another enum name), look up the target's
+/// `literal_value`.  Assumes topological order (canonical before alias).
+fn resolve_literal_values(values: &mut [FlatEnum]) {
+    // Build a name→literal map as we go (topo order guarantees targets are resolved first).
+    let mut literals: HashMap<String, String> = HashMap::new();
+    for v in values.iter_mut() {
+        let resolved = literals.get(&v.value).cloned().unwrap_or_else(|| v.value.clone());
+        v.literal_value = resolved.clone();
+        literals.insert(v.name.clone(), resolved);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +194,7 @@ mod tests {
         FlatEnum {
             name: name.to_string(),
             value: value.to_string(),
+            literal_value: String::new(),
             comment: String::new(),
             protect: vec![],
         }
