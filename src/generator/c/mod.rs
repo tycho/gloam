@@ -187,6 +187,8 @@ fn output_stem(fs: &FeatureSet) -> String {
 fn build_env() -> Result<Environment<'static>> {
     let mut env = Environment::new();
 
+    env.set_keep_trailing_newline(true);
+
     env.add_template("utils.j2", include_str!("templates/utils.j2"))?;
     env.add_template("impl_util.j2", include_str!("templates/impl_util.j2"))?;
     env.add_template("hash_search.j2", include_str!("templates/hash_search.j2"))?;
