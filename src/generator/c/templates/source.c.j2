@@ -1026,7 +1026,7 @@ int gloamVulkanLoadInstanceContext({{ u.ctx_arg(', ') }}VkInstance instance,
             gloam_vk_load_pfn_range_instance(context, gipa, instance, r->start, r->count);
     }
 {% if fs.extensions | length > 0 and subset | length > 0 %}
-    /* Load PFNs for every enabled instance extension. */
+    /* Load PFNs for every enabled extension (all scopes). */
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_{{ api }}); ++i) {
         const GloamPfnRange_t *r = &kExtPfnRanges_{{ api }}[i];
         if (context->extArray[r->extension])
@@ -1049,9 +1049,15 @@ int gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version,
         api_version, num_instance_extensions, instance_extensions);
 }
 
-/* gloamVulkanLoadDeviceContext — Phase 2: load Device-scope PFNs via
- * vkGetDeviceProcAddr, bypassing the loader trampoline.  Non-Device slots
- * are not touched so Instance-loaded pointers are preserved.
+/* gloamVulkanLoadDeviceContext — Phase 2: load PFNs for device extensions and
+ * reload Device-scope core PFNs via vkGetDeviceProcAddr (bypassing the loader
+ * trampoline).
+ *
+ * Device extensions may contain Instance-scope commands (e.g.
+ * vkGetPhysicalDevice* functions in VK_KHR_fragment_shading_rate).  These are
+ * loaded via vkGetInstanceProcAddr since vkGetDeviceProcAddr cannot resolve
+ * them.  Device-scope commands are then overwritten with the fast path from
+ * vkGetDeviceProcAddr.
  *
  * Updates featArray from the device's api_version.  Sets extArray for enabled
  * device extensions.  Runs alias resolution.  Returns 1 on success. */
@@ -1061,10 +1067,12 @@ int gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device,
                                   const char *const *device_extensions) {
     uint32_t i;
     VkPhysicalDeviceProperties props;
+    PFN_vkGetInstanceProcAddr gipa;
     PFN_vkGetDeviceProcAddr gdpa;
 
     if (!context->GetDeviceProcAddr)
         return 0;
+    gipa = context->GetInstanceProcAddr;
     gdpa = context->GetDeviceProcAddr;
 
     context->GetPhysicalDeviceProperties(physical_device, &props);
@@ -1081,11 +1089,16 @@ int gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device,
             gloam_vk_load_pfn_range_device(context, gdpa, device, r->start, r->count);
     }
 {% if fs.extensions | length > 0 and subset | length > 0 %}
-    /* Reload PFNs for enabled device extensions — only Device-scope slots. */
+    /* Load PFNs for every enabled extension (all scopes).  Instance-scope
+       commands are loaded via vkGetInstanceProcAddr; Device-scope commands
+       are then overwritten with the device-specific fast path. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_{{ api }}); ++i) {
         const GloamPfnRange_t *r = &kExtPfnRanges_{{ api }}[i];
-        if (context->extArray[r->extension])
+        if (context->extArray[r->extension]) {
+            gloam_vk_load_pfn_range_instance(context, gipa,
+                context->vk_loaded_instance, r->start, r->count);
             gloam_vk_load_pfn_range_device(context, gdpa, device, r->start, r->count);
+        }
     }
 {% endif -%}
 {% if alias and fs.alias_pairs | length > 0 %}
