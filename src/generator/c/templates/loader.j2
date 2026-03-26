@@ -11,7 +11,7 @@
    concurrently. */
 struct gloam_gl_load_userptr {
     void *handle;
-#if defined(_WIN32) || defined(__CYGWIN__)
+#if defined(GLOAM_PLATFORM_WINDOWS)
     /* wglGetProcAddress is WINAPI (__stdcall); must not be called through a
        plain cdecl function pointer. */
     GloamAPIProc (WINAPI *wgl_get_proc)(const char *);
@@ -29,7 +29,7 @@ static GloamAPIProc gloam_gl_get_proc(const char *name) {
     if (!u->handle) return NULL;
 #if defined(__APPLE__) || defined(__HAIKU__)
     result = (GloamAPIProc)gloam_dlsym(u->handle, name);
-#elif defined(_WIN32) || defined(__CYGWIN__)
+#elif defined(GLOAM_PLATFORM_WINDOWS)
     if (u->wgl_get_proc) result = u->wgl_get_proc(name);
     if (!result)         result = (GloamAPIProc)gloam_dlsym(u->handle, name);
 #else
@@ -55,7 +55,7 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}) {
     static const char * const kLibNames[] = {
 #if defined(__APPLE__)
         "libGLESv2.dylib",
-#elif defined(_WIN32) || defined(__CYGWIN__)
+#elif defined(GLOAM_PLATFORM_WINDOWS)
         "GLESv2.dll", "libGLESv2.dll",
 #else
         "libGLESv2.so.2", "libGLESv2.so",
@@ -68,12 +68,9 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}) {
         "/Library/Frameworks/OpenGL.framework/OpenGL",
         "/System/Library/Frameworks/OpenGL.framework/OpenGL",
         "/System/Library/Frameworks/OpenGL.framework/Versions/Current/OpenGL",
-#elif defined(_WIN32) || defined(__CYGWIN__)
+#elif defined(GLOAM_PLATFORM_WINDOWS)
         "opengl32.dll",
 #else
-#  if defined(__CYGWIN__)
-        "libGL-1.so",
-#  endif
         "libGL.so.1",
         "libGL.so",
 #endif
@@ -87,7 +84,7 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}) {
     if (!context->gloam_loader_handle) return 0;
 
     gloam_gl_load_state.handle = context->gloam_loader_handle;
-#if defined(_WIN32) || defined(__CYGWIN__)
+#if defined(GLOAM_PLATFORM_WINDOWS)
     gloam_gl_load_state.wgl_get_proc =
         (GloamAPIProc (WINAPI *)(const char *))
             gloam_dlsym(context->gloam_loader_handle, "wglGetProcAddress");
@@ -140,7 +137,7 @@ void gloamLoaderReset{{ api | api_display }}(void) {
 static const char * const gloam_egl_lib_names[] = {
 #if defined(__APPLE__)
     "libEGL.dylib",
-#elif defined(_WIN32) || defined(__CYGWIN__)
+#elif defined(GLOAM_PLATFORM_WINDOWS)
     "libEGL.dll", "EGL.dll",
 #else
     "libEGL.so.1", "libEGL.so",

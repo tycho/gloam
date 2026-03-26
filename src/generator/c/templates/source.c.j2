@@ -1,19 +1,21 @@
 {% import "utils.j2" as u with context -%}
 {{ preamble }}
-{% if fs.spec_name == "glx" %}
-#ifdef __linux
-{% elif fs.spec_name == "wgl" %}
-#ifdef _WIN32
+{% if fs.spec_name == "wgl" %}
 #include <gloam/gl.h>
 {% endif %}
 #include <gloam/{{ stem }}.h>
+{% if fs.spec_name == "glx" %}
+#ifdef GLOAM_PLATFORM_LINUX
+{% elif fs.spec_name == "wgl" %}
+#ifdef GLOAM_PLATFORM_WINDOWS
+{% endif %}
 
 #include <stdlib.h>  /* calloc, free    */
 #include <stddef.h>
 #include <stdio.h>   /* sscanf          */
 #include <string.h>  /* strlen, strncmp */
 {% if loader -%}
-#ifdef _WIN32
+#ifdef GLOAM_PLATFORM_WINDOWS
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
 #  endif
@@ -57,7 +59,7 @@ typedef GloamAPIProc (*GloamVkUserptrLoadFunc)(void *userptr, const char *name, 
 static const char * const gloam_vk_lib_names[] = {
 #if defined(__APPLE__)
     "libvulkan.dylib", "libvulkan.1.dylib", "libMoltenVK.dylib",
-#elif defined(_WIN32) || defined(__CYGWIN__)
+#elif defined(GLOAM_PLATFORM_WINDOWS)
     "vulkan-1.dll",
 #else
     "libvulkan.so.1", "libvulkan.so",
@@ -1123,7 +1125,7 @@ void gloamVulkanFinalize(void) {
 {% include "loader.j2" -%}
 {% endif -%}
 {% if fs.spec_name == "glx" -%}
-#endif /* __linux */
+#endif /* GLOAM_PLATFORM_LINUX */
 {% elif fs.spec_name == "wgl" -%}
-#endif /* _WIN32 */
+#endif /* GLOAM_PLATFORM_WINDOWS */
 {% endif %}
