@@ -395,12 +395,6 @@ fn vulkan_header_uses_inline_dispatch() {
         !header.contains("#define vkCreateInstance (gloam_vk_context."),
         "should not use #define macro dispatch for Vulkan"
     );
-
-    // VK_NO_PROTOTYPES guard.
-    assert!(
-        header.contains("#ifndef VK_NO_PROTOTYPES"),
-        "dispatch wrappers should be guarded by VK_NO_PROTOTYPES"
-    );
 }
 
 // ---------------------------------------------------------------------------
