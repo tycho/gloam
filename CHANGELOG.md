@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.6](https://github.com/tycho/gloam/compare/0.4.5...0.4.6) - 2026-03-27
+
+### Fixed
+
+- *(vulkan)* make VK_NO_PROTOTYPES only apply to upstream Vulkan headers
+
 ## [0.4.5](https://github.com/tycho/gloam/compare/0.4.4...0.4.5) - 2026-03-27
 
 ### Fixed
