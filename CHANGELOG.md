@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5](https://github.com/tycho/gloam/compare/0.4.4...0.4.5) - 2026-03-27
+
+### Fixed
+
+- *(vulkan)* move vk_platform.h to vulkan/vk_platform.h
+- *(vulkan)* define VK_NO_PROTOTYPES for --external-headers
+
+### Other
+
+- *(template)* loader template style and ownership cleanup
+
 ## [0.4.4](https://github.com/tycho/gloam/compare/0.4.3...0.4.4) - 2026-03-27
 
 ### Added
