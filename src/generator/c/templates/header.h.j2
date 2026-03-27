@@ -97,6 +97,10 @@
    Include upstream Vulkan-Headers instead of embedding type definitions.
    Uses forward declarations for heavyweight platform types (Win32, Xlib)
    to avoid pulling in large/slow platform headers. -#}
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+
 #ifndef VULKAN_H_
 #include <vulkan/vk_platform.h>
 #include <vulkan/vulkan_core.h>
