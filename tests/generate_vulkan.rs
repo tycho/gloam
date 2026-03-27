@@ -432,7 +432,11 @@ fn vulkan_external_headers_does_not_bundle_vulkan_headers() {
 
     // vk_platform.h and vk_video/ should NOT be bundled.
     assert!(
-        !dir.path().join("include").join("vk_platform.h").exists(),
+        !dir.path()
+            .join("include")
+            .join("vulkan")
+            .join("vk_platform.h")
+            .exists(),
         "vk_platform.h should not be bundled in external-headers mode"
     );
     assert!(
