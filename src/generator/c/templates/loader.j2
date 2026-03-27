@@ -23,7 +23,8 @@ static struct gloam_gl_load_userptr gloam_gl_load_state;
 
 /* GL desktop adapter — matches GloamLoadFunc (__cdecl), dispatches through
    the correctly-typed platform proc-addr pointer stored in the userptr. */
-static GloamAPIProc gloam_gl_get_proc(const char *name) {
+static GloamAPIProc gloam_gl_get_proc(const char *name)
+{
     GloamAPIProc result = NULL;
     struct gloam_gl_load_userptr *u = &gloam_gl_load_state;
     if (!u->handle) return NULL;
@@ -41,7 +42,8 @@ static GloamAPIProc gloam_gl_get_proc(const char *name) {
 
 /* GLES adapter: all symbols (including extensions) are exported directly from
    the GLES library so plain dlsym is sufficient — no platform indirection. */
-static GloamAPIProc gloam_gles_get_proc(const char *name) {
+static GloamAPIProc gloam_gles_get_proc(const char *name)
+{
     struct gloam_gl_load_userptr *u = &gloam_gl_load_state;
     if (!u->handle) return NULL;
     return (GloamAPIProc)gloam_dlsym(u->handle, name);
@@ -49,7 +51,8 @@ static GloamAPIProc gloam_gles_get_proc(const char *name) {
 
 {%- for api in fs.apis %}
 
-int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }})
+{
     int did_open = 0, version;
 {% if api in ["gles1", "gles2"] %}
     static const char * const kLibNames[] = {
@@ -107,11 +110,13 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}) {
     return version;
 }
 
-int gloamLoaderLoad{{ api | api_display }}(void) {
+int gloamLoaderLoad{{ api | api_display }}(void)
+{
     return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
+{
     if (context->gloam_loader_handle) {
         gloam_dlclose(context->gloam_loader_handle);
         context->gloam_loader_handle = NULL;
@@ -119,15 +124,18 @@ void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
     gloamLoaderReset{{ api | api_display }}Context(context);
 }
 
-void gloamLoaderUnload{{ api | api_display }}(void) {
+void gloamLoaderUnload{{ api | api_display }}(void)
+{
     gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }})
+{
     memset(context, 0, sizeof(*context));
 }
 
-void gloamLoaderReset{{ api | api_display }}(void) {
+void gloamLoaderReset{{ api | api_display }}(void)
+{
     gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 {%- endfor %}
@@ -153,7 +161,8 @@ struct gloam_egl_load_userptr {
 };
 static struct gloam_egl_load_userptr gloam_egl_load_state;
 
-static GloamAPIProc gloam_egl_get_proc(const char *name) {
+static GloamAPIProc gloam_egl_get_proc(const char *name)
+{
     struct gloam_egl_load_userptr *u = &gloam_egl_load_state;
     GloamAPIProc result = (GloamAPIProc)gloam_dlsym(u->handle, name);
     if (!result && u->get_proc_address)
@@ -162,7 +171,8 @@ static GloamAPIProc gloam_egl_get_proc(const char *name) {
 }
 
 {% for api in fs.apis %}
-int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display) {
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display)
+{
     int did_open = 0, version;
     if (!context->gloam_loader_handle) {
         context->gloam_loader_handle = gloam_open_library(
@@ -185,11 +195,13 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDispla
     return version;
 }
 
-int gloamLoaderLoad{{ api | api_display }}(EGLDisplay display) {
+int gloamLoaderLoad{{ api | api_display }}(EGLDisplay display)
+{
     return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, display);
 }
 
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
+{
     if (context->gloam_loader_handle) {
         gloam_dlclose(context->gloam_loader_handle);
         context->gloam_loader_handle = NULL;
@@ -197,15 +209,18 @@ void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
     gloamLoaderReset{{ api | api_display }}Context(context);
 }
 
-void gloamLoaderUnload{{ api | api_display }}(void) {
+void gloamLoaderUnload{{ api | api_display }}(void)
+{
     gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }})
+{
     memset(context, 0, sizeof(*context));
 }
 
-void gloamLoaderReset{{ api | api_display }}(void) {
+void gloamLoaderReset{{ api | api_display }}(void)
+{
     gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 {%- endfor %}
@@ -227,7 +242,8 @@ struct gloam_glx_load_userptr {
 };
 static struct gloam_glx_load_userptr gloam_glx_load_state;
 
-static GloamAPIProc gloam_glx_get_proc(const char *name) {
+static GloamAPIProc gloam_glx_get_proc(const char *name)
+{
     struct gloam_glx_load_userptr *u = &gloam_glx_load_state;
     GloamAPIProc result = NULL;
     if (u->get_proc_address) result = u->get_proc_address(name);
@@ -237,7 +253,8 @@ static GloamAPIProc gloam_glx_get_proc(const char *name) {
 
 {%- for api in fs.apis %}
 
-int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *display, int screen) {
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *display, int screen)
+{
     int did_open = 0, version;
     if (!context->gloam_loader_handle) {
         context->gloam_loader_handle = gloam_open_library(
@@ -261,11 +278,13 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *
     return version;
 }
 
-int gloamLoaderLoad{{ api | api_display }}(Display *display, int screen) {
+int gloamLoaderLoad{{ api | api_display }}(Display *display, int screen)
+{
     return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, display, screen);
 }
 
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
+{
     if (context->gloam_loader_handle) {
         gloam_dlclose(context->gloam_loader_handle);
         context->gloam_loader_handle = NULL;
@@ -273,15 +292,18 @@ void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
     gloamLoaderReset{{ api | api_display }}Context(context);
 }
 
-void gloamLoaderUnload{{ api | api_display }}(void) {
+void gloamLoaderUnload{{ api | api_display }}(void)
+{
     gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }})
+{
     memset(context, 0, sizeof(*context));
 }
 
-void gloamLoaderReset{{ api | api_display }}(void) {
+void gloamLoaderReset{{ api | api_display }}(void)
+{
     gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 {%- endfor %}
@@ -298,7 +320,8 @@ struct gloam_wgl_load_userptr {
 };
 static struct gloam_wgl_load_userptr gloam_wgl_load_state;
 
-static GloamAPIProc gloam_wgl_get_proc(const char *name) {
+static GloamAPIProc gloam_wgl_get_proc(const char *name)
+{
     struct gloam_wgl_load_userptr *u = &gloam_wgl_load_state;
     GloamAPIProc result = NULL;
     if (u->wgl_get_proc) result = u->wgl_get_proc(name);
@@ -307,7 +330,8 @@ static GloamAPIProc gloam_wgl_get_proc(const char *name) {
 }
 
 {%- for api in fs.apis %}
-int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc) {
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc)
+{
     int did_open = 0, version;
     if (!context->gloam_loader_handle) {
         context->gloam_loader_handle = gloam_open_library(
@@ -331,11 +355,13 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc) 
     return version;
 }
 
-int gloamLoaderLoad{{ api | api_display }}(HDC hdc) {
+int gloamLoaderLoad{{ api | api_display }}(HDC hdc)
+{
     return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, hdc);
 }
 
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
+{
     if (context->gloam_loader_handle) {
         gloam_dlclose(context->gloam_loader_handle);
         context->gloam_loader_handle = NULL;
@@ -343,15 +369,18 @@ void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }}) {
     gloamLoaderReset{{ api | api_display }}Context(context);
 }
 
-void gloamLoaderUnload{{ api | api_display }}(void) {
+void gloamLoaderUnload{{ api | api_display }}(void)
+{
     gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }}) {
+void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }})
+{
     memset(context, 0, sizeof(*context));
 }
 
-void gloamLoaderReset{{ api | api_display }}(void) {
+void gloamLoaderReset{{ api | api_display }}(void)
+{
     gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 {%- endfor %}
@@ -364,8 +393,8 @@ void gloamLoaderReset{{ api | api_display }}(void) {
  * already set, stores vkGetInstanceProcAddr in the context, then delegates to
  * gloamVulkanDiscoverContext.  Follows the same additive multi-call contract
  * as the underlying discover function. */
-int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance,
-                                  VkPhysicalDevice physical_device, VkDevice device) {
+int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance, VkPhysicalDevice physical_device, VkDevice device)
+{
     int did_open = 0;
     int version;
     void *handle;
@@ -400,14 +429,15 @@ int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance,
     return version;
 }
 
-int gloamLoaderLoadVulkan(VkInstance instance, VkPhysicalDevice physical_device,
-                           VkDevice device) {
+int gloamLoaderLoadVulkan(VkInstance instance, VkPhysicalDevice physical_device, VkDevice device)
+{
     return gloamLoaderLoadVulkanContext(&gloam_vk_context, instance,
                                         physical_device, device);
 }
 
 /* Close the library handle (if set) then zero all context state. */
-void gloamLoaderUnloadVulkanContext({{ u.ctx_arg() }}) {
+void gloamLoaderUnloadVulkanContext({{ u.ctx_arg() }})
+{
     if (context->gloam_loader_handle) {
         gloam_dlclose(context->gloam_loader_handle);
         context->gloam_loader_handle = NULL;
@@ -415,16 +445,19 @@ void gloamLoaderUnloadVulkanContext({{ u.ctx_arg() }}) {
     gloamLoaderResetVulkanContext(context);
 }
 
-void gloamLoaderUnloadVulkan(void) {
+void gloamLoaderUnloadVulkan(void)
+{
     gloamLoaderUnloadVulkanContext(&gloam_vk_context);
 }
 
 /* Zero all context state without touching the library handle. */
-void gloamLoaderResetVulkanContext({{ u.ctx_arg() }}) {
+void gloamLoaderResetVulkanContext({{ u.ctx_arg() }})
+{
     memset(context, 0, sizeof(*context));
 }
 
-void gloamLoaderResetVulkan(void) {
+void gloamLoaderResetVulkan(void)
+{
     gloamLoaderResetVulkanContext(&gloam_vk_context);
 }
 {% endif %}

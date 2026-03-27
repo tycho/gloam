@@ -128,8 +128,8 @@ static const GloamPfnRange_t kFeatPfnRanges_{{ fs.spec_name | spec_display }}[] 
 /* ---- PFN range helper (GL / EGL / GLX / WGL) ----------------------------
    Walks a contiguous run of pfnArray slots and calls the plain load callback
    (name only) for each one. */
-static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr,
-                                  uint16_t start, uint16_t count) {
+static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr, uint16_t start, uint16_t count)
+{
     uint16_t i;
     for (i = start; i < (uint16_t)(start + count); ++i) {
         const char *pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]];
@@ -144,8 +144,8 @@ static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamLo
      Instance → vkGetInstanceProcAddr(instance, name)  [skipped if instance is NULL]
      Device   → vkGetDeviceProcAddr(device, name)      [skipped if device is NULL]
    Pass NULL for instance or device to skip commands of that scope. */
-static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}VkInstance instance, VkDevice device,
-                                     uint16_t start, uint16_t count) {
+static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}VkInstance instance, VkDevice device, uint16_t start, uint16_t count)
+{
     PFN_vkGetInstanceProcAddr gipa = context->GetInstanceProcAddr;
     PFN_vkGetDeviceProcAddr gdpa = context->GetDeviceProcAddr;
     uint16_t i;
@@ -183,7 +183,8 @@ static const GloamAliasPair_t kAliases_{{ fs.spec_name | spec_display }}[] = {
 {%- endfor %}
 };
 
-GLOAM_NO_INLINE static void gloam_resolve_aliases_{{ fs.spec_name }}({{ u.ctx_arg() }}) {
+GLOAM_NO_INLINE static void gloam_resolve_aliases_{{ fs.spec_name }}({{ u.ctx_arg() }})
+{
     uint32_t i;
     for (i = 0; i < GLOAM_ARRAYSIZE(kAliases_{{ fs.spec_name | spec_display }}); ++i) {
         uint16_t ci = kAliases_{{ fs.spec_name | spec_display }}[i].first;
@@ -203,7 +204,8 @@ GLOAM_NO_INLINE static void gloam_resolve_aliases_{{ fs.spec_name }}({{ u.ctx_ar
 /* Set featArray bits from a packed Vulkan API version (VK_MAKE_API_VERSION or
    VK_API_VERSION_x_y).  Extracts major.minor, packs as (major << 8 | minor),
    and compares against the threshold for each feature. */
-static void gloam_vk_apply_version({{ u.ctx_arg(', ') }}uint32_t api_version) {
+static void gloam_vk_apply_version({{ u.ctx_arg(', ') }}uint32_t api_version)
+{
     const uint16_t version_value = (uint16_t)(
         (((api_version >> 22) & 0x7fu) << 8) | ((api_version >> 12) & 0x3ffu));
 {% for feat in fs.features %}
@@ -214,8 +216,8 @@ static void gloam_vk_apply_version({{ u.ctx_arg(', ') }}uint32_t api_version) {
 /* Load Global-scope PFNs via vkGetInstanceProcAddr(NULL, name).  Does NOT
    handle Unknown-scope (vkGetInstanceProcAddr itself) — the caller must
    store that in the context before calling this function. */
-static void gloam_vk_load_global_pfns({{ u.ctx_arg(', ') }}
-                                       PFN_vkGetInstanceProcAddr gipa) {
+static void gloam_vk_load_global_pfns({{ u.ctx_arg(', ') }}PFN_vkGetInstanceProcAddr gipa)
+{
     uint32_t i;
     for (i = 0; i < kFnCount_{{ fs.spec_name | spec_display }}; ++i) {
         if ((GloamCommandScope)kCommandScopes_{{ fs.spec_name | spec_display }}[i] == GloamCommandScopeGlobal) {
@@ -259,9 +261,8 @@ static const GloamPfnRange_t kExtPfnRanges_{{ api }}[] = {
 {%- if fs.spec_name in ["gl", "gles2", "glcore"] %}
 /* Query driver-reported extension names, hash them, and fill *out_exts.
  * Returns 1 on success, 0 on failure.  Caller must free(*out_exts). */
-static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}
-                                                              uint64_t **out_exts,
-                                                              uint32_t *out_num_exts) {
+static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint64_t **out_exts, uint32_t *out_num_exts)
+{
 #if defined(GL_ES_VERSION_3_0) || defined(GL_VERSION_3_0)
     /* Modern path: glGetIntegerv(GL_NUM_EXTENSIONS) + glGetStringi. */
     if (context->GetStringi != NULL && context->GetIntegerv != NULL) {
@@ -302,9 +303,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 }
 {% elif fs.spec_name == "gles1" %}
 /* GLES 1.x: only glGetString(GL_EXTENSIONS), space-separated. */
-static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}
-                                                              uint64_t **out_exts,
-                                                              uint32_t *out_num_exts) {
+static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint64_t **out_exts, uint32_t *out_num_exts)
+{
     const char *ext_str;
 
     if (!context->GetString)
@@ -319,9 +319,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 {% elif fs.spec_name == "egl" %}
 /* EGL: concatenate client extensions (EGL_NO_DISPLAY) and display
  * extensions, then hash the combined space-separated list. */
-static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}EGLDisplay display,
-                                                              uint64_t **out_exts,
-                                                              uint32_t *out_num_exts) {
+static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}EGLDisplay display, uint64_t **out_exts, uint32_t *out_num_exts)
+{
     const char *client_str, *display_str;
     char *concat = NULL;
     size_t client_len, display_len;
@@ -363,9 +362,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 }
 {% elif fs.spec_name == "glx" %}
 /* GLX: glXQueryExtensionsString(display, screen) — space-separated. */
-static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}Display *display, int screen,
-                                                              uint64_t **out_exts,
-                                                              uint32_t *out_num_exts) {
+static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}Display *display, int screen, uint64_t **out_exts, uint32_t *out_num_exts)
+{
     const char *ext_str;
 
     if (!context->QueryExtensionsString)
@@ -379,9 +377,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 }
 {% elif fs.spec_name == "wgl" %}
 /* WGL: wglGetExtensionsStringARB / wglGetExtensionsStringEXT. */
-static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}HDC hdc,
-                                                              uint64_t **out_exts,
-                                                              uint32_t *out_num_exts) {
+static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}HDC hdc, uint64_t **out_exts, uint32_t *out_num_exts)
+{
     const char *ext_str = NULL;
 
     if (context->GetExtensionsStringARB)
@@ -401,10 +398,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
  * instance extensions are skipped if vk_found_instance_exts is set, device
  * extensions are skipped if vk_found_device_exts is set.  The caller
  * (find_extensions) uses |= when merging results so bits only accumulate. */
-static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}
-                                                              VkPhysicalDevice physical_device,
-                                                              uint64_t **out_exts,
-                                                              uint32_t *out_num_exts) {
+static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }} VkPhysicalDevice physical_device, uint64_t **out_exts, uint32_t *out_num_exts)
+{
     uint32_t inst_count = 0, dev_count = 0, total, i;
     VkExtensionProperties *props = NULL;
     uint64_t *exts = NULL;
@@ -462,7 +457,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 /* Search pre-baked kExtHashes_{{ fs.spec_name | spec_display }} against the sorted driver hash list and set
  * extArray flags for every matching extension. */
 {%- if fs.spec_name == "vk" %}
-static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg(', ') }}VkPhysicalDevice physical_device) {
+static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg(', ') }}VkPhysicalDevice physical_device)
+{
     uint64_t *exts = NULL;
     uint32_t  num_exts = 0, i;
 
@@ -485,7 +481,8 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg(', ')
     return 1;
 }
 {% else %}
-static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg() }}{{ u.extra_load_params(fs.spec_name) }}) {
+static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg() }}{{ u.extra_load_params(fs.spec_name) }})
+{
     uint64_t *exts = NULL;
     uint32_t  num_exts = 0, i;
 
@@ -505,7 +502,8 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg() }}{
 {#- ---- find_core_* (GL / GLES only) --------------------------------------- -#}
 {%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] -%}
 /* Parse the GL_VERSION string and set featArray entries for this API. */
-static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }}) {
+static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }})
+{
     int i, major = 0, minor = 0;
     unsigned short version_value;
     static const char * const kPrefixes[] = {
@@ -534,7 +532,8 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }}) {
 {%- elif fs.spec_name == "glx" -%}
 /* Query the GLX version via glXQueryVersion and set featArray entries for GLX.
  * Also returns the packed version (major << 8 | minor) for loader use. */
-static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}Display **display, int *screen) {
+static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}Display **display, int *screen)
+{
     int major = 0, minor = 0;
     unsigned short version_value;
     if(*display == NULL) {
@@ -565,7 +564,8 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}Dis
  *     Device version takes precedence over instance version when set.
  *
  * Returns the packed version (major << 8 | minor), or 0 on hard failure. */
-static int gloam_vk_find_core({{ u.ctx_arg(', ') }}VkPhysicalDevice physical_device) {
+static int gloam_vk_find_core({{ u.ctx_arg(', ') }}VkPhysicalDevice physical_device)
+{
     /* The top 3 bits of apiVersion encode the variant — mask them off so
        Vulkan SC (variant 1) and plain Vulkan (variant 0) compare the same. */
     const uint32_t kVariantMask = 0xe0000000u;
@@ -613,7 +613,8 @@ static int gloam_vk_find_core({{ u.ctx_arg(', ') }}VkPhysicalDevice physical_dev
 
 {%- elif fs.spec_name == "wgl" -%}
 /* Faux version detection on WGL */
-static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }}) {
+static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }})
+{
     int major = 1, minor = 0;
     unsigned short version_value;
     version_value = (unsigned short)((major << 8) | minor);
@@ -626,7 +627,8 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }}) {
 
 {%- elif fs.spec_name == "egl" -%}
 /* Parse the EGL version string from eglQueryString(display, EGL_VERSION). */
-static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}EGLDisplay display) {
+static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}EGLDisplay display)
+{
     int major = 0, minor = 0;
     unsigned short version_value;
     const char *version;
@@ -647,7 +649,8 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}EGL
 {# ---- Load function ------------------------------------------------------- #}
 {%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
 
-int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr) {
+int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr)
+{
     int version;
     uint32_t i;
     GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
@@ -687,11 +690,13 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc g
     return version;
 }
 
-int gloamLoad{{ api | api_display }}(GloamLoadFunc getProcAddr) {
+int gloamLoad{{ api | api_display }}(GloamLoadFunc getProcAddr)
+{
     return gloamLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, getProcAddr);
 }
 {% elif fs.spec_name == "egl" %}
-int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display, GloamLoadFunc getProcAddr) {
+int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display, GloamLoadFunc getProcAddr)
+{
     int version;
     uint32_t i;
     GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
@@ -728,11 +733,13 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay disp
     return version;
 }
 
-int gloamLoad{{ api | api_display }}(EGLDisplay display, GloamLoadFunc getProcAddr) {
+int gloamLoad{{ api | api_display }}(EGLDisplay display, GloamLoadFunc getProcAddr)
+{
     return gloamLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, display, getProcAddr);
 }
 {% elif fs.spec_name == "glx" %}
-int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *display, int screen, GloamLoadFunc getProcAddr) {
+int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *display, int screen, GloamLoadFunc getProcAddr)
+{
     int version;
     uint32_t i;
     memset(context, 0, sizeof(*context));
@@ -772,11 +779,13 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *displa
     return 1;
 }
 
-int gloamLoad{{ api | api_display }}(Display *display, int screen, GloamLoadFunc getProcAddr) {
+int gloamLoad{{ api | api_display }}(Display *display, int screen, GloamLoadFunc getProcAddr)
+{
     return gloamLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, display, screen, getProcAddr);
 }
 {% elif fs.spec_name == "wgl" -%}
-int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamLoadFunc getProcAddr) {
+int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamLoadFunc getProcAddr)
+{
     int version;
     uint32_t i;
     GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
@@ -824,7 +833,8 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamL
     return 1;
 }
 
-int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr) {
+int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr)
+{
     return gloamLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, hdc, getProcAddr);
 }
 {% elif fs.spec_name == "vk" %}
@@ -833,9 +843,8 @@ int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr) {
  * set the corresponding extArray bits.  Uses |= so bits from a previous
  * call (e.g. instance extensions) are preserved when device extensions are
  * added. */
-static int gloam_vk_apply_extensions_{{ api }}({{ u.ctx_arg(', ') }}
-                                                uint32_t num_exts,
-                                                const char *const *ext_names) {
+static int gloam_vk_apply_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint32_t num_exts, const char *const *ext_names)
+{
     uint32_t i;
     uint64_t *exts;
 
@@ -875,8 +884,8 @@ static int gloam_vk_apply_extensions_{{ api }}({{ u.ctx_arg(', ') }}
  * Requires context->GetInstanceProcAddr to be set before the first call.
  * context->GetDeviceProcAddr is resolved automatically when an instance is
  * provided. */
-static int gloamVulkanDiscoverContext({{ u.ctx_arg(', ') }}VkInstance instance,
-                                       VkPhysicalDevice physical_device, VkDevice device) {
+static int gloamVulkanDiscoverContext({{ u.ctx_arg(', ') }}VkInstance instance, VkPhysicalDevice physical_device, VkDevice device)
+{
     int version;
     uint32_t i;
     GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
@@ -933,7 +942,8 @@ static int gloamVulkanDiscoverContext({{ u.ctx_arg(', ') }}VkInstance instance,
  * PFNs (vkCreateInstance, vkEnumerateInstance*, vkGetInstanceProcAddr).
  * If library_handle is non-NULL, use it without taking ownership.
  * If NULL, dlopen the platform default and take ownership. */
-int gloamVulkanInitializeContext({{ u.ctx_arg(', ') }}void *library_handle) {
+int gloamVulkanInitializeContext({{ u.ctx_arg(', ') }}void *library_handle)
+{
     PFN_vkGetInstanceProcAddr gipa;
     memset(context, 0, sizeof(*context));
 
@@ -963,20 +973,22 @@ int gloamVulkanInitializeContext({{ u.ctx_arg(', ') }}void *library_handle) {
     return 1;
 }
 
-int gloamVulkanInitialize(void *library_handle) {
+int gloamVulkanInitialize(void *library_handle)
+{
     return gloamVulkanInitializeContext(&gloam_{{ fs.spec_name }}_context, library_handle);
 }
 {% endif %}
 /* gloamVulkanInitializeCustomContext — Phase 0 variant: caller provides
  * vkGetInstanceProcAddr directly.  No library handle management. */
-void gloamVulkanInitializeCustomContext({{ u.ctx_arg(', ') }}
-                                         PFN_vkGetInstanceProcAddr getInstanceProcAddr) {
+void gloamVulkanInitializeCustomContext({{ u.ctx_arg(', ') }}PFN_vkGetInstanceProcAddr getInstanceProcAddr)
+{
     memset(context, 0, sizeof(*context));
     context->GetInstanceProcAddr = getInstanceProcAddr;
     gloam_vk_load_global_pfns(context, getInstanceProcAddr);
 }
 
-void gloamVulkanInitializeCustom(PFN_vkGetInstanceProcAddr getInstanceProcAddr) {
+void gloamVulkanInitializeCustom(PFN_vkGetInstanceProcAddr getInstanceProcAddr)
+{
     gloamVulkanInitializeCustomContext(&gloam_{{ fs.spec_name }}_context, getInstanceProcAddr);
 }
 
@@ -987,10 +999,8 @@ void gloamVulkanInitializeCustom(PFN_vkGetInstanceProcAddr getInstanceProcAddr) 
  *
  * Sets featArray from api_version.  Sets extArray for enabled instance
  * extensions.  Runs alias resolution.  Returns 1 on success. */
-int gloamVulkanLoadInstanceContext({{ u.ctx_arg(', ') }}VkInstance instance,
-                                    uint32_t api_version,
-                                    uint32_t num_instance_extensions,
-                                    const char *const *instance_extensions) {
+int gloamVulkanLoadInstanceContext({{ u.ctx_arg(', ') }}VkInstance instance, uint32_t api_version, uint32_t num_instance_extensions, const char *const *instance_extensions)
+{
     uint32_t i;
 
     if (!context->GetInstanceProcAddr)
@@ -1025,9 +1035,8 @@ int gloamVulkanLoadInstanceContext({{ u.ctx_arg(', ') }}VkInstance instance,
     return 1;
 }
 
-int gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version,
-                             uint32_t num_instance_extensions,
-                             const char *const *instance_extensions) {
+int gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version, uint32_t num_instance_extensions, const char *const *instance_extensions)
+{
     return gloamVulkanLoadInstanceContext(&gloam_{{ fs.spec_name }}_context, instance,
         api_version, num_instance_extensions, instance_extensions);
 }
@@ -1045,9 +1054,8 @@ int gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version,
  * Does NOT set extArray — the GLOAM_VK_* support macros remain unchanged.
  * Call gloamVulkanLoadDevice after device creation for full extension
  * loading. */
-void gloamVulkanLoadPhysicalDeviceExtensionsContext({{ u.ctx_arg(', ') }}
-                                                     uint32_t num_device_extensions,
-                                                     const char *const *device_extensions) {
+void gloamVulkanLoadPhysicalDeviceExtensionsContext({{ u.ctx_arg(', ') }} uint32_t num_device_extensions, const char *const *device_extensions)
+{
 {% if fs.extensions | length > 0 and subset | length > 0 %}
     VkInstance instance = context->vk_loaded_instance;
     uint32_t j;
@@ -1071,18 +1079,19 @@ void gloamVulkanLoadPhysicalDeviceExtensionsContext({{ u.ctx_arg(', ') }}
     GLOAM_UNUSED(device_extensions);
 }
 
-void gloamVulkanLoadPhysicalDeviceExtensions(uint32_t num_device_extensions,
-                                              const char *const *device_extensions) {
+void gloamVulkanLoadPhysicalDeviceExtensions(uint32_t num_device_extensions, const char *const *device_extensions)
+{
     gloamVulkanLoadPhysicalDeviceExtensionsContext(&gloam_{{ fs.spec_name }}_context,
         num_device_extensions, device_extensions);
 }
 
-void gloamVulkanLoadPhysicalDeviceExtensionContext({{ u.ctx_arg(', ') }}
-                                                    const char *device_extension) {
+void gloamVulkanLoadPhysicalDeviceExtensionContext({{ u.ctx_arg(', ') }} const char *device_extension)
+{
     gloamVulkanLoadPhysicalDeviceExtensionsContext(context, 1, &device_extension);
 }
 
-void gloamVulkanLoadPhysicalDeviceExtension(const char *device_extension) {
+void gloamVulkanLoadPhysicalDeviceExtension(const char *device_extension)
+{
     gloamVulkanLoadPhysicalDeviceExtensionsContext(&gloam_{{ fs.spec_name }}_context,
         1, &device_extension);
 }
@@ -1097,10 +1106,8 @@ void gloamVulkanLoadPhysicalDeviceExtension(const char *device_extension) {
  *
  * Updates featArray from the device's api_version.  Sets extArray for enabled
  * device extensions.  Runs alias resolution.  Returns 1 on success. */
-int gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device,
-                                  VkPhysicalDevice physical_device,
-                                  uint32_t num_device_extensions,
-                                  const char *const *device_extensions) {
+int gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device, VkPhysicalDevice physical_device, uint32_t num_device_extensions, const char *const *device_extensions)
+{
     uint32_t i;
     VkPhysicalDeviceProperties props;
     VkInstance instance = context->vk_loaded_instance;
@@ -1143,10 +1150,8 @@ int gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device,
     return 1;
 }
 
-int gloamVulkanLoadDevice(VkDevice device,
-                          VkPhysicalDevice physical_device,
-                          uint32_t num_device_extensions,
-                          const char *const *device_extensions) {
+int gloamVulkanLoadDevice(VkDevice device, VkPhysicalDevice physical_device, uint32_t num_device_extensions, const char *const *device_extensions)
+{
     return gloamVulkanLoadDeviceContext(&gloam_{{ fs.spec_name }}_context, device,
         physical_device, num_device_extensions, device_extensions);
 }
@@ -1170,25 +1175,30 @@ uint32_t gloamVulkanGetInstanceVersion(void)
 	return gloamVulkanGetInstanceVersionContext(&gloam_{{ fs.spec_name }}_context);
 }
 
-VkDevice gloamVulkanGetLoadedDeviceContext({{ u.ctx_arg() }}) {
+VkDevice gloamVulkanGetLoadedDeviceContext({{ u.ctx_arg() }})
+{
 	return context->vk_loaded_device;
 }
 
-VkDevice gloamVulkanGetLoadedDevice(void) {
+VkDevice gloamVulkanGetLoadedDevice(void)
+{
 	return gloamVulkanGetLoadedDeviceContext(&gloam_{{ fs.spec_name }}_context);
 }
 
-VkInstance gloamVulkanGetLoadedInstanceContext({{ u.ctx_arg() }}) {
+VkInstance gloamVulkanGetLoadedInstanceContext({{ u.ctx_arg() }})
+{
 	return context->vk_loaded_instance;
 }
 
-VkInstance gloamVulkanGetLoadedInstance(void) {
+VkInstance gloamVulkanGetLoadedInstance(void)
+{
 	return gloamVulkanGetLoadedInstanceContext(&gloam_{{ fs.spec_name }}_context);
 }
 
 /* gloamVulkanFinalizeContext — close library handle if gloam owns it, zero
  * the context. */
-void gloamVulkanFinalizeContext({{ u.ctx_arg() }}) {
+void gloamVulkanFinalizeContext({{ u.ctx_arg() }})
+{
 {% if loader %}
     if (context->gloam_loader_owns_handle && context->gloam_loader_handle)
         gloam_dlclose(context->gloam_loader_handle);
@@ -1196,7 +1206,8 @@ void gloamVulkanFinalizeContext({{ u.ctx_arg() }}) {
     memset(context, 0, sizeof(*context));
 }
 
-void gloamVulkanFinalize(void) {
+void gloamVulkanFinalize(void)
+{
     gloamVulkanFinalizeContext(&gloam_{{ fs.spec_name }}_context);
 }
 {% endif %}
