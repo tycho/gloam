@@ -317,6 +317,54 @@ fn vulkan_10_does_not_have_13_features() {
 }
 
 // ---------------------------------------------------------------------------
+// Physical device extension pre-loading
+// ---------------------------------------------------------------------------
+
+#[test]
+fn vulkan_has_physical_device_extension_loader() {
+    let dir = TempDir::new().unwrap();
+    gloam()
+        .args([
+            "--api",
+            "vk=1.3",
+            "--extensions",
+            "VK_KHR_fragment_shading_rate",
+            "--out-path",
+            dir.path().to_str().unwrap(),
+            "c",
+        ])
+        .assert()
+        .success();
+
+    let header = read_header(dir.path(), "vulkan");
+    let source = std::fs::read_to_string(dir.path().join("src/vulkan.c")).unwrap();
+
+    // Header should declare all four variants.
+    assert!(
+        header.contains("gloamVulkanLoadPhysicalDeviceExtension("),
+        "missing singular non-context declaration"
+    );
+    assert!(
+        header.contains("gloamVulkanLoadPhysicalDeviceExtensionContext("),
+        "missing singular context declaration"
+    );
+    assert!(
+        header.contains("gloamVulkanLoadPhysicalDeviceExtensions("),
+        "missing plural non-context declaration"
+    );
+    assert!(
+        header.contains("gloamVulkanLoadPhysicalDeviceExtensionsContext("),
+        "missing plural context declaration"
+    );
+
+    // Source should contain the implementation using instance loading.
+    assert!(
+        source.contains("gloamVulkanLoadPhysicalDeviceExtensionsContext"),
+        "missing LoadPhysicalDeviceExtensionsContext implementation"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Inline dispatch and VK_NO_PROTOTYPES
 // ---------------------------------------------------------------------------
 

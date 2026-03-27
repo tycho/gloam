@@ -561,6 +561,10 @@ int  gloamVulkanLoadInstanceContext({{ u.ctx_arg(', ') }}VkInstance instance, ui
 int  gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version, uint32_t num_instance_extensions, const char *const *instance_extensions);
 VkInstance gloamVulkanGetLoadedInstanceContext({{ u.ctx_arg() }});
 VkInstance gloamVulkanGetLoadedInstance(void);
+void gloamVulkanLoadPhysicalDeviceExtensionContext({{ u.ctx_arg(', ') }}const char *device_extension);
+void gloamVulkanLoadPhysicalDeviceExtension(const char *device_extension);
+void gloamVulkanLoadPhysicalDeviceExtensionsContext({{ u.ctx_arg(', ') }}uint32_t num_device_extensions, const char *const *device_extensions);
+void gloamVulkanLoadPhysicalDeviceExtensions(uint32_t num_device_extensions, const char *const *device_extensions);
 int  gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device, VkPhysicalDevice physical_device, uint32_t num_device_extensions, const char *const *device_extensions);
 int  gloamVulkanLoadDevice(VkDevice device, VkPhysicalDevice physical_device, uint32_t num_device_extensions, const char *const *device_extensions);
 VkDevice gloamVulkanGetLoadedDeviceContext({{ u.ctx_arg() }});

@@ -358,43 +358,14 @@ void gloamLoaderReset{{ api | api_display }}(void) {
 {% elif fs.spec_name == "vk" %}
 /* ---- Vulkan built-in discovery loader ----------------------------------- */
 
-/* The built-in loader threads instance and device handles through this struct
-   so that a single scope-aware callback can serve all dispatch paths. */
-struct gloam_vk_userptr {
-    void *lib_handle;
-    VkInstance instance;
-    VkDevice   device;
-    PFN_vkGetInstanceProcAddr get_instance_proc_addr;
-    PFN_vkGetDeviceProcAddr   get_device_proc_addr;
-};
-
-static GloamAPIProc gloam_vk_get_proc(void *vuserptr, const char *name, GloamCommandScope scope) {
-    struct gloam_vk_userptr *u = (struct gloam_vk_userptr *)vuserptr;
-    switch (scope) {
-    case GloamCommandScopeUnknown:
-        return (GloamAPIProc)gloam_dlsym(u->lib_handle, name);
-    case GloamCommandScopeGlobal:
-        return (GloamAPIProc)u->get_instance_proc_addr(NULL, name);
-    case GloamCommandScopeInstance:
-        if (u->instance != NULL)
-            return (GloamAPIProc)u->get_instance_proc_addr(u->instance, name);
-        return NULL;
-    case GloamCommandScopeDevice:
-        if (u->device != NULL)
-            return (GloamAPIProc)u->get_device_proc_addr(u->device, name);
-        return NULL;
-    }
-    return NULL;
-}
-
 /* gloamLoaderLoadVulkanContext
  *
  * Opens the Vulkan library into context->gloam_loader_handle if it is not
- * already set, then delegates to gloamVulkanDiscoverContextUserPtr.  Follows
- * the same additive multi-call contract as the underlying discover function. */
+ * already set, stores vkGetInstanceProcAddr in the context, then delegates to
+ * gloamVulkanDiscoverContext.  Follows the same additive multi-call contract
+ * as the underlying discover function. */
 int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance,
                                   VkPhysicalDevice physical_device, VkDevice device) {
-    struct gloam_vk_userptr userptr;
     int did_open = 0;
     int version;
     void *handle;
@@ -406,16 +377,14 @@ int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance,
     }
 
     handle = context->gloam_loader_handle;
-    if (!handle) return 0;
+    if (!handle)
+        return 0;
 
-    userptr.lib_handle             = handle;
-    userptr.instance               = instance;
-    userptr.device                 = device;
-    userptr.get_instance_proc_addr =
-        (PFN_vkGetInstanceProcAddr)gloam_dlsym(handle, "vkGetInstanceProcAddr");
-    userptr.get_device_proc_addr   = NULL;
+    if (!context->GetInstanceProcAddr)
+        context->GetInstanceProcAddr =
+            (PFN_vkGetInstanceProcAddr)gloam_dlsym(handle, "vkGetInstanceProcAddr");
 
-    if (!userptr.get_instance_proc_addr) {
+    if (!context->GetInstanceProcAddr) {
         if (did_open) {
             gloam_dlclose(handle);
             context->gloam_loader_handle = NULL;
@@ -423,15 +392,7 @@ int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance,
         return 0;
     }
 
-    /* Get vkGetDeviceProcAddr through the instance when available. */
-    if (instance != NULL) {
-        userptr.get_device_proc_addr =
-            (PFN_vkGetDeviceProcAddr)userptr.get_instance_proc_addr(
-                instance, "vkGetDeviceProcAddr");
-    }
-
-    version = gloamVulkanDiscoverContextUserPtr(context, instance, physical_device, device,
-                                             gloam_vk_get_proc, &userptr);
+    version = gloamVulkanDiscoverContext(context, instance, physical_device, device);
     if (!version && did_open) {
         gloam_dlclose(handle);
         context->gloam_loader_handle = NULL;
