@@ -27,15 +27,20 @@ static GloamAPIProc gloam_gl_get_proc(const char *name)
 {
     GloamAPIProc result = NULL;
     struct gloam_gl_load_userptr *u = &gloam_gl_load_state;
-    if (!u->handle) return NULL;
+    if (!u->handle)
+		return NULL;
 #if defined(__APPLE__) || defined(__HAIKU__)
     result = (GloamAPIProc)gloam_dlsym(u->handle, name);
 #elif defined(GLOAM_PLATFORM_WINDOWS)
-    if (u->wgl_get_proc) result = u->wgl_get_proc(name);
-    if (!result)         result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+    if (u->wgl_get_proc)
+		result = u->wgl_get_proc(name);
+    if (!result)
+		result = (GloamAPIProc)gloam_dlsym(u->handle, name);
 #else
-    if (u->glx_get_proc) result = u->glx_get_proc(name);
-    if (!result)         result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+    if (u->glx_get_proc)
+		result = u->glx_get_proc(name);
+    if (!result)
+		result = (GloamAPIProc)gloam_dlsym(u->handle, name);
 #endif
     return result;
 }
@@ -45,7 +50,8 @@ static GloamAPIProc gloam_gl_get_proc(const char *name)
 static GloamAPIProc gloam_gles_get_proc(const char *name)
 {
     struct gloam_gl_load_userptr *u = &gloam_gl_load_state;
-    if (!u->handle) return NULL;
+    if (!u->handle)
+		return NULL;
     return (GloamAPIProc)gloam_dlsym(u->handle, name);
 }
 
@@ -53,7 +59,9 @@ static GloamAPIProc gloam_gles_get_proc(const char *name)
 
 int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }})
 {
-    int did_open = 0, version;
+    int did_open = 0;
+	int version;
+	void *handle;
 {% if api in ["gles1", "gles2"] %}
     static const char * const kLibNames[] = {
 #if defined(__APPLE__)
@@ -79,22 +87,21 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }})
 #endif
     };
 {% endif %}
-    if (!context->gloam_loader_handle) {
-        context->gloam_loader_handle = gloam_open_library(
-            kLibNames, GLOAM_ARRAYSIZE(kLibNames));
+	handle = context->gloam_loader_handle;
+
+    if (!handle) {
+        handle = gloam_open_library(kLibNames, GLOAM_ARRAYSIZE(kLibNames));
         did_open = 1;
     }
-    if (!context->gloam_loader_handle) return 0;
 
-    gloam_gl_load_state.handle = context->gloam_loader_handle;
+    if (!handle)
+		return 0;
+
+    gloam_gl_load_state.handle = handle;
 #if defined(GLOAM_PLATFORM_WINDOWS)
-    gloam_gl_load_state.wgl_get_proc =
-        (GloamAPIProc (WINAPI *)(const char *))
-            gloam_dlsym(context->gloam_loader_handle, "wglGetProcAddress");
+    gloam_gl_load_state.wgl_get_proc = (GloamAPIProc (WINAPI *)(const char *))gloam_dlsym(handle, "wglGetProcAddress");
 #elif !defined(__APPLE__) && !defined(__HAIKU__)
-    gloam_gl_load_state.glx_get_proc =
-        (GloamAPIProc (*)(const char *))
-            gloam_dlsym(context->gloam_loader_handle, "glXGetProcAddressARB");
+    gloam_gl_load_state.glx_get_proc = (GloamAPIProc (*)(const char *))gloam_dlsym(handle, "glXGetProcAddressARB");
 #endif
 
 {% if api in ["gles1", "gles2"] %}
@@ -103,10 +110,15 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }})
     version = gloamLoad{{ api | api_display }}Context(context, gloam_gl_get_proc);
 {% endif %}
     gloam_gl_load_state.handle = NULL;
+
     if (!version && did_open) {
-        gloam_dlclose(context->gloam_loader_handle);
-        context->gloam_loader_handle = NULL;
+        gloam_dlclose(handle);
+        return 0;
     }
+
+	context->gloam_loader_handle = handle;
+	context->gloam_loader_owns_handle |= (uint8_t)did_open;
+
     return version;
 }
 
@@ -117,9 +129,8 @@ int gloamLoaderLoad{{ api | api_display }}(void)
 
 void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
 {
-    if (context->gloam_loader_handle) {
+    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
         gloam_dlclose(context->gloam_loader_handle);
-        context->gloam_loader_handle = NULL;
     }
     gloamLoaderReset{{ api | api_display }}Context(context);
 }
@@ -173,25 +184,41 @@ static GloamAPIProc gloam_egl_get_proc(const char *name)
 {% for api in fs.apis %}
 int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display)
 {
-    int did_open = 0, version;
-    if (!context->gloam_loader_handle) {
-        context->gloam_loader_handle = gloam_open_library(
-            gloam_egl_lib_names, GLOAM_ARRAYSIZE(gloam_egl_lib_names));
+    int did_open = 0;
+	int version;
+	void *handle;
+
+	handle = context->gloam_loader_handle;
+
+    if (!handle) {
+        handle = gloam_open_library(gloam_egl_lib_names, GLOAM_ARRAYSIZE(gloam_egl_lib_names));
         did_open = 1;
     }
-    if (!context->gloam_loader_handle) return 0;
 
-    gloam_egl_load_state.handle = context->gloam_loader_handle;
+    if (!handle)
+		return 0;
+
+    gloam_egl_load_state.handle = handle;
     gloam_egl_load_state.get_proc_address =
-        (PFNEGLGETPROCADDRESSPROC)gloam_dlsym(context->gloam_loader_handle, "eglGetProcAddress");
+        (PFNEGLGETPROCADDRESSPROC)gloam_dlsym(handle, "eglGetProcAddress");
+
     if (!gloam_egl_load_state.get_proc_address) {
-        if (did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+        if (did_open)
+			gloam_dlclose(handle);
         return 0;
     }
 
     version = gloamLoad{{ api | api_display }}Context(context, display, gloam_egl_get_proc);
     gloam_egl_load_state.handle = NULL;
-    if (!version && did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+
+    if (!version && did_open) {
+		gloam_dlclose(handle);
+		return 0;
+	}
+
+	context->gloam_loader_handle = handle;
+	context->gloam_loader_owns_handle |= (uint8_t)did_open;
+
     return version;
 }
 
@@ -202,9 +229,8 @@ int gloamLoaderLoad{{ api | api_display }}(EGLDisplay display)
 
 void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
 {
-    if (context->gloam_loader_handle) {
+    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
         gloam_dlclose(context->gloam_loader_handle);
-        context->gloam_loader_handle = NULL;
     }
     gloamLoaderReset{{ api | api_display }}Context(context);
 }
@@ -246,8 +272,10 @@ static GloamAPIProc gloam_glx_get_proc(const char *name)
 {
     struct gloam_glx_load_userptr *u = &gloam_glx_load_state;
     GloamAPIProc result = NULL;
-    if (u->get_proc_address) result = u->get_proc_address(name);
-    if (!result)              result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+    if (u->get_proc_address)
+		result = u->get_proc_address(name);
+    if (!result)
+		result = (GloamAPIProc)gloam_dlsym(u->handle, name);
     return result;
 }
 
@@ -256,25 +284,38 @@ static GloamAPIProc gloam_glx_get_proc(const char *name)
 int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *display, int screen)
 {
     int did_open = 0, version;
-    if (!context->gloam_loader_handle) {
-        context->gloam_loader_handle = gloam_open_library(
-            gloam_glx_lib_names, GLOAM_ARRAYSIZE(gloam_glx_lib_names));
+	void *handle;
+
+	handle = context->gloam_loader_handle;
+
+    if (!handle) {
+        handle = gloam_open_library(gloam_glx_lib_names, GLOAM_ARRAYSIZE(gloam_glx_lib_names));
         did_open = 1;
     }
-    if (!context->gloam_loader_handle) return 0;
 
-    gloam_glx_load_state.handle = context->gloam_loader_handle;
-    gloam_glx_load_state.get_proc_address =
-        (GloamAPIProc (*)(const char *))
-            gloam_dlsym(context->gloam_loader_handle, "glXGetProcAddressARB");
+    if (!handle)
+		return 0;
+
+    gloam_glx_load_state.handle = handle;
+    gloam_glx_load_state.get_proc_address = (GloamAPIProc (*)(const char *))gloam_dlsym(handle, "glXGetProcAddressARB");
+
     if (!gloam_glx_load_state.get_proc_address) {
-        if (did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+        if (did_open)
+			gloam_dlclose(handle);
         return 0;
     }
 
     version = gloamLoad{{ api | api_display }}Context(context, display, screen, gloam_glx_get_proc);
     gloam_glx_load_state.handle = NULL;
-    if (!version && did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+
+    if (!version && did_open) {
+		gloam_dlclose(handle);
+		return 0;
+	}
+
+	context->gloam_loader_handle = handle;
+	context->gloam_loader_owns_handle |= (uint8_t)did_open;
+
     return version;
 }
 
@@ -285,9 +326,8 @@ int gloamLoaderLoad{{ api | api_display }}(Display *display, int screen)
 
 void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
 {
-    if (context->gloam_loader_handle) {
+    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
         gloam_dlclose(context->gloam_loader_handle);
-        context->gloam_loader_handle = NULL;
     }
     gloamLoaderReset{{ api | api_display }}Context(context);
 }
@@ -324,34 +364,51 @@ static GloamAPIProc gloam_wgl_get_proc(const char *name)
 {
     struct gloam_wgl_load_userptr *u = &gloam_wgl_load_state;
     GloamAPIProc result = NULL;
-    if (u->wgl_get_proc) result = u->wgl_get_proc(name);
-    if (!result)         result = (GloamAPIProc)gloam_dlsym(u->handle, name);
+    if (u->wgl_get_proc)
+		result = u->wgl_get_proc(name);
+    if (!result)
+		result = (GloamAPIProc)gloam_dlsym(u->handle, name);
     return result;
 }
 
 {%- for api in fs.apis %}
 int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc)
 {
-    int did_open = 0, version;
-    if (!context->gloam_loader_handle) {
-        context->gloam_loader_handle = gloam_open_library(
+    int did_open = 0;
+	int version;
+	void *handle = context->gloam_loader_handle;
+
+    if (!handle) {
+        handle = gloam_open_library(
             gloam_wgl_lib_names, GLOAM_ARRAYSIZE(gloam_wgl_lib_names));
         did_open = 1;
     }
-    if (!context->gloam_loader_handle) return 0;
 
-    gloam_wgl_load_state.handle = context->gloam_loader_handle;
+    if (!handle)
+		return 0;
+
+    gloam_wgl_load_state.handle = handle;
     gloam_wgl_load_state.wgl_get_proc =
         (GloamAPIProc (WINAPI *)(const char *))
-            gloam_dlsym(context->gloam_loader_handle, "wglGetProcAddress");
+            gloam_dlsym(handle, "wglGetProcAddress");
+
     if (!gloam_wgl_load_state.wgl_get_proc) {
-        if (did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+        if (did_open)
+			gloam_dlclose(handle);
         return 0;
     }
 
     version = gloamLoad{{ api | api_display }}Context(context, hdc, gloam_wgl_get_proc);
     gloam_wgl_load_state.handle = NULL;
-    if (!version && did_open) { gloam_dlclose(context->gloam_loader_handle); context->gloam_loader_handle = NULL; }
+
+    if (!version && did_open) {
+		gloam_dlclose(handle);
+		return 0;
+	}
+
+	context->gloam_loader_handle = handle;
+	context->gloam_loader_owns_handle |= (uint8_t)did_open;
+
     return version;
 }
 
@@ -362,9 +419,8 @@ int gloamLoaderLoad{{ api | api_display }}(HDC hdc)
 
 void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
 {
-    if (context->gloam_loader_handle) {
+    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
         gloam_dlclose(context->gloam_loader_handle);
-        context->gloam_loader_handle = NULL;
     }
     gloamLoaderReset{{ api | api_display }}Context(context);
 }
@@ -399,13 +455,14 @@ int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance, VkPhy
     int version;
     void *handle;
 
-    if (!context->gloam_loader_handle) {
-        context->gloam_loader_handle = gloam_open_library(
+	handle = context->gloam_loader_handle;
+
+    if (!handle) {
+        handle = gloam_open_library(
             gloam_vk_lib_names, GLOAM_ARRAYSIZE(gloam_vk_lib_names));
         did_open = 1;
     }
 
-    handle = context->gloam_loader_handle;
     if (!handle)
         return 0;
 
@@ -414,18 +471,21 @@ int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance, VkPhy
             (PFN_vkGetInstanceProcAddr)gloam_dlsym(handle, "vkGetInstanceProcAddr");
 
     if (!context->GetInstanceProcAddr) {
-        if (did_open) {
+        if (did_open)
             gloam_dlclose(handle);
-            context->gloam_loader_handle = NULL;
-        }
         return 0;
     }
 
     version = gloamVulkanDiscoverContext(context, instance, physical_device, device);
+
     if (!version && did_open) {
         gloam_dlclose(handle);
-        context->gloam_loader_handle = NULL;
+		return 0;
     }
+
+	context->gloam_loader_handle = handle;
+	context->gloam_loader_owns_handle |= (uint8_t)did_open;
+
     return version;
 }
 
@@ -438,9 +498,8 @@ int gloamLoaderLoadVulkan(VkInstance instance, VkPhysicalDevice physical_device,
 /* Close the library handle (if set) then zero all context state. */
 void gloamLoaderUnloadVulkanContext({{ u.ctx_arg() }})
 {
-    if (context->gloam_loader_handle) {
+    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
         gloam_dlclose(context->gloam_loader_handle);
-        context->gloam_loader_handle = NULL;
     }
     gloamLoaderResetVulkanContext(context);
 }

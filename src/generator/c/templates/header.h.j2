@@ -420,10 +420,10 @@ typedef struct {{ fs.context_name }} {
        NOT taken (gloam will not close it).  Present on all context types so
        user code can use a single field name regardless of API. */
     void *gloam_loader_handle;
-{% if fs.is_vulkan %}
     /* Non-zero if gloam opened the library handle itself and is responsible
        for closing it in gloamVulkanFinalize / gloamLoaderUnload. */
     uint8_t gloam_loader_owns_handle;
+{% if fs.is_vulkan %}
     /* The last VkInstance this context loaded entry points from */
     VkInstance vk_loaded_instance;
     /* The last VkDevice this context loaded entry points from */
