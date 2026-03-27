@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4](https://github.com/tycho/gloam/compare/0.4.3...0.4.4) - 2026-03-27
+
+### Added
+
+- *(vulkan)* add new --external-headers option for Vulkan
+
+### Fixed
+
+- *(generator)* clean up whitespace usage for function declarations
+- *(vulkan)* unbreak loading device functions in enabled-list path
+- *(vulkan)* load instance functions when enabling device extensions
+- *(c)* use correct naming for gloamVulkanGetInstanceVersion
+- *(generator)* ensure trailing newline at end of generated sources
+
+### Other
+
+- *(doc)* ensure documentation matches reality
+- *(vulkan)* simplify internals, unify pfn range loading functions
+
 ## [0.4.3](https://github.com/tycho/gloam/compare/0.4.2...0.4.3) - 2026-03-26
 
 ### Added
