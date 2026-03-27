@@ -532,7 +532,7 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamL
 int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr);
 {%- elif fs.spec_name == "vk" %}
 /* ---- Vulkan enabled API (Volk-like) ----------------------------------------
-   Three-phase loading: Initialize → LoadInstance → LoadDevice.
+   Phased loading: Initialize → LoadInstance → LoadDevice.
    The caller owns extension discovery and tells gloam what was enabled.
 
    Phase 0 — Initialize: open libvulkan and load the handful of Global-scope
@@ -540,13 +540,21 @@ int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr);
    If library_handle is non-NULL, use it without taking ownership; if NULL,
    dlopen the platform default and take ownership.
 
-   Phase 1 — LoadInstance: load Global + Instance-scope PFNs.  Set featArray
-   from api_version (VK_MAKE_API_VERSION or VK_API_VERSION_x_y).  Set extArray
-   for enabled instance extensions.  Resolve aliases.
+   Phase 1 — LoadInstance: load Global + Instance-scope PFNs for core features
+   and enabled instance extensions.  Set featArray from api_version
+   (VK_MAKE_API_VERSION or VK_API_VERSION_x_y).  Set extArray for enabled
+   instance extensions.  Resolve aliases.
 
-   Phase 2 — LoadDevice: load Device-scope PFNs via vkGetDeviceProcAddr.
-   Update featArray from the device's api_version.  Set extArray for enabled
-   device extensions.  Resolve aliases.
+   Phase 1.5 (optional) — LoadPhysicalDeviceExtension(s): pre-load
+   Instance-scope PFNs for device extensions the application wants to query
+   before creating a VkDevice (e.g. vkGetPhysicalDeviceFragmentShadingRatesKHR
+   from VK_KHR_fragment_shading_rate).  Does NOT set extArray.
+
+   Phase 2 — LoadDevice: load PFNs for enabled device extensions (all scopes).
+   Device-scope commands use vkGetDeviceProcAddr for the fast path; Instance-
+   scope commands in device extensions use vkGetInstanceProcAddr.  Update
+   featArray from the device's api_version.  Set extArray for enabled device
+   extensions.  Resolve aliases.
 
    Finalize: close library handle if gloam owns it, zero the context. */
 {% if loader -%}

@@ -12,7 +12,8 @@ For architecture details, module map, spec gotchas, and code conventions, see
 evolution of it. GLAD compatibility is incidental, not a goal. Where GLAD
 dropped the global context struct pattern (--mx-global), gloam keeps it —
 `gloam_gl_context`, `gloam_vk_context`, etc. are the primary dispatch
-mechanism via macro wrappers. Design for what's best, not what GLAD does.
+mechanism via dispatch wrappers (macros for GL/EGL/GLX/WGL, force-inlined
+functions for Vulkan). Design for what's best, not what GLAD does.
 
 **Performance and size matter.** The hash-based extension detection (xxHash
 + Shellsort + binary search) exists because string comparisons are a measurable

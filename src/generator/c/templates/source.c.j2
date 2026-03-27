@@ -43,8 +43,8 @@
 {% include "impl_util.j2" %}
 {% include "hash_search.j2" %}
 {% if fs.is_vulkan -%}
-/* Vulkan command scope — controls which proc-addr entry point the internal
-   dispatch uses. */
+/* Vulkan command scope — determines which vkGet*ProcAddr function and handle
+   is used when loading each command's function pointer. */
 typedef enum {
     GloamCommandScopeUnknown  = 0,
     GloamCommandScopeGlobal   = 1,
@@ -213,9 +213,8 @@ static void gloam_vk_apply_version({{ u.ctx_arg(', ') }}uint32_t api_version)
 {%- endfor %}
 }
 
-/* Load Global-scope PFNs via vkGetInstanceProcAddr(NULL, name).  Does NOT
-   handle Unknown-scope (vkGetInstanceProcAddr itself) — the caller must
-   store that in the context before calling this function. */
+/* Load Global-scope PFNs via vkGetInstanceProcAddr(NULL, name).
+   context->GetInstanceProcAddr must already be set before calling. */
 static void gloam_vk_load_global_pfns({{ u.ctx_arg(', ') }}PFN_vkGetInstanceProcAddr gipa)
 {
     uint32_t i;
@@ -874,12 +873,13 @@ static int gloam_vk_apply_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint32_t num
  * progresses through Vulkan initialisation:
  *   1. (NULL, NULL, NULL) — loads Global-scope functions; detects instance
  *      extensions so the caller can choose which to enable.
- *   2. (instance, NULL, NULL) — loads Instance-scope functions; detects device
- *      extensions given the now-live instance.
- *   3. (instance, physical_device, device) — loads Device-scope functions.
+ *   2. (instance, NULL, NULL) — loads Global + Instance-scope functions;
+ *      detects device extensions given the now-live instance.
+ *   3. (instance, physical_device, device) — loads all scopes; Device-scope
+ *      commands get the fast vkGetDeviceProcAddr path.
  *
  * Each call is additive: context state from previous calls is preserved and
- * only new slots (or better-scoped replacements) are filled.
+ * only new or better-scoped slots are updated.
  *
  * Requires context->GetInstanceProcAddr to be set before the first call.
  * context->GetDeviceProcAddr is resolved automatically when an instance is
@@ -935,7 +935,7 @@ static int gloamVulkanDiscoverContext({{ u.ctx_arg(', ') }}VkInstance instance, 
 }
 
 /* ==========================================================================
-   Vulkan enabled API — three-phase loading
+   Vulkan enabled API — phased loading
    ========================================================================== */
 {% if loader %}
 /* gloamVulkanInitializeContext — Phase 0: open libvulkan, load Global-scope
@@ -967,7 +967,7 @@ int gloamVulkanInitializeContext({{ u.ctx_arg(', ') }}void *library_handle)
         return 0;
     }
 
-    /* Store GIPA in its slot (Unknown-scope), then load Global-scope PFNs. */
+    /* Store GIPA in the context, then load Global-scope PFNs. */
     context->GetInstanceProcAddr = gipa;
     gloam_vk_load_global_pfns(context, gipa);
     return 1;
@@ -1043,14 +1043,14 @@ int gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version, uint32_t 
 }
 
 /* gloamVulkanLoadPhysicalDeviceExtensionsContext — Phase 1.5 (optional):
- * pre-load Instance-scope PFNs for device extensions before the VkDevice
- * exists.
+ * pre-load PFNs for device extensions before the VkDevice exists.
  *
  * Device extensions may provide Instance-scope query functions (e.g.
  * vkGetPhysicalDeviceFragmentShadingRatesKHR) that applications need to call
  * while selecting which device extensions to enable.  This function loads
- * only Instance-scope commands for the listed extensions via
- * vkGetInstanceProcAddr — Device-scope slots are not touched.
+ * Global and Instance-scope commands for the listed extensions via
+ * vkGetInstanceProcAddr.  Device-scope commands are skipped because no
+ * VkDevice exists yet.
  *
  * Does NOT set extArray — the GLOAM_VK_* support macros remain unchanged.
  * Call gloamVulkanLoadDevice after device creation for full extension
@@ -1075,6 +1075,9 @@ void gloamVulkanLoadPhysicalDeviceExtensionsContext({{ u.ctx_arg(', ') }} uint32
                     r->start, r->count);
         }
     }
+{% if alias and fs.alias_pairs | length > 0 %}
+    gloam_resolve_aliases_{{ fs.spec_name }}(context);
+{% endif %}
 {% endif %}
     GLOAM_UNUSED(num_device_extensions);
     GLOAM_UNUSED(device_extensions);

@@ -149,6 +149,14 @@ Commands:
                   was loaded by the driver (or vice versa), the pointer
                   is propagated to both slots.
         --loader  Include a built-in dlopen/LoadLibrary convenience layer.
+        --external-headers
+                  (Vulkan only) Use system-installed Vulkan headers
+                  instead of embedding type definitions. The generated
+                  header includes <vulkan/vulkan_core.h> and the
+                  platform-specific Vulkan headers conditionally,
+                  following the same pattern as Volk. Auxiliary headers
+                  (vk_platform.h, vk_video/*) are not bundled in the
+                  output directory.
 ```
 
 ### Extension selection flags
@@ -169,12 +177,18 @@ The extension-related flags are orthogonal and compose freely:
 Each API gets a context struct (`GloamGLContext`, `GloamVulkanContext`,
 etc.) with named members for every loaded function pointer. A global
 context variable is declared for each API (`gloam_gl_context`,
-`gloam_vk_context`, etc.), and dispatch macros route calls through it:
+`gloam_vk_context`, etc.), and dispatch wrappers route calls through it:
 
 ```c
-// This expands to a function pointer in the global context:
+// This expands to a dispatch wrapper that calls the function pointer
+// in the global context:
 glClear(GL_COLOR_BUFFER_BIT);
 ```
+
+For GL, EGL, GLX, and WGL, dispatch uses `#define` macros. For Vulkan,
+dispatch uses `static` force-inlined functions to avoid macro namespace
+collisions with the upstream Vulkan headers and libraries like the
+Vulkan Memory Allocator.
 
 The emitted loader headers have full function prototypes specifically for
 IntelliSense, so you get clear hints when developing in Visual Studio.
@@ -228,7 +242,7 @@ gloamVulkanLoadInstance(instance,
 VkDeviceCreateInfo deviceCreateInfo = { ... };
 vkCreateDevice(physicalDevice, &deviceCreateInfo, NULL, &device);
 
-// Phase 2: load device-scope functions.
+// Phase 2: load device extension functions.
 // These are the same values you passed to VkDeviceCreateInfo.
 gloamVulkanLoadDevice(device, physicalDevice,
     deviceCreateInfo.enabledExtensionCount,
@@ -247,6 +261,44 @@ context pointer instead of using the global `gloam_vk_context`
 A `gloamVulkanInitializeCustom(getInstanceProcAddr)` variant is
 available when you already have a `vkGetInstanceProcAddr` and want to
 skip the library-opening step.
+
+#### Pre-loading instance functions from device extensions
+
+Some device extensions provide instance-scope query functions that
+applications need to call *before* creating a `VkDevice` — for example,
+`VK_KHR_fragment_shading_rate` has
+`vkGetPhysicalDeviceFragmentShadingRatesKHR`, which takes a
+`VkPhysicalDevice` and is used to query the extension's supported
+shading rates before deciding whether to enable the extension at device
+creation. This is a rare special case, but gloam supports it with an
+optional Phase 1.5 step:
+
+```c
+gloamVulkanLoadInstance(instance, ...);
+
+// Phase 1.5 (optional): pre-load instance-scope functions for device
+// extensions you want to query before creating the VkDevice.
+gloamVulkanLoadPhysicalDeviceExtension(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME);
+
+// Now you can call vkGetPhysicalDeviceFragmentShadingRatesKHR to query
+// supported shading rates and decide whether to enable the extension.
+vkGetPhysicalDeviceFragmentShadingRatesKHR(physicalDevice, ...);
+
+// Create your VkDevice with the extensions you chose...
+vkCreateDevice(physicalDevice, &deviceCreateInfo, NULL, &device);
+
+// Phase 2 loads everything for the enabled device extensions, including
+// re-loading any instance-scope functions that Phase 1.5 already set.
+gloamVulkanLoadDevice(device, physicalDevice, ...);
+```
+
+The singular `gloamVulkanLoadPhysicalDeviceExtension` takes a single
+extension name. The plural `gloamVulkanLoadPhysicalDeviceExtensions`
+takes a count and array, for loading multiple device extensions at once.
+
+These functions do **not** set the `GLOAM_VK_*` extension presence
+macros — those are only set by `gloamVulkanLoadDevice` after the
+extension is actually enabled.
 
 ### Discovery mode
 
