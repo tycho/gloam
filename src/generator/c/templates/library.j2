@@ -3,32 +3,39 @@
 
 #if defined(GLOAM_PLATFORM_WINDOWS)
 
-static void *gloam_dlopen(const char *name) {
+static void *gloam_dlopen(const char *name)
+{
     return (void *)LoadLibraryA(name);
 }
-static void gloam_dlclose(void *handle) {
+static void gloam_dlclose(void *handle)
+{
     FreeLibrary((HMODULE)handle);
 }
-static void *gloam_dlsym(void *handle, const char *name) {
+static void *gloam_dlsym(void *handle, const char *name)
+{
     return (void *)GetProcAddress((HMODULE)handle, name);
 }
 
 #else /* POSIX */
 
-static void *gloam_dlopen(const char *name) {
+static void *gloam_dlopen(const char *name)
+{
     return dlopen(name, RTLD_LAZY | RTLD_LOCAL);
 }
-static void gloam_dlclose(void *handle) {
+static void gloam_dlclose(void *handle)
+{
     dlclose(handle);
 }
-static void *gloam_dlsym(void *handle, const char *name) {
+static void *gloam_dlsym(void *handle, const char *name)
+{
     return dlsym(handle, name);
 }
 
 #endif /* GLOAM_PLATFORM_WINDOWS */
 
 /* Try each name in turn; return the first handle that opens successfully. */
-static void *gloam_open_library(const char * const *names, int count) {
+static void *gloam_open_library(const char * const *names, int count)
+{
     int i;
     for (i = 0; i < count; ++i) {
         void *h = gloam_dlopen(names[i]);

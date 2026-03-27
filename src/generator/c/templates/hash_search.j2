@@ -8,7 +8,8 @@
  * small arrays (< 10 extensions) take only a couple of passes.  No heap
  * allocation; code size is ~80 bytes on x86-64.
  */
-GLOAM_NO_INLINE static void gloam_sort_hashes(uint64_t *a, size_t n) {
+GLOAM_NO_INLINE static void gloam_sort_hashes(uint64_t *a, size_t n)
+{
     static const size_t kGaps[] = { 701, 301, 132, 57, 23, 10, 4, 1 };
     size_t gi = 0;
     if (!a || n < 2) return;
@@ -31,7 +32,8 @@ GLOAM_NO_INLINE static void gloam_sort_hashes(uint64_t *a, size_t n) {
 /* gloam_hash_search — binary search for `target` in a sorted uint64_t array.
  * Returns 1 if found, 0 otherwise.
  */
-GLOAM_NO_INLINE static int gloam_hash_search(const uint64_t *arr, uint32_t size, uint64_t target) {
+GLOAM_NO_INLINE static int gloam_hash_search(const uint64_t *arr, uint32_t size, uint64_t target)
+{
     int32_t lo = 0, hi = (int32_t)size - 1;
     while (lo <= hi) {
         int32_t mid = lo + (hi - lo) / 2;
@@ -46,7 +48,8 @@ GLOAM_NO_INLINE static int gloam_hash_search(const uint64_t *arr, uint32_t size,
  * The same algorithm is used at generator time to pre-bake kExtHashes[],
  * guaranteeing that driver-reported names and the embedded table match.
  */
-GLOAM_NO_INLINE static uint64_t gloam_hash_string(const char *str, size_t length) {
+GLOAM_NO_INLINE static uint64_t gloam_hash_string(const char *str, size_t length)
+{
     return XXH3_64bits(str, length);
 }
 
@@ -54,8 +57,8 @@ GLOAM_NO_INLINE static uint64_t gloam_hash_string(const char *str, size_t length
    Two-pass tokenize-and-hash for space-separated extension strings (GL, EGL,
    GLX, WGL).  First pass counts tokens, second pass hashes them.  Result is
    sorted for binary search in find_extensions. */
-GLOAM_NO_INLINE static int gloam_hash_ext_string(const char *ext_str,
-                                 uint64_t **out_exts, uint32_t *out_num_exts) {
+GLOAM_NO_INLINE static int gloam_hash_ext_string(const char *ext_str, uint64_t **out_exts, uint32_t *out_num_exts)
+{
     const char *cur, *next;
     uint64_t *exts = NULL;
     uint32_t num_exts = 0, j;
