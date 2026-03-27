@@ -464,9 +464,7 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 {% if fs.is_vulkan -%}
 {# Vulkan: force-inlined function wrappers that dispatch through the global
    context struct.  Unlike #define macros, these don't pollute the preprocessor
-   namespace (avoids collisions with VMA, etc.).  Guarded by VK_NO_PROTOTYPES
-   so users who want raw PFN access can suppress them. #}
-#ifndef VK_NO_PROTOTYPES
+   namespace (avoids collisions with VMA, etc.). #}
 {% for group in fs.cmd_pfn_groups -%}
 {% if group.protect | length > 0 -%}
 #if defined({{ group.protect | join(") && defined(") }})
@@ -480,7 +478,6 @@ GLOAM_FORCE_INLINE {{ cmd.return_type }} {{ cmd.name }}({{ cmd.params_str }}) {
 #endif
 {% endif -%}
 {% endfor -%}
-#endif /* VK_NO_PROTOTYPES */
 {% else -%}
 {# GL/EGL/GLX/WGL: macro dispatch with IntelliSense prototypes for IDE support. #}
 #ifdef __INTELLISENSE__
