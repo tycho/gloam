@@ -462,7 +462,7 @@ pub(super) fn collect_required_headers(
     }
 
     if spec_name == "vk" {
-        headers.insert("vk_platform.h".to_string(), ());
+        headers.insert("vulkan/vk_platform.h".to_string(), ());
 
         let vk_video_includes: HashSet<&str> = raw
             .types
@@ -502,7 +502,7 @@ fn requires_to_bundled_header(requires: &str) -> Option<&'static str> {
     match requires {
         "khrplatform" => Some("KHR/khrplatform.h"),
         "eglplatform" => Some("EGL/eglplatform.h"),
-        "vk_platform" => Some("vk_platform.h"),
+        "vk_platform" => Some("vulkan/vk_platform.h"),
         _ => None,
     }
 }

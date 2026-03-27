@@ -34,7 +34,7 @@ pub const GLSL_EXTS_XML: &str = include_str!("../bundled/xml/glsl_exts.xml");
 pub const XXHASH_H: &str = include_str!("../bundled/headers/xxhash.h");
 pub const KHR_PLATFORM_H: &str = include_str!("../bundled/headers/KHR/khrplatform.h");
 pub const EGL_PLATFORM_H: &str = include_str!("../bundled/headers/EGL/eglplatform.h");
-pub const VK_PLATFORM_H: &str = include_str!("../bundled/headers/vk_platform.h");
+pub const VK_PLATFORM_H: &str = include_str!("../bundled/headers/vulkan/vk_platform.h");
 
 pub const VK_VIDEO_CODECS_COMMON_H: &str =
     include_str!("../bundled/headers/vk_video/vulkan_video_codecs_common.h");

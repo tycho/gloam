@@ -100,7 +100,7 @@ fn bundled_auxiliary(path: &str) -> Result<&'static str> {
         "xxhash.h" => XXHASH_H,
         "KHR/khrplatform.h" => KHR_PLATFORM_H,
         "EGL/eglplatform.h" => EGL_PLATFORM_H,
-        "vk_platform.h" => VK_PLATFORM_H,
+        "vulkan/vk_platform.h" => VK_PLATFORM_H,
         "vk_video/vulkan_video_codecs_common.h" => VK_VIDEO_CODECS_COMMON_H,
         "vk_video/vulkan_video_codec_h264std.h" => VK_VIDEO_H264STD_H,
         "vk_video/vulkan_video_codec_h264std_decode.h" => VK_VIDEO_H264STD_DECODE_H,
@@ -155,10 +155,8 @@ fn fetch_spec(spec_name: &str) -> Result<SpecSources> {
 }
 
 fn auxiliary_url(path: &str) -> Option<String> {
-    if path.starts_with("vk_video/") {
+    if path.starts_with("vk_video/") || path.starts_with("vulkan/") {
         Some(format!("{}{}", BASE_VK_HEADERS, path))
-    } else if path == "vk_platform.h" {
-        Some(format!("{}vulkan/{}", BASE_VK_HEADERS, path))
     } else if path.starts_with("KHR/") || path.starts_with("EGL/") {
         Some(format!("{}{}", BASE_EGL, path))
     } else if path == "xxhash.h" {
@@ -207,7 +205,7 @@ mod tests {
         // bundled vk_video header since those are dictated by the Vulkan spec
         // and new ones appear (or move) over time.
         let auxiliary_urls: Vec<String> = vec![
-            "vk_platform.h",
+            "vulkan/vk_platform.h",
             "KHR/khrplatform.h",
             "EGL/eglplatform.h",
             "xxhash.h",

@@ -123,6 +123,7 @@ if [[ $DO_HDRS -eq 1 ]]; then
     mkdir -p "$HDR_DIR/KHR"
     mkdir -p "$HDR_DIR/EGL"
     mkdir -p "$HDR_DIR/vk_video"
+    mkdir -p "$HDR_DIR/vulkan"
 
     # xxhash — use the single-file amalgamation from the official release.
     # We pin to a specific tag for reproducibility.
@@ -136,7 +137,7 @@ if [[ $DO_HDRS -eq 1 ]]; then
     fetch "$EGL_HDR_BASE/EGL/eglplatform.h"   "$HDR_DIR/EGL/eglplatform.h"
 
     # Vulkan platform header.
-    fetch "$VK_HDR_BASE/vk_platform.h"  "$HDR_DIR/vk_platform.h"
+    fetch "$VK_HDR_BASE/vk_platform.h"  "$HDR_DIR/vulkan/vk_platform.h"
 
     # Vulkan video extension headers.
     VK_VIDEO_HDRS=(
