@@ -1105,7 +1105,12 @@ int gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device,
     VkPhysicalDeviceProperties props;
     VkInstance instance = context->vk_loaded_instance;
 
-    if (!context->GetDeviceProcAddr)
+    if (instance && !context->GetDeviceProcAddr)
+        context->GetDeviceProcAddr =
+            (PFN_vkGetDeviceProcAddr)context->GetInstanceProcAddr(
+                instance, "vkGetDeviceProcAddr");
+
+    if (!context->GetDeviceProcAddr || !device)
         return 0;
 
     context->GetPhysicalDeviceProperties(physical_device, &props);
