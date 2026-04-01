@@ -45,7 +45,7 @@
 
 {#-
   Extra load-function parameters specific to each spec, placed before
-  the final GloamLoadFunc argument.  For GL/Vulkan these are empty.
+  the final GloamLoadFunc argument. For GL/Vulkan these are empty.
   Always ends with ", " when non-empty so it can sit between ctx_arg and
   the getProcAddr param without producing a double-comma.
 -#}
@@ -63,8 +63,8 @@
 {%- endmacro -%}
 
 {#-
-  Vulkan getProcAddr parameter type.  For non-Vulkan specs this is a plain
-  GloamLoadFunc.  Placed last in the parameter list.
+  Vulkan getProcAddr parameter type. For non-Vulkan specs this is a plain
+  GloamLoadFunc. Placed last in the parameter list.
 -#}
 {%- macro get_proc_param(spec) -%}
 {%- if spec == "vk" -%}
