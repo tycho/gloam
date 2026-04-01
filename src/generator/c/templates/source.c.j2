@@ -43,8 +43,10 @@
 {% include "impl_util.j2" %}
 {% include "hash_search.j2" %}
 {% if fs.is_vulkan -%}
-/* Vulkan command scope — determines which vkGet*ProcAddr function and handle
-   is used when loading each command's function pointer. */
+/*
+ * Vulkan command scope — determines which vkGet*ProcAddr function and handle
+ * is used when loading each command's function pointer.
+ */
 typedef enum {
     GloamCommandScopeUnknown  = 0,
     GloamCommandScopeGlobal   = 1,
@@ -74,10 +76,11 @@ static const char * const gloam_vk_lib_names[] = {
 #endif
 
 /* ---- Function name table -------------------------------------------------
-   Command names stored as a single NUL-terminated string blob with a parallel
-   offset table for O(1) indexing.  This avoids one pointer (8 bytes on 64-bit)
-   plus one relocation entry (~24 bytes in PIC builds) per command compared to
-   the traditional const char * const [] approach. */
+ * Command names stored as a single NUL-terminated string blob with a parallel
+ * offset table for O(1) indexing. This avoids one pointer (8 bytes on 64-bit)
+ * plus one relocation entry (~24 bytes in PIC builds) per command compared to
+ * the traditional const char * const [] approach.
+ */
 static const uint32_t kFnCount_{{ fs.spec_name | spec_display }} = {{ fs.commands | length }};
 
 static const char kFnNameData_{{ fs.spec_name | spec_display }}[] =
@@ -92,10 +95,11 @@ static const {{ fn_name_offset_type }} kFnNameOffsets_{{ fs.spec_name | spec_dis
 };
 {% if fs.is_vulkan -%}
 /* ---- Command scope table -------------------------------------------------
-   Indexed in lockstep with kFnNameOffsets_{{ fs.spec_name | spec_display }}[].  Each entry is the GloamCommandScope
-   value for that slot — stored as uint8_t so the whole table is one byte per
-   command (compares well against the alternatives: a parallel pointer array
-   or a switch inside the loop). */
+ * Indexed in lockstep with kFnNameOffsets_{{ fs.spec_name | spec_display }}[].
+ * Each entry is the GloamCommandScope value for that slot — stored as uint8_t so
+ * the whole table is one byte per command (compares well against the
+ * alternatives: a parallel pointer array or a switch inside the loop).
+ */
 static const uint8_t kCommandScopes_{{ fs.spec_name | spec_display }}[] = {
 {%- for cmd in fs.commands %}
     /* {{ cmd.index | rjust(4) }} */ {{ cmd.scope | ljust(25) }}, /* {{ cmd.name }} */
@@ -115,9 +119,10 @@ static const uint64_t kExtHashes_{{ fs.spec_name | spec_display }}[] = {
 {% endif %}
 {% if fs.feature_pfn_ranges | length > 0 -%}
 /* ---- Feature PFN range table ---------------------------------------------
-   Each entry maps one feature (by featArray index) to a contiguous run of
-   pfnArray slots.  The loader iterates this table and bulk-loads the run
-   when featArray[entry.extension] is set. */
+ * Each entry maps one feature (by featArray index) to a contiguous run of
+ * pfnArray slots. The loader iterates this table and bulk-loads the run
+ * when featArray[entry.extension] is set.
+ */
 static const GloamPfnRange_t kFeatPfnRanges_{{ fs.spec_name | spec_display }}[] = {
 {%- for r in fs.feature_pfn_ranges %}
     { {{ r.extension | rjust(4) }}, {{ r.start | rjust(4) }}, {{ r.count | rjust(4) }} }, /* {{ fs.features[r.extension].full_name }} */
@@ -126,8 +131,9 @@ static const GloamPfnRange_t kFeatPfnRanges_{{ fs.spec_name | spec_display }}[] 
 {% endif %}
 {% if not fs.is_vulkan -%}
 /* ---- PFN range helper (GL / EGL / GLX / WGL) ----------------------------
-   Walks a contiguous run of pfnArray slots and calls the plain load callback
-   (name only) for each one. */
+ * Walks a contiguous run of pfnArray slots and calls the plain load callback
+ * (name only) for each one.
+ */
 static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr, uint16_t start, uint16_t count)
 {
     uint16_t i;
@@ -138,12 +144,13 @@ static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamLo
 }
 {% else -%}
 /* ---- Vulkan scope-aware PFN range helper ---------------------------------
-   Loads a contiguous range of pfnArray slots, consulting kCommandScopes to
-   pick the right Vulkan proc-addr for each command:
-     Global   → vkGetInstanceProcAddr(NULL, name)
-     Instance → vkGetInstanceProcAddr(instance, name)  [skipped if instance is NULL]
-     Device   → vkGetDeviceProcAddr(device, name)      [skipped if device is NULL]
-   Pass NULL for instance or device to skip commands of that scope. */
+ * Loads a contiguous range of pfnArray slots, consulting kCommandScopes to
+ * pick the right Vulkan proc-addr for each command:
+ *   Global   → vkGetInstanceProcAddr(NULL, name)
+ *   Instance → vkGetInstanceProcAddr(instance, name)  [skipped if instance is NULL]
+ *   Device   → vkGetDeviceProcAddr(device, name)      [skipped if device is NULL]
+ * Pass NULL for instance or device to skip commands of that scope.
+ */
 static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}VkInstance instance, VkDevice device, uint16_t start, uint16_t count)
 {
     PFN_vkGetInstanceProcAddr gipa = context->GetInstanceProcAddr;
@@ -175,8 +182,9 @@ static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}VkInsta
 {% endif %}
 {% if alias and fs.alias_pairs | length > 0 -%}
 /* ---- Alias resolution table ----------------------------------------------
-   Pairs are sorted by canonical index so same-canonical entries are
-   consecutive; the resolver processes them in a single forward pass. */
+ * Pairs are sorted by canonical index so same-canonical entries are
+ * consecutive; the resolver processes them in a single forward pass.
+ */
 static const GloamAliasPair_t kAliases_{{ fs.spec_name | spec_display }}[] = {
 {%- for p in fs.alias_pairs %}
     { {{ p.canonical | rjust(4) }}, {{ p.secondary | rjust(4) }} }, /* {{ fs.commands[p.canonical].name }} and {{ fs.commands[p.secondary].name }} */
@@ -198,12 +206,14 @@ GLOAM_NO_INLINE static void gloam_resolve_aliases_{{ fs.spec_name }}({{ u.ctx_ar
 {% endif %}
 {% if fs.is_vulkan -%}
 /* ==========================================================================
-   Vulkan enabled-path helpers (shared across per-API sections)
-   ========================================================================== */
+ * Vulkan enabled-path helpers (shared across per-API sections)
+ * ==========================================================================
+ */
 
 /* Set featArray bits from a packed Vulkan API version (VK_MAKE_API_VERSION or
-   VK_API_VERSION_x_y).  Extracts major.minor, packs as (major << 8 | minor),
-   and compares against the threshold for each feature. */
+ * VK_API_VERSION_x_y). Extracts major.minor, packs as (major << 8 | minor),
+ * and compares against the threshold for each feature.
+ */
 static void gloam_vk_apply_version({{ u.ctx_arg(', ') }}uint32_t api_version)
 {
     const uint16_t version_value = (uint16_t)(
@@ -214,7 +224,8 @@ static void gloam_vk_apply_version({{ u.ctx_arg(', ') }}uint32_t api_version)
 }
 
 /* Load Global-scope PFNs via vkGetInstanceProcAddr(NULL, name).
-   context->GetInstanceProcAddr must already be set before calling. */
+ * context->GetInstanceProcAddr must already be set before calling.
+ */
 static void gloam_vk_load_global_pfns({{ u.ctx_arg(', ') }}PFN_vkGetInstanceProcAddr gipa)
 {
     uint32_t i;
@@ -228,12 +239,14 @@ static void gloam_vk_load_global_pfns({{ u.ctx_arg(', ') }}PFN_vkGetInstanceProc
 
 {% endif -%}
 /* ==========================================================================
-   Per-API sections
-   ========================================================================== */
+ * Per-API sections
+ * ==========================================================================
+ */
 {% for api in fs.apis %}
 /* --------------------------------------------------------------------------
-   API: {{ api }}
-   -------------------------------------------------------------------------- */
+ * API: {{ api }}
+ * --------------------------------------------------------------------------
+ */
 {%- set subset   = fs.ext_subset_indices[api] | default([]) %}
 {% set extranges = fs.ext_pfn_ranges[api] | default([]) %}
 
@@ -259,7 +272,8 @@ static const GloamPfnRange_t kExtPfnRanges_{{ api }}[] = {
 {% if fs.extensions | length > 0 and subset | length > 0 %}
 {%- if fs.spec_name in ["gl", "gles2", "glcore"] %}
 /* Query driver-reported extension names, hash them, and fill *out_exts.
- * Returns 1 on success, 0 on failure.  Caller must free(*out_exts). */
+ * Returns 1 on success, 0 on failure. Caller must free(*out_exts).
+ */
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint64_t **out_exts, uint32_t *out_num_exts)
 {
 #if defined(GL_ES_VERSION_3_0) || defined(GL_VERSION_3_0)
@@ -317,7 +331,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 }
 {% elif fs.spec_name == "egl" %}
 /* EGL: concatenate client extensions (EGL_NO_DISPLAY) and display
- * extensions, then hash the combined space-separated list. */
+ * extensions, then hash the combined space-separated list.
+ */
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}EGLDisplay display, uint64_t **out_exts, uint32_t *out_num_exts)
 {
     const char *client_str, *display_str;
@@ -393,10 +408,11 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 }
 {% elif fs.spec_name == "vk" %}
 /* Enumerate Vulkan extensions and return a heap-allocated, sorted array of
- * XXH3-64 hashes.  Only enumerates scopes not yet cached on the context:
+ * XXH3-64 hashes. Only enumerates scopes not yet cached on the context:
  * instance extensions are skipped if vk_found_instance_exts is set, device
- * extensions are skipped if vk_found_device_exts is set.  The caller
- * (find_extensions) uses |= when merging results so bits only accumulate. */
+ * extensions are skipped if vk_found_device_exts is set. The caller
+ * (find_extensions) uses |= when merging results so bits only accumulate.
+ */
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }} VkPhysicalDevice physical_device, uint64_t **out_exts, uint32_t *out_num_exts)
 {
     uint32_t inst_count = 0, dev_count = 0, total, i;
@@ -420,7 +436,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     }
 
     /* Single allocation covers the larger of inst / dev for the props buffer,
-       and the exact total for the hash array. */
+     * and the exact total for the hash array.
+     */
     props = (VkExtensionProperties *)calloc(
         (inst_count > dev_count ? inst_count : dev_count), sizeof(*props));
     exts  = (uint64_t *)calloc(total, sizeof(uint64_t));
@@ -454,7 +471,8 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
 }
 {% endif %}
 /* Search pre-baked kExtHashes_{{ fs.spec_name | spec_display }} against the sorted driver hash list and set
- * extArray flags for every matching extension. */
+ * extArray flags for every matching extension.
+ */
 {%- if fs.spec_name == "vk" %}
 static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg(', ') }}VkPhysicalDevice physical_device)
 {
@@ -530,7 +548,8 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }})
 
 {%- elif fs.spec_name == "glx" -%}
 /* Query the GLX version via glXQueryVersion and set featArray entries for GLX.
- * Also returns the packed version (major << 8 | minor) for loader use. */
+ * Also returns the packed version (major << 8 | minor) for loader use.
+ */
 static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}Display **display, int *screen)
 {
     int major = 0, minor = 0;
@@ -557,23 +576,26 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}Dis
  * Called on every gloamLoaderLoadVulkanContext call so that version fields can be
  * filled in incrementally:
  *   - Instance version: queried once via EnumerateInstanceVersion (VK 1.1+)
- *     or assumed 1.0.  Cached in context->vk_instance_version.
+ *     or assumed 1.0. Cached in context->vk_instance_version.
  *   - Device version: queried via GetPhysicalDeviceProperties when
- *     physical_device is non-null.  Cached in context->vk_device_version.
+ *     physical_device is non-null. Cached in context->vk_device_version.
  *     Device version takes precedence over instance version when set.
  *
- * Returns the packed version (major << 8 | minor), or 0 on hard failure. */
+ * Returns the packed version (major << 8 | minor), or 0 on hard failure.
+ */
 static int gloam_vk_find_core({{ u.ctx_arg(', ') }}VkPhysicalDevice physical_device)
 {
     /* The top 3 bits of apiVersion encode the variant — mask them off so
-       Vulkan SC (variant 1) and plain Vulkan (variant 0) compare the same. */
+     * Vulkan SC (variant 1) and plain Vulkan (variant 0) compare the same.
+     */
     const uint32_t kVariantMask = 0xe0000000u;
     int major = 1, minor = 0;
     uint16_t version_value;
 
 #ifdef VK_VERSION_1_1
     /* EnumerateInstanceVersion is Global-scope and was bootstrapped in the
-       load function before we are called. */
+     * load function before we are called.
+     */
     if (!context->vk_instance_version && context->EnumerateInstanceVersion != NULL) {
         VkResult r = context->EnumerateInstanceVersion(&context->vk_instance_version);
         if (r != VK_SUCCESS)
@@ -588,8 +610,9 @@ static int gloam_vk_find_core({{ u.ctx_arg(', ') }}VkPhysicalDevice physical_dev
 #endif
 
     /* If a physical device is provided and we haven't cached its version yet,
-       query it.  GetPhysicalDeviceProperties is Instance-scope and will have
-       been loaded from the feature ranges on the previous call. */
+     * query it. GetPhysicalDeviceProperties is Instance-scope and will have
+     * been loaded from the feature ranges on the previous call.
+     */
     if (!context->vk_device_version && physical_device != NULL &&
             context->GetPhysicalDeviceProperties != NULL) {
         VkPhysicalDeviceProperties props;
@@ -839,9 +862,10 @@ int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr)
 {% elif fs.spec_name == "vk" %}
 {% if fs.extensions | length > 0 and subset | length > 0 %}
 /* Hash user-provided extension name arrays, search against kExtHashes, and
- * set the corresponding extArray bits.  Uses |= so bits from a previous
+ * set the corresponding extArray bits. Uses |= so bits from a previous
  * call (e.g. instance extensions) are preserved when device extensions are
- * added. */
+ * added.
+ */
 static int gloam_vk_apply_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint32_t num_exts, const char *const *ext_names)
 {
     uint32_t i;
@@ -883,7 +907,8 @@ static int gloam_vk_apply_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint32_t num
  *
  * Requires context->GetInstanceProcAddr to be set before the first call.
  * context->GetDeviceProcAddr is resolved automatically when an instance is
- * provided. */
+ * provided.
+ */
 static int gloamVulkanDiscoverContext({{ u.ctx_arg(', ') }}VkInstance instance, VkPhysicalDevice physical_device, VkDevice device)
 {
     int version;
@@ -901,7 +926,8 @@ static int gloamVulkanDiscoverContext({{ u.ctx_arg(', ') }}VkInstance instance, 
                 instance, "vkGetDeviceProcAddr");
 
     /* Bootstrap: EnumerateInstanceVersion is Global-scope — it can be loaded
-       before any instance exists — and must be available before find_core. */
+     * before any instance exists — and must be available before find_core.
+     */
 #ifdef VK_VERSION_1_1
     if (!context->EnumerateInstanceVersion)
         context->EnumerateInstanceVersion = (PFN_vkEnumerateInstanceVersion)
@@ -935,17 +961,23 @@ static int gloamVulkanDiscoverContext({{ u.ctx_arg(', ') }}VkInstance instance, 
 }
 
 /* ==========================================================================
-   Vulkan enabled API — phased loading
-   ========================================================================== */
+ * Vulkan enabled API — phased loading
+ * ==========================================================================
+ */
 {% if loader %}
 /* gloamVulkanInitializeContext — Phase 0: open libvulkan, load Global-scope
  * PFNs (vkCreateInstance, vkEnumerateInstance*, vkGetInstanceProcAddr).
  * If library_handle is non-NULL, use it without taking ownership.
- * If NULL, dlopen the platform default and take ownership. */
+ * If NULL, dlopen the platform default and take ownership.
+ */
 int gloamVulkanInitializeContext({{ u.ctx_arg(', ') }}void *library_handle)
 {
     PFN_vkGetInstanceProcAddr gipa;
-    memset(context, 0, sizeof(*context));
+
+    /* In case there's an open handle in the context that we own, we should
+     * tear that down now before zeroing the context. Use Finalize to do that.
+     */
+    gloamVulkanFinalizeContext(context);
 
     if (library_handle) {
         context->gloam_loader_handle = library_handle;
@@ -979,10 +1011,11 @@ int gloamVulkanInitialize(void *library_handle)
 }
 {% endif %}
 /* gloamVulkanInitializeCustomContext — Phase 0 variant: caller provides
- * vkGetInstanceProcAddr directly.  No library handle management. */
+ * vkGetInstanceProcAddr directly. No library handle management.
+ */
 void gloamVulkanInitializeCustomContext({{ u.ctx_arg(', ') }}PFN_vkGetInstanceProcAddr getInstanceProcAddr)
 {
-    memset(context, 0, sizeof(*context));
+    gloamVulkanFinalizeContext(context);
     context->GetInstanceProcAddr = getInstanceProcAddr;
     gloam_vk_load_global_pfns(context, getInstanceProcAddr);
 }
@@ -993,12 +1026,13 @@ void gloamVulkanInitializeCustom(PFN_vkGetInstanceProcAddr getInstanceProcAddr)
 }
 
 /* gloamVulkanLoadInstanceContext — Phase 1: load PFNs for core features and
- * instance extensions.  Instance and Global scope commands are loaded via
- * vkGetInstanceProcAddr.  Device-scope commands in instance extensions (e.g.
+ * instance extensions. Instance and Global scope commands are loaded via
+ * vkGetInstanceProcAddr. Device-scope commands in instance extensions (e.g.
  * VK_EXT_debug_utils) are skipped here and picked up by LoadDevice.
  *
- * Sets featArray from api_version.  Sets extArray for enabled instance
- * extensions.  Runs alias resolution.  Returns 1 on success. */
+ * Sets featArray from api_version. Sets extArray for enabled instance
+ * extensions. Runs alias resolution. Returns 1 on success.
+ */
 int gloamVulkanLoadInstanceContext({{ u.ctx_arg(', ') }}VkInstance instance, uint32_t api_version,
                                    uint32_t num_instance_extensions, const char *const *instance_extensions)
 {
@@ -1047,14 +1081,15 @@ int gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version, uint32_t 
  *
  * Device extensions may provide Instance-scope query functions (e.g.
  * vkGetPhysicalDeviceFragmentShadingRatesKHR) that applications need to call
- * while selecting which device extensions to enable.  This function loads
+ * while selecting which device extensions to enable. This function loads
  * Global and Instance-scope commands for the listed extensions via
- * vkGetInstanceProcAddr.  Device-scope commands are skipped because no
+ * vkGetInstanceProcAddr. Device-scope commands are skipped because no
  * VkDevice exists yet.
  *
  * Does NOT set extArray — the GLOAM_VK_* support macros remain unchanged.
  * Call gloamVulkanLoadDevice after device creation for full extension
- * loading. */
+ * loading.
+ */
 void gloamVulkanLoadPhysicalDeviceExtensionsContext({{ u.ctx_arg(', ') }} uint32_t num_device_extensions, const char *const *device_extensions)
 {
 {% if fs.extensions | length > 0 and subset | length > 0 %}
@@ -1104,12 +1139,13 @@ void gloamVulkanLoadPhysicalDeviceExtension(const char *device_extension)
  * reload Device-scope core PFNs via vkGetDeviceProcAddr (bypassing the loader
  * trampoline).
  *
- * Extensions may contain commands of any scope.  The unified loader dispatches
+ * Extensions may contain commands of any scope. The unified loader dispatches
  * each command to the correct proc-addr function based on scope: Instance-scope
  * via vkGetInstanceProcAddr, Device-scope via vkGetDeviceProcAddr.
  *
- * Updates featArray from the device's api_version.  Sets extArray for enabled
- * device extensions.  Runs alias resolution.  Returns 1 on success. */
+ * Updates featArray from the device's api_version. Sets extArray for enabled
+ * device extensions. Runs alias resolution. Returns 1 on success.
+ */
 int gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device, VkPhysicalDevice physical_device,
                                  uint32_t num_device_extensions, const char *const *device_extensions)
 {
@@ -1201,13 +1237,14 @@ VkInstance gloamVulkanGetLoadedInstance(void)
 }
 
 /* gloamVulkanFinalizeContext — close library handle if gloam owns it, zero
- * the context. */
+ * the context.
+ */
 void gloamVulkanFinalizeContext({{ u.ctx_arg() }})
 {
-{% if loader %}
+{%- if loader %}
     if (context->gloam_loader_owns_handle && context->gloam_loader_handle)
         gloam_dlclose(context->gloam_loader_handle);
-{% endif %}
+{%- endif %}
     memset(context, 0, sizeof(*context));
 }
 
@@ -1220,8 +1257,9 @@ void gloamVulkanFinalize(void)
 
 {%- if loader -%}
 /* ==========================================================================
-   Built-in loader (--loader)
-   ========================================================================== */
+ * Built-in loader (--loader)
+ * ==========================================================================
+ */
 {% include "loader.j2" -%}
 {% endif -%}
 {% if fs.spec_name == "glx" -%}

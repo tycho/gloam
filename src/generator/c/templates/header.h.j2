@@ -5,7 +5,7 @@
 #define GLOAM_{{ guard }}
 {# ---- System-header conflict guards ---------------------------------------
    These prevent including both the platform/system GL or Vulkan headers and
-   this gloam header, which would cause duplicate declarations.  Using
+   this gloam header, which would cause duplicate declarations. Using
    reserved identifiers (double-underscore prefixed) requires suppressing the
    clang warning for that specific pragma block. #}
 {%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
@@ -238,10 +238,11 @@ extern "C" {
 #endif
 
 /* Calling convention for GL callback function pointers (e.g. debug callbacks,
-   blob cache functions).  Piggybacks on APIENTRY if already defined so that
-   code which defines APIENTRY before including this header gets consistent
-   behaviour.  Guard against redefinition so multiple gloam headers included
-   in the same translation unit don't conflict. */
+ * blob cache functions). Piggybacks on APIENTRY if already defined so that
+ * code which defines APIENTRY before including this header gets consistent
+ * behaviour. Guard against redefinition so multiple gloam headers included
+ * in the same translation unit don't conflict.
+ */
 #ifndef GLOAM_API_PTR
 #  ifdef APIENTRY
 #    define GLOAM_API_PTR APIENTRY
@@ -265,18 +266,20 @@ struct _cl_event;
 {%- if not (fs.is_vulkan and external_headers) -%}
 {%- if fs.features | length > 0 -%}
 /* ---- Version feature guards ----------------------------------------------
-   These mirror the upstream vulkan_core.h / gl.h definitions so that code
-   guarded by e.g. #ifdef GL_VERSION_3_3 compiles correctly against this
-   header. */
+ * These mirror the upstream vulkan_core.h / gl.h definitions so that code
+ * guarded by e.g. #ifdef GL_VERSION_3_3 compiles correctly against this
+ * header.
+ */
 {% for feat in fs.features -%}
 #define {{ feat.full_name }} 1
 {% endfor -%}
 {% endif -%}
 {%- if fs.ext_guard_groups | length > 0 %}
 /* ---- Extension compile-time guards ---------------------------------------
-   These mirror the definitions in standard glext.h/gl2ext.h/eglext.h so
-   that code guarded by e.g. #ifdef GL_ARB_draw_indirect compiles correctly
-   against this header. */
+ * These mirror the definitions in standard glext.h/gl2ext.h/eglext.h so
+ * that code guarded by e.g. #ifdef GL_ARB_draw_indirect compiles correctly
+ * against this header.
+ */
 {% for group in fs.ext_guard_groups -%}
 {{- u.protect_begin(group.protect) -}}
 {% for ext in group.items -%}
@@ -330,8 +333,9 @@ typedef enum {{ group.name }} {
 {% endfor -%}
 {% endif %}
 /* ---- Types ----------------------------------------------------------------
-   Emitted in topological dependency order.  Consecutive types sharing the
-   same platform guard are coalesced into a single #ifdef/#endif block. */
+ * Emitted in topological dependency order. Consecutive types sharing the
+ * same platform guard are coalesced into a single #ifdef/#endif block.
+ */
 {% for group in fs.type_groups -%}
 {% if group.protect | length > 0 -%}
 #if defined({{ group.protect | join(") && defined(") }})
@@ -369,14 +373,15 @@ typedef {{ cmd.return_type }} (VKAPI_PTR *{{ cmd.pfn_type }})({{ cmd.params_str 
 {%- endif %}
 
 /* ---- Context struct ------------------------------------------------------
-   Three anonymous unions give both indexed (array) and named (struct member)
-   access to the same memory, at zero runtime cost.
-
-   featArray / extArray: unsigned char flags, one per feature / extension.
-   pfnArray: function pointer slots, one per command.
-
-   Anonymous structs inside the unions are a C11 / GCC extension; they are
-   universally supported on our target compilers. */
+ * Three anonymous unions give both indexed (array) and named (struct member)
+ * access to the same memory, at zero runtime cost.
+ *
+ * featArray / extArray: unsigned char flags, one per feature / extension.
+ * pfnArray: function pointer slots, one per command.
+ *
+ * Anonymous structs inside the unions are a C11 / GCC extension; they are
+ * universally supported on our target compilers.
+ */
 typedef struct {{ fs.context_name }} {
     union {
         unsigned char featArray[{{ fs.features | length }}];
@@ -418,14 +423,18 @@ typedef struct {{ fs.context_name }} {
 {%- endfor %}
         };
     };
-    /* Built-in loader library handle.  Set by gloamVulkanInitialize*Context /
-       gloamLoaderLoad*Context when it opens the platform library.  If the
-       caller pre-populates this field, the open is skipped and ownership is
-       NOT taken (gloam will not close it).  Present on all context types so
-       user code can use a single field name regardless of API. */
+
+    /* Built-in loader library handle. Set by gloamVulkanInitialize*Context /
+     * gloamLoaderLoad*Context when it opens the platform library. If the
+     * caller pre-populates this field, the open is skipped and ownership is
+     * NOT taken (gloam will not close it). Present on all context types so
+     * user code can use a single field name regardless of API.
+     */
     void *gloam_loader_handle;
+
     /* Non-zero if gloam opened the library handle itself and is responsible
-       for closing it in gloamVulkanFinalize / gloamLoaderUnload. */
+     * for closing it in gloamVulkanFinalize / gloamLoaderUnload.
+     */
     uint8_t gloam_loader_owns_handle;
 {% if fs.is_vulkan %}
     /* The last VkInstance this context loaded entry points from */
@@ -433,7 +442,8 @@ typedef struct {{ fs.context_name }} {
     /* The last VkDevice this context loaded entry points from */
     VkDevice vk_loaded_device;
     /* Vulkan discovery-path metadata — used by gloamLoaderLoadVulkanContext to make
-       repeated calls additive without re-enumerating already-cached scopes. */
+     * repeated calls additive without re-enumerating already-cached scopes.
+     */
     uint32_t vk_instance_version;    /* cached EnumerateInstanceVersion result        */
     uint32_t vk_device_version;      /* cached GetPhysicalDeviceProperties.apiVersion */
     uint8_t  vk_found_instance_exts; /* set once instance extensions enumerated       */
@@ -442,11 +452,13 @@ typedef struct {{ fs.context_name }} {
 } {{ fs.context_name }};
 
 /* Global context instance — a value, not a pointer, so the compiler knows
-   its address is fixed and does not re-load it on every access. */
+ * its address is fixed and does not re-load it on every access.
+ */
 extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 
 /* ---- Feature presence macros --------------------------------------------
-   Test whether a versioned feature was detected at load time. */
+ * Test whether a versioned feature was detected at load time.
+ */
 {%- for feat in fs.features %}
 #define GLOAM_{{ feat.full_name }} (gloam_{{ fs.spec_name }}_context.{{ feat.short_name }})
 {%- endfor %}
@@ -463,7 +475,7 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
 /* ---- Dispatch ------------------------------------------------------------ */
 {% if fs.is_vulkan -%}
 {# Vulkan: force-inlined function wrappers that dispatch through the global
-   context struct.  Unlike #define macros, these don't pollute the preprocessor
+   context struct. Unlike #define macros, these don't pollute the preprocessor
    namespace (avoids collisions with VMA, etc.). #}
 {% for group in fs.cmd_pfn_groups -%}
 {% if group.protect | length > 0 -%}
@@ -512,7 +524,8 @@ GLOAM_FORCE_INLINE {{ cmd.return_type }} {{ cmd.name }}({{ cmd.params_str }}) {
 #ifndef GLOAM_DEFINED_CALLBACK_TYPES_
 #define GLOAM_DEFINED_CALLBACK_TYPES_
 /* Opaque function pointer type — the common return type for all load
-   callbacks.  Callers cast to the specific PFN type they need. */
+ * callbacks. Callers cast to the specific PFN type they need.
+ */
 typedef void (*GloamAPIProc)(void);
 
 /* Load function pointer type (GL / EGL / GLX / WGL). */
@@ -533,31 +546,32 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamL
 int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr);
 {%- elif fs.spec_name == "vk" %}
 /* ---- Vulkan enabled API (Volk-like) ----------------------------------------
-   Phased loading: Initialize → LoadInstance → LoadDevice.
-   The caller owns extension discovery and tells gloam what was enabled.
-
-   Phase 0 — Initialize: open libvulkan and load the handful of Global-scope
-   PFNs needed to create an instance (vkCreateInstance, vkEnumerateInstance*).
-   If library_handle is non-NULL, use it without taking ownership; if NULL,
-   dlopen the platform default and take ownership.
-
-   Phase 1 — LoadInstance: load Global + Instance-scope PFNs for core features
-   and enabled instance extensions.  Set featArray from api_version
-   (VK_MAKE_API_VERSION or VK_API_VERSION_x_y).  Set extArray for enabled
-   instance extensions.  Resolve aliases.
-
-   Phase 1.5 (optional) — LoadPhysicalDeviceExtension(s): pre-load
-   Instance-scope PFNs for device extensions the application wants to query
-   before creating a VkDevice (e.g. vkGetPhysicalDeviceFragmentShadingRatesKHR
-   from VK_KHR_fragment_shading_rate).  Does NOT set extArray.
-
-   Phase 2 — LoadDevice: load PFNs for enabled device extensions (all scopes).
-   Device-scope commands use vkGetDeviceProcAddr for the fast path; Instance-
-   scope commands in device extensions use vkGetInstanceProcAddr.  Update
-   featArray from the device's api_version.  Set extArray for enabled device
-   extensions.  Resolve aliases.
-
-   Finalize: close library handle if gloam owns it, zero the context. */
+ * Phased loading: Initialize → LoadInstance → LoadDevice.
+ * The caller owns extension discovery and tells gloam what was enabled.
+ *
+ * Phase 0 — Initialize: open libvulkan and load the handful of Global-scope
+ * PFNs needed to create an instance (vkCreateInstance, vkEnumerateInstance*).
+ * If library_handle is non-NULL, use it without taking ownership; if NULL,
+ * dlopen the platform default and take ownership.
+ *
+ * Phase 1 — LoadInstance: load Global + Instance-scope PFNs for core features
+ * and enabled instance extensions. Set featArray from api_version
+ * (VK_MAKE_API_VERSION or VK_API_VERSION_x_y). Set extArray for enabled
+ * instance extensions. Resolve aliases.
+ *
+ * Phase 1.5 (optional) — LoadPhysicalDeviceExtension(s): pre-load
+ * Instance-scope PFNs for device extensions the application wants to query
+ * before creating a VkDevice (e.g. vkGetPhysicalDeviceFragmentShadingRatesKHR
+ * from VK_KHR_fragment_shading_rate). Does NOT set extArray.
+ *
+ * Phase 2 — LoadDevice: load PFNs for enabled device extensions (all scopes).
+ * Device-scope commands use vkGetDeviceProcAddr for the fast path; Instance-
+ * scope commands in device extensions use vkGetInstanceProcAddr. Update
+ * featArray from the device's api_version. Set extArray for enabled device
+ * extensions. Resolve aliases.
+ *
+ * Finalize: close library handle if gloam owns it, zero the context.
+ */
 {% if loader -%}
 int  gloamVulkanInitializeContext({{ u.ctx_arg(', ') }}void *library_handle);
 int  gloamVulkanInitialize(void *library_handle);
@@ -585,10 +599,11 @@ void gloamVulkanFinalize(void);
 
 {%- if loader -%}
 /* Built-in loader: opens the platform library if needed and calls the
-   appropriate load function for you.  Non-Vulkan loaders call the detection-
-   based gloamLoad* functions.  Vulkan loaders handle all extension detection
-   and PFN loading internally.
-   Each Load function may be called multiple times (additive). */
+ * appropriate load function for you. Non-Vulkan loaders call the detection-
+ * based gloamLoad* functions. Vulkan loaders handle all extension detection
+ * and PFN loading internally.
+ * Each Load function may be called multiple times (additive).
+ */
 {%- for api in fs.apis %}
 {%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
 int  gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }});

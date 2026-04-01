@@ -1,19 +1,21 @@
 {% import "utils.j2" as u with context %}
-{#- Built-in platform loader.  Only included when --loader is passed. -#}
+{#- Built-in platform loader. Only included when --loader is passed. -#}
 {% include "library.j2" %}
 {% if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
 /* ---- GL / GLES built-in loader ----------------------------------------- */
 
 /* Transient userptr: set for the duration of a gloamLoaderLoad*Context call.
-   Holds the library handle and — for desktop GL — the correctly-typed
-   platform proc-addr function pointer so that the calling convention is
-   always right.  Only valid between entry and return; never accessed
-   concurrently. */
+ * Holds the library handle and — for desktop GL — the correctly-typed
+ * platform proc-addr function pointer so that the calling convention is
+ * always right. Only valid between entry and return; never accessed
+ * concurrently.
+ */
 struct gloam_gl_load_userptr {
     void *handle;
 #if defined(GLOAM_PLATFORM_WINDOWS)
     /* wglGetProcAddress is WINAPI (__stdcall); must not be called through a
-       plain cdecl function pointer. */
+     * plain cdecl function pointer.
+	 */
     GloamAPIProc (WINAPI *wgl_get_proc)(const char *);
 #elif !defined(__APPLE__) && !defined(__HAIKU__)
     GloamAPIProc (*glx_get_proc)(const char *);
@@ -22,7 +24,8 @@ struct gloam_gl_load_userptr {
 static struct gloam_gl_load_userptr gloam_gl_load_state;
 
 /* GL desktop adapter — matches GloamLoadFunc (__cdecl), dispatches through
-   the correctly-typed platform proc-addr pointer stored in the userptr. */
+ * the correctly-typed platform proc-addr pointer stored in the userptr.
+ */
 static GloamAPIProc gloam_gl_get_proc(const char *name)
 {
     GloamAPIProc result = NULL;
@@ -46,7 +49,8 @@ static GloamAPIProc gloam_gl_get_proc(const char *name)
 }
 
 /* GLES adapter: all symbols (including extensions) are exported directly from
-   the GLES library so plain dlsym is sufficient — no platform indirection. */
+ * the GLES library so plain dlsym is sufficient — no platform indirection.
+ */
 static GloamAPIProc gloam_gles_get_proc(const char *name)
 {
     struct gloam_gl_load_userptr *u = &gloam_gl_load_state;
@@ -164,8 +168,9 @@ static const char * const gloam_egl_lib_names[] = {
 };
 
 /* eglGetProcAddress has its own calling convention (declared in EGL headers as
-   PFNEGLGETPROCADDRESSPROC).  Store it with the correct type so the call always
-   uses the right convention, even when the default differs (e.g. Win32). */
+ * PFNEGLGETPROCADDRESSPROC). Store it with the correct type so the call always
+ * uses the right convention, even when the default differs (e.g. Win32).
+ */
 struct gloam_egl_load_userptr {
     void *handle;
     PFNEGLGETPROCADDRESSPROC get_proc_address;
@@ -261,7 +266,8 @@ static const char * const gloam_glx_lib_names[] = {
 };
 
 /* glXGetProcAddressARB returns __GLXextFuncPtr = void(*)(void); store with the
-   correct function-pointer type so the call goes through the right ABI. */
+ * correct function-pointer type so the call goes through the right ABI.
+ */
 struct gloam_glx_load_userptr {
     void *handle;
     GloamAPIProc (*get_proc_address)(const char *);
@@ -353,7 +359,8 @@ void gloamLoaderReset{{ api | api_display }}(void)
 static const char * const gloam_wgl_lib_names[] = { "opengl32.dll" };
 
 /* wglGetProcAddress is WINAPI (__stdcall); must not be stored or called through
-   a plain cdecl pointer.  Store with the correct type in a userptr struct. */
+ * a plain cdecl pointer. Store with the correct type in a userptr struct.
+ */
 struct gloam_wgl_load_userptr {
     void *handle;
     GloamAPIProc (WINAPI *wgl_get_proc)(const char *);
@@ -447,8 +454,9 @@ void gloamLoaderReset{{ api | api_display }}(void)
  *
  * Opens the Vulkan library into context->gloam_loader_handle if it is not
  * already set, stores vkGetInstanceProcAddr in the context, then delegates to
- * gloamVulkanDiscoverContext.  Follows the same additive multi-call contract
- * as the underlying discover function. */
+ * gloamVulkanDiscoverContext. Follows the same additive multi-call contract
+ * as the underlying discover function.
+ */
 int gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance, VkPhysicalDevice physical_device, VkDevice device)
 {
     int did_open = 0;

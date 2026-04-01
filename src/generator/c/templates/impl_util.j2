@@ -9,7 +9,8 @@
 #endif
 
 /* GLOAM_NO_INLINE — suppress inlining on functions that should stay out of
-   the hot path (sort, hash, etc.) to avoid code bloat at call sites. */
+ * the hot path (sort, hash, etc.) to avoid code bloat at call sites.
+ */
 #ifdef _MSC_VER
 #  define GLOAM_NO_INLINE __declspec(noinline)
 #else
@@ -20,16 +21,18 @@
 #define GLOAM_UNUSED(x)    ((void)(x))
 
 /* Contiguous run of pfnArray slots belonging to one feature or extension.
-   Used by the range-based PFN loading loop. */
+ * Used by the range-based PFN loading loop.
+ */
 typedef struct {
-    uint16_t extension; /* index into featArray or extArray */
+    uint16_t extension; /* index into featArray or extArray  */
     uint16_t start;     /* first pfnArray index in this run  */
     uint16_t count;     /* number of consecutive slots       */
 } GloamPfnRange_t;
 
 {% if alias -%}
 /* Bijective alias pair: if canonical slot is null but secondary is loaded
-   (or vice versa), the loaded pointer is propagated to both slots. */
+ * (or vice versa), the loaded pointer is propagated to both slots.
+ */
 typedef struct {
     uint16_t first;  /* canonical (shortest name) pfnArray index */
     uint16_t second; /* alias pfnArray index                     */
