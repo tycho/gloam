@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7](https://github.com/tycho/gloam/compare/0.4.6...0.4.7) - 2026-04-02
+
+### Fixed
+
+- *(vulkan)* ensure we don't leak handle on double-gloamVulkanInitialize
+
+### Other
+
+- *(template)* whitespace fixes for generated C headers
+- cargo dependency update
+- update bundled XML specs and headers
+
 ## [0.4.6](https://github.com/tycho/gloam/compare/0.4.5...0.4.6) - 2026-03-27
 
 ### Fixed
