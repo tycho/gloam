@@ -59,7 +59,8 @@
 #  define GLOAM_HAS_ENUM_BASE_TYPE 0
 #endif
 #endif
-{% if fs.is_vulkan %}
+{%- if fs.is_vulkan %}
+
 #ifndef GLOAM_FORCE_INLINE
 #if defined(_MSC_VER)
 #  define GLOAM_FORCE_INLINE static __forceinline
@@ -69,16 +70,19 @@
 #  define GLOAM_FORCE_INLINE static inline
 #endif
 #endif
-{% endif %}
-{% if fs.spec_name == "glx" %}
+{%- endif %}
+{%- if fs.spec_name == "glx" %}
+
 #ifdef GLOAM_PLATFORM_LINUX
+
+#include <gloam/gl.h>
 
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
-#include <gloam/gl.h>
-{% elif fs.spec_name == "wgl" %}
+{%- elif fs.spec_name == "wgl" %}
+
 #ifdef GLOAM_PLATFORM_WINDOWS
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -91,8 +95,9 @@
 /* These are defined in wingdi.h and we're redefining them. */
 #undef wglUseFontBitmaps
 #undef wglUseFontOutlines
-{% endif %}
-{% if fs.is_vulkan and external_headers -%}
+{%- endif %}
+{%- if fs.is_vulkan and external_headers %}
+
 {# ---- External Vulkan headers mode ----------------------------------------
    Include upstream Vulkan-Headers instead of embedding type definitions.
    Uses forward declarations for heavyweight platform types (Win32, Xlib)
@@ -197,13 +202,16 @@ typedef unsigned long RROutput;
 
 #endif /* !defined(VULKAN_H_) */
 
-{% else -%}
+{%- else %}
+
 #include <stddef.h>
 #include <stdint.h>
-
+{% if fs.required_headers | length > 0 %}
 {% for hdr in fs.required_headers -%}
 #include "{{ hdr }}"
-{% endfor %}
+{% endfor -%}
+{%- endif %}
+{%- if fs.include_type_groups | length > 0 %}
 {# Platform / WSI system headers: include-category types whose protection
    guards were inferred at generation time from which extensions require them.
    An empty protect list means the include is unconditional.
@@ -216,12 +224,13 @@ typedef unsigned long RROutput;
 {% endfor -%}
 {{ u.protect_end(group.protect) -}}
 {% endfor -%}
-{% endif -%}
+{%- endif %}
+{%- endif %}
 #ifdef __cplusplus
 extern "C" {
 #endif
+{%- if fs.is_gl_family %}
 
-{% if fs.is_gl_family -%}
 /* Calling convention */
 #ifndef APIENTRY
 #  if defined(GLOAM_PLATFORM_WINDOWS)
@@ -261,10 +270,10 @@ extern "C" {
 /* Forward declarations for OpenCL interop types. */
 struct _cl_context;
 struct _cl_event;
+{%- endif %}
+{%- if not (fs.is_vulkan and external_headers) %}
+{%- if fs.features | length > 0 %}
 
-{% endif %}
-{%- if not (fs.is_vulkan and external_headers) -%}
-{%- if fs.features | length > 0 -%}
 /* ---- Version feature guards ----------------------------------------------
  * These mirror the upstream vulkan_core.h / gl.h definitions so that code
  * guarded by e.g. #ifdef GL_VERSION_3_3 compiles correctly against this
@@ -273,7 +282,7 @@ struct _cl_event;
 {% for feat in fs.features -%}
 #define {{ feat.full_name }} 1
 {% endfor -%}
-{% endif -%}
+{%- endif %}
 {%- if fs.ext_guard_groups | length > 0 %}
 /* ---- Extension compile-time guards ---------------------------------------
  * These mirror the definitions in standard glext.h/gl2ext.h/eglext.h so
