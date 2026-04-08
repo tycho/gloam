@@ -28,10 +28,14 @@
 
 {% if fs.extensions | length > 0 -%}
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64)
-#  define XXH_VECTOR XXH_SSE2
+#  ifndef XXH_VECTOR
+#    define XXH_VECTOR XXH_SSE2
+#  #endif
 #  include <immintrin.h>
 #elif defined(__aarch64__) || defined(__arm__) || defined(_M_ARM) || defined(_M_ARM64)
-#  define XXH_VECTOR XXH_NEON
+#  ifndef XXH_VECTOR
+#    define XXH_VECTOR XXH_NEON
+#  #endif
 #  include <arm_neon.h>
 #endif
 #ifndef GLOAM_EXTERNAL_XXHASH
