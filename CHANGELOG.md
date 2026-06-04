@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.10](https://github.com/tycho/gloam/compare/0.4.9...0.4.10) - 2026-06-04
+
+### Added
+
+- Source provenance tracking. Generated loaders now record exactly which
+  upstream sources produced them — each file's repository, `git describe`
+  version, upstream commit, and git blob hash. This appears in the generated
+  file headers, in `gloam --version`, and in a new machine-readable manifest.
+- `.gloam/manifest.json` is written to every output tree: a deterministic,
+  pretty-printed bill of materials (gloam version/commit, the source provenance
+  pin set, and a per-file git-blob hash for every generated and copied file).
+  It contains no timestamps — identical inputs and gloam version produce
+  byte-identical output.
+- `--lock <manifest>` regenerates against the provenance recorded in a previous
+  manifest, for reproducible output. A locked regeneration with otherwise
+  identical arguments is byte-identical to the original. Missing provenance is
+  refused with actionable guidance.
+- `gloam lock` subcommand writes a provenance-only snapshot manifest pinning
+  every supported upstream source, for later reuse with `--lock`.
+- `gloam --version` now lists the embedded bundle's provenance, grouped by
+  repository. `-V` keeps the short one-line form.
+- xxHash (BSD-2-Clause) attribution is now included in generated headers, since
+  `xxhash.h` ships with every loader.
+
+### Changed
+
+- The generated file header was restructured: a `git describe`-style gloam
+  version line, the reproducing command line, the extension summary, one
+  copyright notice per contributing rights holder (Khronos repositories collapse
+  to a single Apache-2.0 notice), a repository-grouped upstream-sources block,
+  and an emphatic `DO NOT EDIT` footer. **Downstream consumers will see a
+  one-time large diff in generated headers.**
+- `--fetch` now resolves sources through the GitHub API (to capture provenance)
+  rather than `raw.githubusercontent.com`, and caches fetched content locally
+  (`<cache-dir>/gloam/cache.sqlite`) across runs. Set `GITHUB_TOKEN` to lift the
+  API rate limit.
+- `--api` is now optional — required only for generation, not for `gloam lock`.
+
+### Fixed
+
+- *(gl)* A `gl:core` (or any non-GLES GL) loader no longer falsely claims to
+  include ANGLE extensions. ANGLE's GLES extension XML is now merged — and
+  attributed — only when a GLES API is requested, and a GL loader never
+  references the EGL ANGLE file (nor vice versa).
+
+### Other
+
+- Refreshing the bundled specs/headers now also records their provenance
+  (`bundled/provenance.json`) via a new `cargo xtask bundle` task, which fetches
+  through gloam's own acquisition path; `scripts/fetch_bundled.sh` is a thin
+  wrapper over it.
+
 ## [0.4.9](https://github.com/tycho/gloam/compare/0.4.8...0.4.9) - 2026-05-08
 
 ### Other
