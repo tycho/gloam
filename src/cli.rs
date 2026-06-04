@@ -71,6 +71,13 @@ pub struct Cli {
     #[arg(long)]
     pub fetch: bool,
 
+    /// Pin upstream sources to the provenance recorded in a previous
+    /// `.gloam/manifest.json` (or a `gloam lock` snapshot), for reproducible
+    /// output.  Requires either --fetch or a gloam build whose bundled files
+    /// match the locked blobs.
+    #[arg(long, value_name = "MANIFEST")]
+    pub lock: Option<std::path::PathBuf>,
+
     #[command(subcommand)]
     pub generator: Generator,
 }

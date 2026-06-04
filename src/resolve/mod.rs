@@ -51,7 +51,7 @@ use typedefs::{build_type_list, collect_required_headers};
 // Public entry point
 // ---------------------------------------------------------------------------
 
-pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
+pub fn build_feature_sets(cli: &Cli, ctx: &crate::provenance::load::LoadCtx) -> Result<Vec<FeatureSet>> {
     let requests = cli.api_requests()?;
     let ext_filter = cli.extension_filter()?;
     let baseline = cli.baseline_requests()?;
@@ -74,7 +74,7 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
         }
         for (spec_name, reqs) in &by_spec {
             let apis: Vec<&str> = reqs.iter().map(|r| r.name.as_str()).collect();
-            let sources = fetch::load_spec(spec_name, &apis, cli.use_fetch())?;
+            let sources = fetch::load_spec(spec_name, &apis, ctx)?;
             let raw = parse::parse(&sources, spec_name)?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,
@@ -91,7 +91,7 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
         for req in &requests {
             let spec_name = req.spec_name();
             let apis = [req.name.as_str()];
-            let sources = fetch::load_spec(spec_name, &apis, cli.use_fetch())?;
+            let sources = fetch::load_spec(spec_name, &apis, ctx)?;
             let raw = parse::parse(&sources, spec_name)?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,

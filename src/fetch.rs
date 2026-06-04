@@ -7,7 +7,7 @@ use anyhow::{Context, Result, anyhow};
 use indexmap::IndexMap;
 
 use crate::provenance;
-use crate::provenance::load::{self, LoadedSource};
+use crate::provenance::load::{self, LoadCtx, LoadedSource};
 
 // ---------------------------------------------------------------------------
 // SpecSources
@@ -31,7 +31,7 @@ pub struct SpecSources {
 
 /// Load a spec's XML sources.  `apis` is the set of canonical API names in
 /// scope (e.g. `["gl", "gles2"]`), which selects request-aware supplementals.
-pub fn load_spec(spec_name: &str, apis: &[&str], use_fetch: bool) -> Result<SpecSources> {
+pub fn load_spec(spec_name: &str, apis: &[&str], ctx: &LoadCtx) -> Result<SpecSources> {
     let primary_key = provenance::primary_key(spec_name)
         .ok_or_else(|| anyhow!("unknown spec name '{}'", spec_name))?;
     let supp_keys = provenance::supplemental_keys(spec_name, apis);
@@ -39,7 +39,7 @@ pub fn load_spec(spec_name: &str, apis: &[&str], use_fetch: bool) -> Result<Spec
     let mut keys: Vec<&str> = vec![primary_key];
     keys.extend(supp_keys.iter().copied());
 
-    let resolved = load::resolve(&keys, use_fetch)?;
+    let resolved = load::resolve(&keys, ctx)?;
 
     let primary = take_text(&resolved, primary_key)?;
     let supplementals = supp_keys

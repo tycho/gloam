@@ -16,7 +16,7 @@ mod preamble;
 pub mod provenance;
 mod resolve;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use indexmap::IndexMap;
 
@@ -35,22 +35,50 @@ pub fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    // Capture the effective command line for the preamble comment in
-    // generated files.  Replace argv[0] with just "gloam" to avoid
-    // embedding full filesystem paths.
+    // Capture the effective command line for the preamble comment in generated
+    // files.  Replace argv[0] with just "gloam", and drop `--lock <manifest>`:
+    // locking only pins provenance, so a locked reproduction with otherwise
+    // identical args produces byte-identical output to the original.
     let command_line: String = {
-        let mut args: Vec<String> = std::env::args().collect();
-        if !args.is_empty() {
-            args[0] = "gloam".to_string();
+        let raw: Vec<String> = std::env::args().collect();
+        let mut args: Vec<String> = Vec::with_capacity(raw.len());
+        let mut i = 0;
+        while i < raw.len() {
+            let a = &raw[i];
+            if a == "--lock" {
+                i += 2; // skip the flag and its value
+                continue;
+            }
+            if a.starts_with("--lock=") {
+                i += 1;
+                continue;
+            }
+            args.push(if i == 0 { "gloam".to_string() } else { a.clone() });
+            i += 1;
         }
         args.join(" ")
+    };
+
+    // A --lock manifest pins upstream sources to recorded provenance.  Only its
+    // `provenance` section is used; everything else is regenerated.
+    let lock_pins: Option<IndexMap<String, ProvenancePin>> = match &cli.lock {
+        Some(path) => {
+            let text = std::fs::read_to_string(path)
+                .with_context(|| format!("reading --lock manifest {}", path.display()))?;
+            Some(Manifest::from_json(&text)?.provenance)
+        }
+        None => None,
+    };
+    let ctx = provenance::load::LoadCtx {
+        use_fetch: cli.use_fetch(),
+        lock: lock_pins.as_ref(),
     };
 
     if !cli.quiet {
         eprintln!("gloam: resolving feature sets...");
     }
 
-    let feature_sets = resolve::build_feature_sets(&cli)?;
+    let feature_sets = resolve::build_feature_sets(&cli, &ctx)?;
 
     let out = std::path::Path::new(&cli.out_path);
     std::fs::create_dir_all(out)?;
@@ -66,8 +94,7 @@ fn run() -> Result<()> {
                 eprintln!("gloam: generating C loader...");
             }
             for fs in &feature_sets {
-                let tree =
-                    generator::c::generate(fs, c_args, out, cli.use_fetch(), &command_line)?;
+                let tree = generator::c::generate(fs, c_args, out, &ctx, &command_line)?;
                 pins.extend(tree.pins);
                 for f in tree.files {
                     files.entry(f.path.clone()).or_insert(f);

@@ -12,7 +12,7 @@ use minijinja::{Environment, Value, context};
 
 use crate::cli::CArgs;
 use crate::preamble;
-use crate::provenance::load;
+use crate::provenance::load::{self, LoadCtx};
 use crate::provenance::manifest::{OutputEntry, ProvenancePin, git_blob_sha1};
 use crate::resolve::FeatureSet;
 use indexmap::IndexMap;
@@ -33,7 +33,7 @@ pub fn generate(
     fs: &FeatureSet,
     args: &CArgs,
     out: &Path,
-    use_fetch: bool,
+    load_ctx: &LoadCtx,
     command_line: &str,
 ) -> Result<GeneratedTree> {
     let stem = output_stem(fs);
@@ -42,7 +42,7 @@ pub fn generate(
     // Resolve provenance pins for every contributing source (cache-warm in
     // --fetch mode after this call, so the aux-header copy below reuses them).
     let source_key_refs: Vec<&str> = fs.source_keys.iter().map(String::as_str).collect();
-    let mut pins: IndexMap<String, ProvenancePin> = load::resolve(&source_key_refs, use_fetch)
+    let mut pins: IndexMap<String, ProvenancePin> = load::resolve(&source_key_refs, load_ctx)
         .context("resolving source provenance")?
         .into_iter()
         .map(|(key, src)| (key, src.pin))
@@ -92,7 +92,7 @@ pub fn generate(
     });
 
     // Auxiliary headers, copied verbatim; collect their pins + BOM entries.
-    for aux in copy_auxiliary_headers(fs, &include_dir, use_fetch, args.external_headers)? {
+    for aux in copy_auxiliary_headers(fs, &include_dir, load_ctx, args.external_headers)? {
         files.push(OutputEntry {
             path: aux.rel_path,
             blob: aux.pin.blob.clone(),
@@ -161,7 +161,7 @@ impl FnNameLayout {
 fn copy_auxiliary_headers(
     fs: &FeatureSet,
     include_dir: &Path,
-    use_fetch: bool,
+    ctx: &LoadCtx,
     external_headers: bool,
 ) -> Result<Vec<AuxHeader>> {
     // xxhash.h is always needed by the generated .c (extension hash search).
@@ -188,7 +188,7 @@ fn copy_auxiliary_headers(
         }
         // Resolve content + provenance pin together (cache-warm; instant in
         // bundled mode).
-        let resolved = load::resolve(&[hdr_path.as_str()], use_fetch)
+        let resolved = load::resolve(&[hdr_path.as_str()], ctx)
             .with_context(|| format!("loading auxiliary header '{}'", hdr_path))?;
         let src = resolved
             .get(&hdr_path)
