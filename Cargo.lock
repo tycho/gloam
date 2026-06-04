@@ -432,6 +432,7 @@ version = "0.4.9"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "base64",
  "cc",
  "clap",
  "indexmap",
@@ -440,6 +441,7 @@ dependencies = [
  "reqwest",
  "roxmltree",
  "serde",
+ "serde_json",
  "tempfile",
  "xxhash-rust",
 ]

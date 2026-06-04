@@ -13,16 +13,18 @@ path           = "src/main.rs"
 
 [features]
 default = ["fetch"]
-fetch   = ["dep:reqwest"]
+fetch   = ["dep:reqwest", "dep:serde_json", "dep:base64"]
 
 [dependencies]
 anyhow         = "1"
+base64         = { version = "0.22", optional = true }
 clap           = { version = "4", features = ["derive"] }
 indexmap       = { version = "2", features = ["serde"] }
 minijinja      = "2"
 reqwest        = { version = "0.13", features = ["blocking", "rustls"], default-features = false, optional = true}
 roxmltree      = "0.21"
 serde          = { version = "1", features = ["derive"] }
+serde_json     = { version = "1", optional = true }
 xxhash-rust    = { version = "0.8", features = ["xxh3"] }
 
 [dev-dependencies]

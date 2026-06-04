@@ -7,8 +7,11 @@
 //! from it.  This is both correct (a snapshot shares one commit) and cheap.
 //!
 //! These types are available in every build.  Only acquisition (network) and
-//! the cache (SQLite) are gated behind the `fetch` feature — those submodules
-//! are added in later slices.
+//! the cache (SQLite) are gated behind the `fetch` feature.
+
+/// GitHub-API provenance acquisition (network).
+#[cfg(feature = "fetch")]
+pub mod acquire;
 
 // ---------------------------------------------------------------------------
 // Attribution
