@@ -13,6 +13,10 @@
 #[cfg(feature = "fetch")]
 pub mod acquire;
 
+/// Local SQLite provenance cache.
+#[cfg(feature = "fetch")]
+pub mod cache;
+
 // ---------------------------------------------------------------------------
 // Attribution
 // ---------------------------------------------------------------------------
