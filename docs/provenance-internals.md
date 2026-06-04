@@ -280,6 +280,15 @@ the shell script and guarantees bundled and fetched provenance are produced
 identically. The reachability test currently in `src/fetch.rs` is reworked to
 exercise the API path.
 
+**Structural prerequisite.** To let `xtask` call gloam's acquisition code, the
+repo becomes a **cargo workspace** and gloam gains a **library target**
+(`src/lib.rs`) exposing the acquisition/provenance modules; `xtask` depends on
+`gloam` as a lib. This does not change how the `gloam` binary builds or
+publishes (`xtask` is not a dependency of `gloam`), and the lib target also makes
+the acquisition + cache code directly unit-testable. Invoked via a
+`.cargo/config.toml` alias: `cargo xtask bundle` (optionally `--xml` / `--hdrs`,
+mirroring the old script).
+
 ### `gloam lock` — manifest-only snapshot subcommand
 
 `gloam lock` resolves clusters and writes a provenance-only manifest (no loader
