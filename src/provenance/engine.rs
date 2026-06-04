@@ -61,8 +61,11 @@ impl Engine {
     {
         let now = cache::now();
         for (key, pin) in &bundle.provenance {
-            let Some(content) = content_for(key) else { continue };
-            self.cache.put_commit(&pin.commit, &pin.repo, &pin.describe, now)?;
+            let Some(content) = content_for(key) else {
+                continue;
+            };
+            self.cache
+                .put_commit(&pin.commit, &pin.repo, &pin.describe, now)?;
             self.cache
                 .put_tree_entry(&pin.commit, &pin.path_in_repo, &pin.blob)?;
             self.cache.put_blob(&pin.blob, &content, now)?;
@@ -268,7 +271,10 @@ mod tests {
             .resolve_pinned(&bundle.provenance, &["vk.xml"])
             .unwrap_err()
             .to_string();
-        assert!(err.contains("no provenance for required file 'vk.xml'"), "{err}");
+        assert!(
+            err.contains("no provenance for required file 'vk.xml'"),
+            "{err}"
+        );
     }
 
     #[test]

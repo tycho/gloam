@@ -42,7 +42,11 @@ fn bundle() -> Result<()> {
         let fetched = gh
             .resolve_cluster_head(cluster, &keys)
             .with_context(|| format!("resolving {}", cluster.repo))?;
-        eprintln!("    {} @ {}", fetched.repo.describe, &fetched.repo.commit[..12.min(fetched.repo.commit.len())]);
+        eprintln!(
+            "    {} @ {}",
+            fetched.repo.describe,
+            &fetched.repo.commit[..12.min(fetched.repo.commit.len())]
+        );
 
         for (file, content) in &fetched.files {
             let dest = bundled_dir.join(bundled_rel_path(&file.key));

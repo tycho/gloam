@@ -23,6 +23,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Fetch bundled files
+        # Runs `cargo xtask bundle`, which resolves every source at upstream HEAD
+        # via the GitHub API and writes bundled/ + bundled/provenance.json.
+        # The token lifts the API rate limit (1000 req/hr vs 60 unauthenticated).
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: ./scripts/fetch_bundled.sh
 
       - name: Build with updated files
@@ -33,19 +38,51 @@ jobs:
       - name: Run test suite against updated files
         run: cargo test --release --no-default-features
 
+      # Build a human-readable provenance summary (one line per upstream repo,
+      # with its git describe) for the PR body, straight from the manifest the
+      # bundler just wrote.
+      - name: Summarize provenance
+        id: prov
+        run: |
+          set -euo pipefail
+          {
+            echo "summary<<PROV_EOF"
+            jq -r '
+              .provenance
+              | to_entries | map(.value)
+              | group_by(.repo)[]
+              | "- `\(.[0].repo)` @ `\(.[0].describe)` (commit \(.[0].commit[0:12]))"
+            ' bundled/provenance.json | sort
+            echo "PROV_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Open pull request
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           add-paths: bundled/
-          commit-message: "chore: update bundled XML specs and headers"
-          title: "chore: update bundled XML specs and headers"
+          commit-message: |
+            chore: update bundled specs, headers, and provenance
+
+            Refresh bundled/ from upstream via `cargo xtask bundle`.
+
+            Pinned upstream sources:
+            ${{ steps.prov.outputs.summary }}
+          title: "chore: update bundled specs, headers, and provenance"
           body: |
-            Automated weekly refresh of `bundled/xml/` and `bundled/headers/`
-            from upstream Khronos and ANGLE sources.
+            Automated weekly refresh of `bundled/` (XML specs, auxiliary
+            headers, and `bundled/provenance.json`) via `cargo xtask bundle`.
 
             The build and test suite passed against the new files before this
             PR was opened.
+
+            ### Pinned upstream sources
+
+            ${{ steps.prov.outputs.summary }}
+
+            Per-file blob hashes and exact commits are recorded in
+            `bundled/provenance.json`; review its diff to see precisely what
+            moved.
           branch: update-bundled-xml
           delete-branch: true
           labels: dependencies

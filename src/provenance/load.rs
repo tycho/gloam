@@ -96,7 +96,9 @@ fn resolve_locked(
     for &key in keys {
         let pin = pins.get(key).unwrap().clone();
         let content = bundled::content_by_key(key).ok_or_else(|| {
-            anyhow!("--lock without --fetch: '{key}' is not in this gloam build's bundle; use --fetch")
+            anyhow!(
+                "--lock without --fetch: '{key}' is not in this gloam build's bundle; use --fetch"
+            )
         })?;
         let bundled_blob = git_blob_sha1(content.as_bytes());
         if bundled_blob != pin.blob {
@@ -126,7 +128,9 @@ fn resolve_bundled(keys: &[&str]) -> Result<IndexMap<String, LoadedSource>> {
             anyhow!("bundled/provenance.json has no entry for '{key}' — run `cargo xtask bundle`")
         })?;
         let content = bundled::content_by_key(key)
-            .ok_or_else(|| anyhow!("bundled content for '{key}' is empty — run `cargo xtask bundle`"))?
+            .ok_or_else(|| {
+                anyhow!("bundled content for '{key}' is empty — run `cargo xtask bundle`")
+            })?
             .as_bytes()
             .to_vec();
         out.insert(key.to_string(), LoadedSource { pin, content });
@@ -162,7 +166,8 @@ mod tests {
     #[test]
     fn bundled_resolve_returns_pins_and_content() {
         // Uses the populated bundled/provenance.json; offline.
-        let resolved = resolve(&["gl.xml", "xxhash.h"], &LoadCtx::bundled()).expect("bundled resolve");
+        let resolved =
+            resolve(&["gl.xml", "xxhash.h"], &LoadCtx::bundled()).expect("bundled resolve");
 
         let gl = &resolved["gl.xml"];
         assert_eq!(gl.pin.repo, "KhronosGroup/OpenGL-Registry");
@@ -178,7 +183,9 @@ mod tests {
 
     #[test]
     fn bundled_resolve_errors_on_unknown_key() {
-        let err = resolve(&["nope.xml"], &LoadCtx::bundled()).unwrap_err().to_string();
+        let err = resolve(&["nope.xml"], &LoadCtx::bundled())
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("nope.xml"), "{err}");
     }
 
@@ -189,7 +196,10 @@ mod tests {
         let bundle = bundled::bundled_provenance().unwrap();
         let mut pins = IndexMap::new();
         pins.insert("gl.xml".to_string(), bundle.provenance["gl.xml"].clone());
-        let ctx = LoadCtx { use_fetch: false, lock: Some(&pins) };
+        let ctx = LoadCtx {
+            use_fetch: false,
+            lock: Some(&pins),
+        };
         let resolved = resolve(&["gl.xml"], &ctx).unwrap();
         assert!(!resolved["gl.xml"].content.is_empty());
     }
@@ -200,7 +210,10 @@ mod tests {
         pin.blob = "0".repeat(40);
         let mut pins = IndexMap::new();
         pins.insert("gl.xml".to_string(), pin);
-        let ctx = LoadCtx { use_fetch: false, lock: Some(&pins) };
+        let ctx = LoadCtx {
+            use_fetch: false,
+            lock: Some(&pins),
+        };
         let err = resolve(&["gl.xml"], &ctx).unwrap_err().to_string();
         assert!(err.contains("does not match the locked blob"), "{err}");
     }
@@ -208,7 +221,10 @@ mod tests {
     #[test]
     fn locked_missing_key_is_refused() {
         let pins = IndexMap::new();
-        let ctx = LoadCtx { use_fetch: false, lock: Some(&pins) };
+        let ctx = LoadCtx {
+            use_fetch: false,
+            lock: Some(&pins),
+        };
         let err = resolve(&["gl.xml"], &ctx).unwrap_err().to_string();
         assert!(
             err.contains("no provenance for required file 'gl.xml'"),

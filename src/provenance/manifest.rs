@@ -173,9 +173,15 @@ mod tests {
             derived_from: vec![],
         };
         let json = serde_json::to_string(&e).unwrap();
-        assert!(!json.contains("verbatim"), "false verbatim should be omitted");
+        assert!(
+            !json.contains("verbatim"),
+            "false verbatim should be omitted"
+        );
 
-        let e2 = OutputEntry { verbatim: true, ..e };
+        let e2 = OutputEntry {
+            verbatim: true,
+            ..e
+        };
         let json2 = serde_json::to_string(&e2).unwrap();
         assert!(json2.contains("\"verbatim\":true"));
     }

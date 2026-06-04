@@ -51,7 +51,10 @@ use typedefs::{build_type_list, collect_required_headers};
 // Public entry point
 // ---------------------------------------------------------------------------
 
-pub fn build_feature_sets(cli: &Cli, ctx: &crate::provenance::load::LoadCtx) -> Result<Vec<FeatureSet>> {
+pub fn build_feature_sets(
+    cli: &Cli,
+    ctx: &crate::provenance::load::LoadCtx,
+) -> Result<Vec<FeatureSet>> {
     let requests = cli.api_requests()?;
     let ext_filter = cli.extension_filter()?;
     let baseline = cli.baseline_requests()?;
@@ -102,7 +105,12 @@ pub fn build_feature_sets(cli: &Cli, ctx: &crate::provenance::load::LoadCtx) -> 
                 want_promoted: promoted,
                 want_predecessors: predecessors,
             };
-            let fs = resolve_feature_set(&raw, std::slice::from_ref(req), &config, &sources.source_keys)?;
+            let fs = resolve_feature_set(
+                &raw,
+                std::slice::from_ref(req),
+                &config,
+                &sources.source_keys,
+            )?;
             feature_sets.push(fs);
         }
     }

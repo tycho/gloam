@@ -301,8 +301,8 @@ repo becomes a **cargo workspace** and gloam gains a **library target**
 `gloam` as a lib. This does not change how the `gloam` binary builds or
 publishes (`xtask` is not a dependency of `gloam`), and the lib target also makes
 the acquisition + cache code directly unit-testable. Invoked via a
-`.cargo/config.toml` alias: `cargo xtask bundle` (optionally `--xml` / `--hdrs`,
-mirroring the old script).
+`.cargo/config.toml` alias: `cargo xtask bundle`.  `scripts/fetch_bundled.sh` is
+retained as a thin wrapper that invokes it.
 
 ### `gloam lock` — manifest-only snapshot subcommand
 

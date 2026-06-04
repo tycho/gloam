@@ -376,15 +376,19 @@ endif()
 ## Bundled specs
 
 gloam embeds compile-time snapshots of upstream Khronos XML specs and
-auxiliary headers. The binary needs no external files at runtime.
+auxiliary headers, along with `bundled/provenance.json` recording the exact
+upstream commit, `git describe`, and blob hash of each. The binary needs no
+external files at runtime.
 
-To refresh the bundled copies:
+To refresh the bundled copies (and their provenance):
 
 ```sh
-./scripts/fetch_bundled.sh          # fetch everything
-./scripts/fetch_bundled.sh --xml    # XML specs only
-./scripts/fetch_bundled.sh --hdrs   # headers only
+./scripts/fetch_bundled.sh          # = cargo xtask bundle
 ```
+
+This fetches every source at upstream HEAD through gloam's own acquisition
+path. Set `GITHUB_TOKEN` to lift the GitHub API rate limit. `gloam --version`
+prints the embedded provenance.
 
 The `--fetch` CLI flag bypasses the bundled copies and fetches specs
 directly from upstream at generation time. This may provide fresher

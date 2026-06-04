@@ -124,9 +124,18 @@ pub static CLUSTERS: &[Cluster] = &[
         branch: "main",
         attribution: &ATTR_KHRONOS,
         files: &[
-            FileSpec { key: "gl.xml", path_in_repo: "xml/gl.xml" },
-            FileSpec { key: "glx.xml", path_in_repo: "xml/glx.xml" },
-            FileSpec { key: "wgl.xml", path_in_repo: "xml/wgl.xml" },
+            FileSpec {
+                key: "gl.xml",
+                path_in_repo: "xml/gl.xml",
+            },
+            FileSpec {
+                key: "glx.xml",
+                path_in_repo: "xml/glx.xml",
+            },
+            FileSpec {
+                key: "wgl.xml",
+                path_in_repo: "xml/wgl.xml",
+            },
         ],
     },
     Cluster {
@@ -135,9 +144,18 @@ pub static CLUSTERS: &[Cluster] = &[
         branch: "main",
         attribution: &ATTR_KHRONOS,
         files: &[
-            FileSpec { key: "egl.xml", path_in_repo: "api/egl.xml" },
-            FileSpec { key: "KHR/khrplatform.h", path_in_repo: "api/KHR/khrplatform.h" },
-            FileSpec { key: "EGL/eglplatform.h", path_in_repo: "api/EGL/eglplatform.h" },
+            FileSpec {
+                key: "egl.xml",
+                path_in_repo: "api/egl.xml",
+            },
+            FileSpec {
+                key: "KHR/khrplatform.h",
+                path_in_repo: "api/KHR/khrplatform.h",
+            },
+            FileSpec {
+                key: "EGL/eglplatform.h",
+                path_in_repo: "api/EGL/eglplatform.h",
+            },
         ],
     },
     Cluster {
@@ -145,7 +163,10 @@ pub static CLUSTERS: &[Cluster] = &[
         repo_url: "https://github.com/KhronosGroup/Vulkan-Docs",
         branch: "main",
         attribution: &ATTR_KHRONOS,
-        files: &[FileSpec { key: "vk.xml", path_in_repo: "xml/vk.xml" }],
+        files: &[FileSpec {
+            key: "vk.xml",
+            path_in_repo: "xml/vk.xml",
+        }],
     },
     Cluster {
         repo: "KhronosGroup/Vulkan-Headers",
@@ -153,19 +174,58 @@ pub static CLUSTERS: &[Cluster] = &[
         branch: "main",
         attribution: &ATTR_KHRONOS,
         files: &[
-            FileSpec { key: "vulkan/vk_platform.h", path_in_repo: "include/vulkan/vk_platform.h" },
-            FileSpec { key: "vk_video/vulkan_video_codecs_common.h", path_in_repo: "include/vk_video/vulkan_video_codecs_common.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_h264std.h", path_in_repo: "include/vk_video/vulkan_video_codec_h264std.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_h264std_decode.h", path_in_repo: "include/vk_video/vulkan_video_codec_h264std_decode.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_h264std_encode.h", path_in_repo: "include/vk_video/vulkan_video_codec_h264std_encode.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_h265std.h", path_in_repo: "include/vk_video/vulkan_video_codec_h265std.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_h265std_decode.h", path_in_repo: "include/vk_video/vulkan_video_codec_h265std_decode.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_h265std_encode.h", path_in_repo: "include/vk_video/vulkan_video_codec_h265std_encode.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_av1std.h", path_in_repo: "include/vk_video/vulkan_video_codec_av1std.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_av1std_decode.h", path_in_repo: "include/vk_video/vulkan_video_codec_av1std_decode.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_av1std_encode.h", path_in_repo: "include/vk_video/vulkan_video_codec_av1std_encode.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_vp9std.h", path_in_repo: "include/vk_video/vulkan_video_codec_vp9std.h" },
-            FileSpec { key: "vk_video/vulkan_video_codec_vp9std_decode.h", path_in_repo: "include/vk_video/vulkan_video_codec_vp9std_decode.h" },
+            FileSpec {
+                key: "vulkan/vk_platform.h",
+                path_in_repo: "include/vulkan/vk_platform.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codecs_common.h",
+                path_in_repo: "include/vk_video/vulkan_video_codecs_common.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_h264std.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_h264std.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_h264std_decode.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_h264std_decode.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_h264std_encode.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_h264std_encode.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_h265std.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_h265std.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_h265std_decode.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_h265std_decode.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_h265std_encode.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_h265std_encode.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_av1std.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_av1std.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_av1std_decode.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_av1std_decode.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_av1std_encode.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_av1std_encode.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_vp9std.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_vp9std.h",
+            },
+            FileSpec {
+                key: "vk_video/vulkan_video_codec_vp9std_decode.h",
+                path_in_repo: "include/vk_video/vulkan_video_codec_vp9std_decode.h",
+            },
         ],
     },
     Cluster {
@@ -174,8 +234,14 @@ pub static CLUSTERS: &[Cluster] = &[
         branch: "main",
         attribution: &ATTR_ANGLE,
         files: &[
-            FileSpec { key: "gl_angle_ext.xml", path_in_repo: "scripts/gl_angle_ext.xml" },
-            FileSpec { key: "egl_angle_ext.xml", path_in_repo: "scripts/egl_angle_ext.xml" },
+            FileSpec {
+                key: "gl_angle_ext.xml",
+                path_in_repo: "scripts/gl_angle_ext.xml",
+            },
+            FileSpec {
+                key: "egl_angle_ext.xml",
+                path_in_repo: "scripts/egl_angle_ext.xml",
+            },
         ],
     },
     Cluster {
@@ -183,14 +249,20 @@ pub static CLUSTERS: &[Cluster] = &[
         repo_url: "https://github.com/Cyan4973/xxHash",
         branch: "dev",
         attribution: &ATTR_XXHASH,
-        files: &[FileSpec { key: "xxhash.h", path_in_repo: "xxhash.h" }],
+        files: &[FileSpec {
+            key: "xxhash.h",
+            path_in_repo: "xxhash.h",
+        }],
     },
     Cluster {
         repo: "tycho/gloam",
         repo_url: "https://github.com/tycho/gloam",
         branch: "master",
         attribution: &ATTR_GLOAM,
-        files: &[FileSpec { key: "glsl_exts.xml", path_in_repo: "bundled/xml/glsl_exts.xml" }],
+        files: &[FileSpec {
+            key: "glsl_exts.xml",
+            path_in_repo: "bundled/xml/glsl_exts.xml",
+        }],
     },
 ];
 
@@ -287,15 +359,19 @@ pub fn group_pins_by_repo(
 ) -> Vec<RepoSources> {
     let mut by_repo: indexmap::IndexMap<String, RepoSources> = indexmap::IndexMap::new();
     for pin in pins.values() {
-        let group = by_repo.entry(pin.repo.clone()).or_insert_with(|| RepoSources {
-            repo: pin.repo.clone(),
-            describe: pin.describe.clone(),
-            files: Vec::new(),
-        });
-        group.files.push((pin.path_in_repo.clone(), pin.blob.clone()));
+        let group = by_repo
+            .entry(pin.repo.clone())
+            .or_insert_with(|| RepoSources {
+                repo: pin.repo.clone(),
+                describe: pin.describe.clone(),
+                files: Vec::new(),
+            });
+        group
+            .files
+            .push((pin.path_in_repo.clone(), pin.blob.clone()));
     }
     let mut groups: Vec<RepoSources> = by_repo.into_values().collect();
-    groups.sort_by(|a, b| a.repo.to_lowercase().cmp(&b.repo.to_lowercase()));
+    groups.sort_by_key(|g| g.repo.to_lowercase());
     for g in &mut groups {
         g.files.sort();
     }

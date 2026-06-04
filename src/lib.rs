@@ -54,7 +54,11 @@ fn run() -> Result<()> {
                 i += 1;
                 continue;
             }
-            args.push(if i == 0 { "gloam".to_string() } else { a.clone() });
+            args.push(if i == 0 {
+                "gloam".to_string()
+            } else {
+                a.clone()
+            });
             i += 1;
         }
         args.join(" ")
@@ -155,10 +159,8 @@ fn write_lock_snapshot(
     };
 
     let path = std::path::Path::new(&args.out);
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, manifest.to_json_pretty() + "\n")?;
     if !quiet {

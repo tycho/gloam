@@ -67,7 +67,8 @@ impl Cache {
                  DROP TABLE IF EXISTS blobs;",
             )
             .context("dropping stale cache schema")?;
-            conn.execute_batch(SCHEMA).context("creating cache schema")?;
+            conn.execute_batch(SCHEMA)
+                .context("creating cache schema")?;
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         }
         Ok(Self { conn })
@@ -143,7 +144,12 @@ impl Cache {
     // -- tree entries --------------------------------------------------------
 
     /// Record that `path_in_repo` at `commit_sha` resolves to `blob_sha`.
-    pub fn put_tree_entry(&self, commit_sha: &str, path_in_repo: &str, blob_sha: &str) -> Result<()> {
+    pub fn put_tree_entry(
+        &self,
+        commit_sha: &str,
+        path_in_repo: &str,
+        blob_sha: &str,
+    ) -> Result<()> {
         self.conn.execute(
             "INSERT INTO tree_entries(commit_sha, path_in_repo, blob_sha)
              VALUES (?1, ?2, ?3)
@@ -279,7 +285,10 @@ mod tests {
         let c = mem();
         c.put_blob("deadbeef", b"hello", 100).unwrap();
         assert!(c.has_blob("deadbeef").unwrap());
-        assert_eq!(c.blob("deadbeef", 200).unwrap().as_deref(), Some(&b"hello"[..]));
+        assert_eq!(
+            c.blob("deadbeef", 200).unwrap().as_deref(),
+            Some(&b"hello"[..])
+        );
         // last_used was bumped to 200 by the read.
         let lu: i64 = c
             .conn
@@ -299,7 +308,9 @@ mod tests {
         c.set_head("acme/repo", "main", "c0ffee", 1000).unwrap();
         // Within TTL.
         assert_eq!(
-            c.fresh_head("acme/repo", 1000 + 10, 100).unwrap().as_deref(),
+            c.fresh_head("acme/repo", 1000 + 10, 100)
+                .unwrap()
+                .as_deref(),
             Some("c0ffee")
         );
         // Past TTL → not fresh (caller must re-resolve).
@@ -311,7 +322,8 @@ mod tests {
     #[test]
     fn commit_and_tree_roundtrip() {
         let c = mem();
-        c.put_commit("abc123", "acme/repo", "v1.0-3-gabc123", 50).unwrap();
+        c.put_commit("abc123", "acme/repo", "v1.0-3-gabc123", 50)
+            .unwrap();
         c.put_tree_entry("abc123", "src/x.h", "blob99").unwrap();
         assert_eq!(
             c.commit_describe("abc123", 60).unwrap().as_deref(),
@@ -341,7 +353,11 @@ mod tests {
 
         assert!(!c.has_blob("coldblob").unwrap(), "cold blob evicted");
         assert!(c.has_blob("warmblob").unwrap(), "warm blob kept");
-        assert_eq!(c.commit_describe("cold", 100_000).unwrap(), None, "cold commit evicted");
+        assert_eq!(
+            c.commit_describe("cold", 100_000).unwrap(),
+            None,
+            "cold commit evicted"
+        );
         assert_eq!(
             c.blob_for_path("cold", "p").unwrap(),
             None,
@@ -359,7 +375,10 @@ mod tests {
         c.conn.pragma_update(None, "user_version", 999).unwrap();
         let conn = c.conn; // move connection out
         let c2 = Cache::from_connection(conn).unwrap();
-        assert!(!c2.has_blob("keep?").unwrap(), "data dropped on version mismatch");
+        assert!(
+            !c2.has_blob("keep?").unwrap(),
+            "data dropped on version mismatch"
+        );
         let v: i64 = c2
             .conn
             .pragma_query_value(None, "user_version", |r| r.get(0))

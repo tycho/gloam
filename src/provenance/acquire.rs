@@ -73,7 +73,10 @@ impl Github {
     }
 
     fn get_json(&self, url: &str) -> Result<Value> {
-        let text = self.get(url)?.text().with_context(|| format!("body of {url}"))?;
+        let text = self
+            .get(url)?
+            .text()
+            .with_context(|| format!("body of {url}"))?;
         serde_json::from_str(&text).with_context(|| format!("parsing JSON from {url}"))
     }
 
@@ -126,10 +129,10 @@ impl Github {
         let mut tag_by_commit: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         for t in &tags {
-            if let (Some(name), Some(sha)) =
-                (t["name"].as_str(), t["commit"]["sha"].as_str())
-            {
-                tag_by_commit.entry(sha.to_string()).or_insert_with(|| name.to_string());
+            if let (Some(name), Some(sha)) = (t["name"].as_str(), t["commit"]["sha"].as_str()) {
+                tag_by_commit
+                    .entry(sha.to_string())
+                    .or_insert_with(|| name.to_string());
             }
         }
 
@@ -139,9 +142,13 @@ impl Github {
 
         // Walk commits from HEAD; first tagged commit wins.
         let commits_url = format!("{API_BASE}/repos/{repo}/commits?sha={head}");
-        let commits = self.get_paged(&commits_url, MAX_COMMIT_PAGES).unwrap_or_default();
+        let commits = self
+            .get_paged(&commits_url, MAX_COMMIT_PAGES)
+            .unwrap_or_default();
         for (i, c) in commits.iter().enumerate() {
-            let Some(sha) = c["sha"].as_str() else { continue };
+            let Some(sha) = c["sha"].as_str() else {
+                continue;
+            };
             if let Some(tag) = tag_by_commit.get(sha) {
                 return Ok(if i == 0 {
                     tag.clone()
@@ -250,7 +257,9 @@ impl Github {
 /// returns).
 fn decode_b64(s: &str) -> Result<Vec<u8>> {
     let cleaned: String = s.chars().filter(|c| !c.is_whitespace()).collect();
-    BASE64.decode(cleaned.as_bytes()).context("decoding base64 content")
+    BASE64
+        .decode(cleaned.as_bytes())
+        .context("decoding base64 content")
 }
 
 #[cfg(test)]

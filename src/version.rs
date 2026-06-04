@@ -25,7 +25,11 @@ fn build_long_version() -> String {
             for group in provenance::group_pins_by_repo(&bundle.provenance) {
                 out.push_str(&format!("\n  {} ({})", group.repo, group.describe));
                 for (path, blob) in &group.files {
-                    out.push_str(&format!("\n    {} (blob {})", path, &blob[..7.min(blob.len())]));
+                    out.push_str(&format!(
+                        "\n    {} (blob {})",
+                        path,
+                        &blob[..7.min(blob.len())]
+                    ));
                 }
             }
         }

@@ -1,11 +1,9 @@
-//! Access to bundled (compile-time-embedded) XML specs and auxiliary headers.
+//! Access to bundled (compile-time-embedded) XML specs and auxiliary headers,
+//! plus their provenance manifest (`bundled/provenance.json`).
 //!
 //! Each constant is the full text of the file.  An empty string means the
-//! bundled copy has not yet been populated — run `scripts/fetch_bundled.sh`
-//! before building to populate them.
-//!
-//! At runtime, `get_*` helpers return an error with an actionable message
-//! rather than silently operating on empty content.
+//! bundled copy has not yet been populated — run `cargo xtask bundle` (or
+//! `scripts/fetch_bundled.sh`) to populate the files and their provenance.
 
 use anyhow::{Context, Result};
 
@@ -141,7 +139,10 @@ mod tests {
     #[test]
     fn placeholder_provenance_parses() {
         let p = bundled_provenance().expect("bundled/provenance.json parses");
-        assert_eq!(p.schema_version, crate::provenance::manifest::SCHEMA_VERSION);
+        assert_eq!(
+            p.schema_version,
+            crate::provenance::manifest::SCHEMA_VERSION
+        );
         // Empty until `cargo xtask bundle` populates it.
     }
 }
