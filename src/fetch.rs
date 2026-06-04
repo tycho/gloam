@@ -55,13 +55,6 @@ pub fn load_spec(spec_name: &str, apis: &[&str], use_fetch: bool) -> Result<Spec
     })
 }
 
-/// Load a single auxiliary header's text by registry key (e.g.
-/// "KHR/khrplatform.h", "xxhash.h", "vk_video/...").
-pub fn load_auxiliary_header(path: &str, use_fetch: bool) -> Result<String> {
-    let resolved = load::resolve(&[path], use_fetch)?;
-    take_text(&resolved, path)
-}
-
 fn take_text(resolved: &IndexMap<String, LoadedSource>, key: &str) -> Result<String> {
     let src = resolved
         .get(key)

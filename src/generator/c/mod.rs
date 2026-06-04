@@ -7,16 +7,23 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use minijinja::{Environment, Value, context};
 
 use crate::cli::CArgs;
-use crate::fetch;
 use crate::preamble;
 use crate::provenance::load;
-use crate::provenance::manifest::ProvenancePin;
+use crate::provenance::manifest::{OutputEntry, ProvenancePin, git_blob_sha1};
 use crate::resolve::FeatureSet;
 use indexmap::IndexMap;
+
+/// What one `generate()` call produced: the provenance pins for every source it
+/// used and an output-BOM entry for every file it wrote.  The run loop merges
+/// these across feature sets into `.gloam/manifest.json`.
+pub struct GeneratedTree {
+    pub pins: IndexMap<String, ProvenancePin>,
+    pub files: Vec<OutputEntry>,
+}
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -28,14 +35,14 @@ pub fn generate(
     out: &Path,
     use_fetch: bool,
     command_line: &str,
-) -> Result<()> {
+) -> Result<GeneratedTree> {
     let stem = output_stem(fs);
     let env = build_env()?;
 
     // Resolve provenance pins for every contributing source (cache-warm in
     // --fetch mode after this call, so the aux-header copy below reuses them).
     let source_key_refs: Vec<&str> = fs.source_keys.iter().map(String::as_str).collect();
-    let pins: IndexMap<String, ProvenancePin> = load::resolve(&source_key_refs, use_fetch)
+    let mut pins: IndexMap<String, ProvenancePin> = load::resolve(&source_key_refs, use_fetch)
         .context("resolving source provenance")?
         .into_iter()
         .map(|(key, src)| (key, src.pin))
@@ -62,18 +69,40 @@ pub fn generate(
         fn_name_offset_type   => names.offset_type,
     };
 
-    std::fs::write(
-        gloam_dir.join(format!("{stem}.h")),
-        env.get_template("header.h.j2")?.render(&ctx)?,
-    )?;
-    std::fs::write(
-        src_dir.join(format!("{stem}.c")),
-        env.get_template("source.c.j2")?.render(&ctx)?,
-    )?;
+    // The loader's .h/.c derive from every contributing source.
+    let derived_from = fs.source_keys.clone();
+    let mut files: Vec<OutputEntry> = Vec::new();
 
-    copy_auxiliary_headers(fs, &include_dir, use_fetch, args.external_headers)?;
+    let header = env.get_template("header.h.j2")?.render(&ctx)?;
+    std::fs::write(gloam_dir.join(format!("{stem}.h")), &header)?;
+    files.push(OutputEntry {
+        path: format!("include/gloam/{stem}.h"),
+        blob: git_blob_sha1(header.as_bytes()),
+        verbatim: false,
+        derived_from: derived_from.clone(),
+    });
 
-    Ok(())
+    let source = env.get_template("source.c.j2")?.render(&ctx)?;
+    std::fs::write(src_dir.join(format!("{stem}.c")), &source)?;
+    files.push(OutputEntry {
+        path: format!("src/{stem}.c"),
+        blob: git_blob_sha1(source.as_bytes()),
+        verbatim: false,
+        derived_from,
+    });
+
+    // Auxiliary headers, copied verbatim; collect their pins + BOM entries.
+    for aux in copy_auxiliary_headers(fs, &include_dir, use_fetch, args.external_headers)? {
+        files.push(OutputEntry {
+            path: aux.rel_path,
+            blob: aux.pin.blob.clone(),
+            verbatim: true,
+            derived_from: vec![aux.key.clone()],
+        });
+        pins.insert(aux.key, aux.pin);
+    }
+
+    Ok(GeneratedTree { pins, files })
 }
 
 // ---------------------------------------------------------------------------
@@ -126,12 +155,15 @@ impl FnNameLayout {
 /// When `external_headers` is true the Vulkan type-definition headers
 /// (vk_platform.h, vk_video/*) come from the system include path, so we
 /// skip bundling them.  xxhash.h is still needed by the generated .c.
+///
+/// Returns one [`AuxHeader`] per emitted file (its registry key, output path,
+/// and provenance pin) for the manifest BOM.
 fn copy_auxiliary_headers(
     fs: &FeatureSet,
     include_dir: &Path,
     use_fetch: bool,
     external_headers: bool,
-) -> Result<()> {
+) -> Result<Vec<AuxHeader>> {
     // xxhash.h is always needed by the generated .c (extension hash search).
     let mut queue: Vec<String> = std::iter::once("xxhash.h".to_string())
         .chain(if external_headers && fs.is_vulkan {
@@ -143,6 +175,7 @@ fn copy_auxiliary_headers(
         })
         .collect();
     let mut visited: HashSet<String> = HashSet::new();
+    let mut emitted: Vec<AuxHeader> = Vec::new();
 
     while let Some(hdr_path) = queue.pop() {
         if !visited.insert(hdr_path.clone()) {
@@ -153,9 +186,20 @@ fn copy_auxiliary_headers(
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let content = fetch::load_auxiliary_header(&hdr_path, use_fetch)
+        // Resolve content + provenance pin together (cache-warm; instant in
+        // bundled mode).
+        let resolved = load::resolve(&[hdr_path.as_str()], use_fetch)
             .with_context(|| format!("loading auxiliary header '{}'", hdr_path))?;
-        std::fs::write(&dest, &content)?;
+        let src = resolved
+            .get(&hdr_path)
+            .ok_or_else(|| anyhow!("auxiliary header '{}' was not resolved", hdr_path))?;
+        std::fs::write(&dest, &src.content)?;
+        let content = String::from_utf8_lossy(&src.content);
+        emitted.push(AuxHeader {
+            key: hdr_path.clone(),
+            rel_path: format!("include/{hdr_path}"),
+            pin: src.pin.clone(),
+        });
 
         // Scan for `#include "relative/path.h"` lines and enqueue them,
         // resolved relative to the directory of the current header.
@@ -190,7 +234,15 @@ fn copy_auxiliary_headers(
         }
     }
 
-    Ok(())
+    Ok(emitted)
+}
+
+/// One emitted auxiliary header: its registry key, output path (relative to the
+/// tree root), and provenance pin.
+struct AuxHeader {
+    key: String,
+    rel_path: String,
+    pin: ProvenancePin,
 }
 
 // ---------------------------------------------------------------------------

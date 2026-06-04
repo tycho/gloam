@@ -117,13 +117,6 @@ fn collect_files_recursive(base: &Path, dir: &Path, out: &mut Vec<std::path::Pat
     }
 }
 
-/// Normalize file content for determinism comparison by replacing the
-/// `--out-path <tempdir>` portion of the preamble with a placeholder.
-fn normalize_for_determinism(content: &[u8], out_path: &str) -> Vec<u8> {
-    let s = String::from_utf8_lossy(content);
-    s.replace(out_path, "<OUT>").into_bytes()
-}
-
 // ===========================================================================
 // 1. Determinism — byte-identical output across runs
 // ===========================================================================
@@ -132,36 +125,31 @@ fn assert_deterministic(args: &[&str]) {
     let dir_a = TempDir::new().unwrap();
     let dir_b = TempDir::new().unwrap();
 
+    // Run both with an identical relative --out-path from different working
+    // directories, so the embedded command line (and thus every byte, including
+    // the manifest's recorded content hashes) is identical.  This tests true
+    // byte-for-byte determinism for an identical invocation.
     for dir in [&dir_a, &dir_b] {
         gloam()
+            .current_dir(dir.path())
             .args(args)
-            .args(["--out-path", dir.path().to_str().unwrap(), "c"])
+            .args(["--out-path", "out", "c"])
             .assert()
             .success();
     }
 
-    let files_a = collect_files(dir_a.path());
-    let files_b = collect_files(dir_b.path());
+    let out_a = dir_a.path().join("out");
+    let out_b = dir_b.path().join("out");
+    let files_a = collect_files(&out_a);
+    let files_b = collect_files(&out_b);
 
     assert_eq!(files_a, files_b, "file lists differ between runs");
     assert!(!files_a.is_empty(), "no files generated");
 
-    let path_a = dir_a.path().to_str().unwrap();
-    let path_b = dir_b.path().to_str().unwrap();
-
     for rel in &files_a {
-        let raw_a = std::fs::read(dir_a.path().join(rel)).unwrap();
-        let raw_b = std::fs::read(dir_b.path().join(rel)).unwrap();
-        // Normalize the --out-path temp dir out of the preamble comment
-        // so only meaningful content is compared.
-        let content_a = normalize_for_determinism(&raw_a, path_a);
-        let content_b = normalize_for_determinism(&raw_b, path_b);
-        assert_eq!(
-            content_a,
-            content_b,
-            "file {} differs between runs (after normalizing out-path)",
-            rel.display()
-        );
+        let raw_a = std::fs::read(out_a.join(rel)).unwrap();
+        let raw_b = std::fs::read(out_b.join(rel)).unwrap();
+        assert_eq!(raw_a, raw_b, "file {} differs between runs", rel.display());
     }
 }
 

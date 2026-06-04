@@ -18,8 +18,10 @@ mod resolve;
 
 use anyhow::Result;
 use clap::Parser;
+use indexmap::IndexMap;
 
 use cli::{Cli, Generator};
+use provenance::manifest::{GloamMeta, Manifest, OutputEntry, ProvenancePin, SCHEMA_VERSION};
 
 /// Binary entry point.  Parses the CLI and runs generation, printing errors
 /// and setting the process exit code.
@@ -53,20 +55,62 @@ fn run() -> Result<()> {
     let out = std::path::Path::new(&cli.out_path);
     std::fs::create_dir_all(out)?;
 
+    // Aggregate provenance pins and the output BOM across all feature sets
+    // written into this tree, for `.gloam/manifest.json`.
+    let mut pins: IndexMap<String, ProvenancePin> = IndexMap::new();
+    let mut files: IndexMap<String, OutputEntry> = IndexMap::new();
+
     match &cli.generator {
         Generator::C(c_args) => {
             if !cli.quiet {
                 eprintln!("gloam: generating C loader...");
             }
             for fs in &feature_sets {
-                generator::c::generate(fs, c_args, out, cli.use_fetch(), &command_line)?;
+                let tree =
+                    generator::c::generate(fs, c_args, out, cli.use_fetch(), &command_line)?;
+                pins.extend(tree.pins);
+                for f in tree.files {
+                    files.entry(f.path.clone()).or_insert(f);
+                }
             }
         }
     }
+
+    write_manifest(out, &command_line, pins, files)?;
 
     if !cli.quiet {
         eprintln!("gloam: done.");
     }
 
+    Ok(())
+}
+
+/// Write `.gloam/manifest.json` — the deterministic, pretty-printed bill of
+/// materials for the output tree.  No timestamps: identical inputs + gloam
+/// version produce a byte-identical manifest.
+fn write_manifest(
+    out: &std::path::Path,
+    command_line: &str,
+    mut pins: IndexMap<String, ProvenancePin>,
+    mut files: IndexMap<String, OutputEntry>,
+) -> Result<()> {
+    pins.sort_keys();
+    files.sort_keys();
+
+    let manifest = Manifest {
+        schema_version: SCHEMA_VERSION,
+        gloam: GloamMeta {
+            version: build_info::PKG_VERSION.to_string(),
+            describe: build_info::VERSION.to_string(),
+            commit: build_info::GIT_SHA.unwrap_or("").to_string(),
+            command_line: command_line.to_string(),
+        },
+        provenance: pins,
+        output: files.into_values().collect(),
+    };
+
+    let dir = out.join(".gloam");
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(dir.join("manifest.json"), manifest.to_json_pretty() + "\n")?;
     Ok(())
 }
