@@ -45,24 +45,39 @@ both correct (all files in a snapshot share one commit) and cheap (it collapses
 
 ### Resolving a cluster (race-free)
 
-For each cluster we walk git objects so that metadata and content come from one
-consistent snapshot:
+For each cluster we resolve a consistent snapshot pinned to one commit:
 
-1. `GET /repos/{o}/{r}/git/refs/heads/{branch}` → tip **commit** SHA.
+1. `GET /repos/{o}/{r}/git/ref/heads/{branch}` → tip **commit** SHA.
 2. Derive a **`git describe` equivalent**: enumerate tags
-   (`GET /repos/{o}/{r}/tags`), find the nearest tag reachable from the tip, and
-   count commits since it. When no tag is reachable, fall back to the bare short
-   commit (the `--always` behavior). Registries (`OpenGL-Registry`,
-   `EGL-Registry`) and `google/angle` typically have no semver tags and will
-   show a bare commit; `Vulkan-Docs`, `Vulkan-Headers`, and `xxHash` tag and
-   will show `vX.Y.Z-N-gSHA`.
-3. `GET /repos/{o}/{r}/git/trees/{commit}?recursive=1` → resolve each needed
-   file path to its **blob** SHA.
-4. `GET /repos/{o}/{r}/git/blobs/{blob}` → fetch content **by blob id**.
+   (`GET /repos/{o}/{r}/tags`, paginated, capped) into a tagged-commit map, then
+   scan commits from HEAD (`GET /repos/{o}/{r}/commits?sha={head}`, paginated,
+   capped) until one is tagged — exact match → the tag, otherwise
+   `"<tag>-<N>-g<short>"`. No reachable tag within the scan window → the bare
+   short commit (`git describe --always`). Registries (`OpenGL-Registry`,
+   `EGL-Registry`) and `google/angle` typically have no semver tags and show a
+   bare commit; `Vulkan-Docs`, `Vulkan-Headers`, and `xxHash` tag and show
+   `vX.Y.Z-N-gSHA`.
+3. Per needed file: `GET /repos/{o}/{r}/contents/{path}?ref={commit}` → its
+   **blob** SHA (and inline base64 content for files ≤1 MB). For larger files,
+   follow with `GET /repos/{o}/{r}/git/blobs/{blob}`.
 
-Step 4 is content-addressed, so even if upstream commits between steps 1 and 4
-the blob we fetch is exactly the one our metadata describes. This eliminates the
-metadata/data race without the weaker "re-fetch metadata and compare" approach.
+Everything is pinned to the commit from step 1, so even if upstream commits
+mid-resolution the content we get is exactly what our metadata describes — the
+metadata/data race is eliminated without the weaker "re-fetch and compare"
+approach.
+
+**Why the Contents API, not a recursive tree walk.** An earlier design used
+`git/trees/{commit}?recursive=1` to resolve paths to blobs in one call. But the
+recursive-tree endpoint truncates at GitHub's tree limits, and large repos
+(`google/angle`, `Vulkan-Docs`) can exceed them — silently dropping the entry we
+need. The Contents API resolves each file independently (one call, blob SHA plus
+inline content when small) and never truncates, at the cost of one call per file
+instead of one per cluster. Per-cluster sharing still applies to the HEAD/describe
+resolution.
+
+For `--lock`, the commit/describe/blob are already known, so we skip steps 1–3
+and fetch each file's content directly by its pinned blob id (content-addressed,
+cache-first).
 
 ### `--lock` shortcut
 
