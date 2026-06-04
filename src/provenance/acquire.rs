@@ -41,17 +41,33 @@ pub struct ClusterFetch {
 pub struct Github {
     client: reqwest::blocking::Client,
     token: Option<String>,
+    /// API base URL (overridable in tests to point at a mock server).
+    base: String,
 }
 
 impl Github {
     /// Construct a client, reading an auth token from `$GITHUB_TOKEN` when set.
     pub fn new() -> Result<Self> {
+        Self::build(API_BASE.to_string())
+    }
+
+    /// Construct a client against an alternate API base URL — for tests that
+    /// point at a local mock GitHub server.
+    pub fn with_base_url(base: impl Into<String>) -> Result<Self> {
+        Self::build(base.into())
+    }
+
+    fn build(base: String) -> Result<Self> {
         let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
         let client = reqwest::blocking::Client::builder()
             .user_agent(concat!("gloam/", env!("CARGO_PKG_VERSION")))
             .build()
             .context("building HTTP client")?;
-        Ok(Self { client, token })
+        Ok(Self {
+            client,
+            token,
+            base,
+        })
     }
 
     // -- low-level requests --------------------------------------------------
@@ -106,7 +122,8 @@ impl Github {
 
     /// Resolve the HEAD commit SHA of a branch.
     pub fn head_commit(&self, repo: &str, branch: &str) -> Result<String> {
-        let url = format!("{API_BASE}/repos/{repo}/git/ref/heads/{branch}");
+        let base = &self.base;
+        let url = format!("{base}/repos/{repo}/git/ref/heads/{branch}");
         let v = self.get_json(&url)?;
         v["object"]["sha"]
             .as_str()
@@ -121,10 +138,11 @@ impl Github {
     /// `"<tag>-<N>-g<short>"`; no reachable tag within the scan window → the
     /// bare short commit (`git describe --always`).
     pub fn describe(&self, repo: &str, head: &str) -> Result<String> {
+        let base = &self.base;
         let short = &head[..head.len().min(7)];
 
         // Tagged-commit SHA -> tag name.
-        let tags_url = format!("{API_BASE}/repos/{repo}/tags");
+        let tags_url = format!("{base}/repos/{repo}/tags");
         let tags = self.get_paged(&tags_url, MAX_TAG_PAGES).unwrap_or_default();
         let mut tag_by_commit: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
@@ -141,7 +159,7 @@ impl Github {
         }
 
         // Walk commits from HEAD; first tagged commit wins.
-        let commits_url = format!("{API_BASE}/repos/{repo}/commits?sha={head}");
+        let commits_url = format!("{base}/repos/{repo}/commits?sha={head}");
         let commits = self
             .get_paged(&commits_url, MAX_COMMIT_PAGES)
             .unwrap_or_default();
@@ -164,7 +182,8 @@ impl Github {
     /// Resolve a file's blob SHA (and inline content if the API returned it)
     /// at a specific commit, via the Contents API.
     fn contents(&self, repo: &str, path: &str, commit: &str) -> Result<(String, Option<Vec<u8>>)> {
-        let url = format!("{API_BASE}/repos/{repo}/contents/{path}?ref={commit}");
+        let base = &self.base;
+        let url = format!("{base}/repos/{repo}/contents/{path}?ref={commit}");
         let v = self.get_json(&url)?;
         let sha = v["sha"]
             .as_str()
@@ -196,7 +215,8 @@ impl Github {
     /// Fetch a blob's content by its SHA (content-addressed; used for large
     /// files and for `--lock`).
     pub fn blob_content(&self, repo: &str, blob_sha: &str) -> Result<Vec<u8>> {
-        let url = format!("{API_BASE}/repos/{repo}/git/blobs/{blob_sha}");
+        let base = &self.base;
+        let url = format!("{base}/repos/{repo}/git/blobs/{blob_sha}");
         let v = self.get_json(&url)?;
         match v["encoding"].as_str() {
             Some("base64") => decode_b64(v["content"].as_str().unwrap_or("")),

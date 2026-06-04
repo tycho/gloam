@@ -27,6 +27,10 @@ pub mod cache;
 #[cfg(feature = "fetch")]
 pub mod engine;
 
+/// Mock-server tests for the acquisition + cache + engine path (no real API).
+#[cfg(all(test, feature = "fetch"))]
+mod fetch_tests;
+
 // ---------------------------------------------------------------------------
 // Attribution
 // ---------------------------------------------------------------------------

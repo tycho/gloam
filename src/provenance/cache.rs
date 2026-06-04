@@ -47,10 +47,15 @@ impl Cache {
         let dir = dirs.cache_dir();
         std::fs::create_dir_all(dir)
             .with_context(|| format!("creating cache directory {}", dir.display()))?;
-        let path = dir.join("provenance.sqlite");
+        let path = dir.join("cache.sqlite");
         let conn = Connection::open(&path)
             .with_context(|| format!("opening cache database {}", path.display()))?;
         Self::from_connection(conn)
+    }
+
+    /// Open a private in-memory cache — for tests, never the production file.
+    pub fn open_in_memory() -> Result<Self> {
+        Self::from_connection(Connection::open_in_memory()?)
     }
 
     /// Wrap an existing connection: enable WAL and ensure the schema matches.
