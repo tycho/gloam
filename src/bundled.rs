@@ -7,7 +7,7 @@
 //! At runtime, `get_*` helpers return an error with an actionable message
 //! rather than silently operating on empty content.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 
 use crate::provenance::manifest::BundledProvenance;
 
@@ -62,46 +62,6 @@ pub const VK_VIDEO_VP9STD_H: &str =
     include_str!("../bundled/headers/vk_video/vulkan_video_codec_vp9std.h");
 pub const VK_VIDEO_VP9STD_DECODE_H: &str =
     include_str!("../bundled/headers/vk_video/vulkan_video_codec_vp9std_decode.h");
-
-// ---------------------------------------------------------------------------
-// Checked accessors
-// ---------------------------------------------------------------------------
-
-fn require(name: &str, content: &'static str) -> Result<&'static str> {
-    if content.is_empty() {
-        bail!(
-            "bundled file '{}' is empty — run `scripts/fetch_bundled.sh` to populate bundled copies",
-            name
-        );
-    }
-    Ok(content)
-}
-
-pub fn gl_xml() -> Result<&'static str> {
-    require("gl.xml", GL_XML)
-}
-pub fn egl_xml() -> Result<&'static str> {
-    require("egl.xml", EGL_XML)
-}
-pub fn glx_xml() -> Result<&'static str> {
-    require("glx.xml", GLX_XML)
-}
-pub fn wgl_xml() -> Result<&'static str> {
-    require("wgl.xml", WGL_XML)
-}
-pub fn vk_xml() -> Result<&'static str> {
-    require("vk.xml", VK_XML)
-}
-
-pub fn gl_angle_ext_xml() -> Result<&'static str> {
-    require("gl_angle_ext.xml", GL_ANGLE_EXT_XML)
-}
-pub fn egl_angle_ext_xml() -> Result<&'static str> {
-    require("egl_angle_ext.xml", EGL_ANGLE_EXT_XML)
-}
-pub fn glsl_exts_xml() -> Result<&'static str> {
-    require("glsl_exts.xml", GLSL_EXTS_XML)
-}
 
 // ---------------------------------------------------------------------------
 // Bundle provenance

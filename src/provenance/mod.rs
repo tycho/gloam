@@ -258,11 +258,6 @@ pub fn supplemental_keys(spec_name: &str, apis: &[&str]) -> Vec<&'static str> {
     out
 }
 
-/// True if `key` belongs to a cluster attributed to the ANGLE project.
-pub fn is_angle_key(key: &str) -> bool {
-    find(key).is_some_and(|(c, _)| std::ptr::eq(c.attribution, &ATTR_ANGLE))
-}
-
 // ---------------------------------------------------------------------------
 // Runtime resolved provenance
 // ---------------------------------------------------------------------------

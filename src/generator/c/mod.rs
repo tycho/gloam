@@ -13,7 +13,10 @@ use minijinja::{Environment, Value, context};
 use crate::cli::CArgs;
 use crate::fetch;
 use crate::preamble;
+use crate::provenance::load;
+use crate::provenance::manifest::ProvenancePin;
 use crate::resolve::FeatureSet;
+use indexmap::IndexMap;
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -28,7 +31,16 @@ pub fn generate(
 ) -> Result<()> {
     let stem = output_stem(fs);
     let env = build_env()?;
-    let preamble = preamble::build_preamble(fs, command_line);
+
+    // Resolve provenance pins for every contributing source (cache-warm in
+    // --fetch mode after this call, so the aux-header copy below reuses them).
+    let source_key_refs: Vec<&str> = fs.source_keys.iter().map(String::as_str).collect();
+    let pins: IndexMap<String, ProvenancePin> = load::resolve(&source_key_refs, use_fetch)
+        .context("resolving source provenance")?
+        .into_iter()
+        .map(|(key, src)| (key, src.pin))
+        .collect();
+    let preamble = preamble::build_preamble(fs, &pins, command_line);
 
     let names = FnNameLayout::build(fs);
 
