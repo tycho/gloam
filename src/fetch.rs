@@ -7,6 +7,7 @@
 use anyhow::{Context, Result};
 
 use crate::bundled;
+use crate::provenance;
 
 // ---------------------------------------------------------------------------
 // URL bases
@@ -33,18 +34,24 @@ const XXHASH_HEAD_URL: &str =
 pub struct SpecSources {
     pub primary: String,
     pub supplementals: Vec<String>,
+    /// Registry keys of the files actually merged for this generation — the
+    /// primary spec followed by the request-aware supplementals — in order.
+    /// Drives provenance/attribution so output reflects what truly contributed.
+    pub source_keys: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-pub fn load_spec(spec_name: &str, use_fetch: bool) -> Result<SpecSources> {
+/// Load a spec's XML sources.  `apis` is the set of canonical API names in
+/// scope (e.g. `["gl", "gles2"]`), which selects request-aware supplementals.
+pub fn load_spec(spec_name: &str, apis: &[&str], use_fetch: bool) -> Result<SpecSources> {
     #[cfg(feature = "fetch")]
     if use_fetch {
-        return fetch_spec(spec_name);
+        return fetch_spec(spec_name, apis);
     }
-    bundled_spec(spec_name)
+    bundled_spec(spec_name, apis)
 }
 
 pub fn load_auxiliary_header(path: &str, use_fetch: bool) -> Result<String> {
@@ -67,7 +74,7 @@ pub fn load_auxiliary_header(path: &str, use_fetch: bool) -> Result<String> {
 // Bundled mode
 // ---------------------------------------------------------------------------
 
-fn bundled_spec(spec_name: &str) -> Result<SpecSources> {
+fn bundled_spec(spec_name: &str, apis: &[&str]) -> Result<SpecSources> {
     let primary = match spec_name {
         "gl" => bundled::gl_xml()?,
         "egl" => bundled::egl_xml()?,
@@ -78,19 +85,36 @@ fn bundled_spec(spec_name: &str) -> Result<SpecSources> {
     }
     .to_string();
 
-    let supplementals = match spec_name {
-        "gl" => vec![
-            bundled::glsl_exts_xml()?.to_string(),
-            bundled::gl_angle_ext_xml()?.to_string(),
-        ],
-        "egl" => vec![bundled::egl_angle_ext_xml()?.to_string()],
-        _ => vec![],
-    };
+    let supp_keys = provenance::supplemental_keys(spec_name, apis);
+    let supplementals = supp_keys
+        .iter()
+        .map(|k| bundled_supplemental(k).map(str::to_string))
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(SpecSources {
         primary,
         supplementals,
+        source_keys: source_keys(spec_name, &supp_keys)?,
     })
+}
+
+/// Load a bundled supplemental XML by registry key.
+fn bundled_supplemental(key: &str) -> Result<&'static str> {
+    match key {
+        "glsl_exts.xml" => bundled::glsl_exts_xml(),
+        "gl_angle_ext.xml" => bundled::gl_angle_ext_xml(),
+        "egl_angle_ext.xml" => bundled::egl_angle_ext_xml(),
+        other => anyhow::bail!("unknown supplemental key '{}'", other),
+    }
+}
+
+/// Build the ordered source-key list: primary spec then supplementals.
+fn source_keys(spec_name: &str, supp_keys: &[&str]) -> Result<Vec<String>> {
+    let primary = provenance::primary_key(spec_name)
+        .ok_or_else(|| anyhow::anyhow!("unknown spec name '{}'", spec_name))?;
+    Ok(std::iter::once(primary.to_string())
+        .chain(supp_keys.iter().map(|k| k.to_string()))
+        .collect())
 }
 
 #[allow(dead_code)]
@@ -122,7 +146,7 @@ fn bundled_auxiliary(path: &str) -> Result<&'static str> {
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "fetch")]
-fn fetch_spec(spec_name: &str) -> Result<SpecSources> {
+fn fetch_spec(spec_name: &str, apis: &[&str]) -> Result<SpecSources> {
     let primary_url = match spec_name {
         "gl" => format!("{}gl.xml", BASE_GL),
         "egl" => format!("{}egl.xml", BASE_EGL),
@@ -134,23 +158,29 @@ fn fetch_spec(spec_name: &str) -> Result<SpecSources> {
     let primary = fetch_text(&primary_url)
         .with_context(|| format!("fetching primary XML for '{}'", spec_name))?;
 
-    let supp_urls: Vec<String> = match spec_name {
-        "gl" => vec![
-            GLSL_EXTS_URL.to_string(),
-            format!("{}gl_angle_ext.xml", BASE_ANGLE),
-        ],
-        "egl" => vec![format!("{}egl_angle_ext.xml", BASE_ANGLE)],
-        _ => vec![],
-    };
-
-    let supplementals = supp_urls
+    let supp_keys = provenance::supplemental_keys(spec_name, apis);
+    let supplementals = supp_keys
         .iter()
-        .map(|url| fetch_text(url).with_context(|| format!("fetching supplemental '{}'", url)))
+        .map(|k| {
+            let url = supplemental_url(k)?;
+            fetch_text(&url).with_context(|| format!("fetching supplemental '{}'", url))
+        })
         .collect::<Result<Vec<_>>>()?;
 
     Ok(SpecSources {
         primary,
         supplementals,
+        source_keys: source_keys(spec_name, &supp_keys)?,
+    })
+}
+
+#[cfg(feature = "fetch")]
+fn supplemental_url(key: &str) -> Result<String> {
+    Ok(match key {
+        "glsl_exts.xml" => GLSL_EXTS_URL.to_string(),
+        "gl_angle_ext.xml" => format!("{}gl_angle_ext.xml", BASE_ANGLE),
+        "egl_angle_ext.xml" => format!("{}egl_angle_ext.xml", BASE_ANGLE),
+        other => anyhow::bail!("unknown supplemental key '{}'", other),
     })
 }
 

@@ -68,6 +68,12 @@ pub struct FeatureSet {
     /// Paths are relative to the include root, e.g. "KHR/khrplatform.h".
     pub required_headers: Vec<String>,
 
+    /// Provenance registry keys of every upstream source that contributed to
+    /// this loader: the primary spec XML, the request-aware supplementals
+    /// actually merged, the required auxiliary headers, and xxhash.h (always
+    /// emitted).  Sorted and deduplicated.  Drives attribution and the manifest.
+    pub source_keys: Vec<String>,
+
     /// Extensions excluded by explicit `-` prefix in --extensions.
     pub excluded_explicit: Vec<String>,
     /// Extensions excluded because they are fully promoted into --baseline versions.

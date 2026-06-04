@@ -109,9 +109,12 @@ pub fn glsl_exts_xml() -> Result<&'static str> {
 
 /// The embedded provenance manifest describing where each bundled file came
 /// from.  Populated by `cargo xtask bundle`; an empty pin set until then.
+// Consumed by --version and bundled-mode provenance in later slices.
+#[allow(dead_code)]
 pub const PROVENANCE_JSON: &str = include_str!("../bundled/provenance.json");
 
 /// Parse the embedded `bundled/provenance.json`.
+#[allow(dead_code)]
 pub fn bundled_provenance() -> Result<BundledProvenance> {
     BundledProvenance::from_json(PROVENANCE_JSON).context("parsing bundled/provenance.json")
 }

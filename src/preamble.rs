@@ -81,13 +81,14 @@ pub fn build_preamble(fs: &FeatureSet, command_line: &str) -> String {
     ));
     lines.push(" * SPDX-License-Identifier: Apache-2.0".to_string());
 
-    // ---- ANGLE (only for specs that use ANGLE supplementals) ----
-    if uses_angle_supplementals(fs) {
+    // ---- ANGLE (only when ANGLE source files actually contributed) ----
+    let angle_files = angle_source_files(fs);
+    if !angle_files.is_empty() {
         lines.push(" *".to_string());
-        lines.push(
-            " * Includes extensions from the ANGLE project (gl_angle_ext.xml, egl_angle_ext.xml)."
-                .to_string(),
-        );
+        lines.push(format!(
+            " * Includes extensions from the ANGLE project ({}).",
+            angle_files.join(", ")
+        ));
         lines.push(format!(" * Copyright (c) {year} Google Inc."));
         lines.push(" * SPDX-License-Identifier: BSD-3-Clause".to_string());
     }
@@ -150,10 +151,17 @@ fn extension_summary(fs: &FeatureSet) -> String {
     format!("Extensions: {} ({total} included)", parts.join(", "))
 }
 
-/// Returns true if this feature set includes ANGLE extension supplementals.
-/// ANGLE extensions are loaded for GL-family and EGL specs.
-fn uses_angle_supplementals(fs: &FeatureSet) -> bool {
-    matches!(fs.spec_name.as_str(), "gl" | "egl")
+/// The ANGLE-attributed source files that actually contributed to this loader,
+/// in sorted order.  Empty unless an ANGLE supplemental was merged — so a
+/// desktop-only `gl:core` loader (which never merges `gl_angle_ext.xml`) gets no
+/// ANGLE notice, and a GL loader never names `egl_angle_ext.xml` (or vice
+/// versa).
+fn angle_source_files(fs: &FeatureSet) -> Vec<&str> {
+    fs.source_keys
+        .iter()
+        .filter(|k| crate::provenance::is_angle_key(k))
+        .map(String::as_str)
+        .collect()
 }
 
 #[cfg(test)]
@@ -182,6 +190,7 @@ mod tests {
             ext_subset_indices: Default::default(),
             alias_pairs: vec![],
             required_headers: vec![],
+            source_keys: vec![],
             excluded_explicit: vec![],
             excluded_baseline: vec![],
             include_type_groups: vec![],
@@ -228,23 +237,43 @@ mod tests {
     }
 
     #[test]
-    fn preamble_includes_angle_for_gl() {
-        let fs = stub_fs("gl");
-        let p = build_preamble(&fs, "gloam --api gl:core=3.3 c");
+    fn preamble_includes_angle_when_gl_angle_ext_merged() {
+        // GLES in scope → gl_angle_ext.xml merged → ANGLE notice, naming only
+        // the GL file.
+        let mut fs = stub_fs("gl");
+        fs.source_keys = vec!["gl.xml".into(), "gl_angle_ext.xml".into(), "glsl_exts.xml".into()];
+        let p = build_preamble(&fs, "gloam --api gles2 c");
         assert!(p.contains("ANGLE"));
         assert!(p.contains("BSD-3-Clause"));
+        assert!(p.contains("gl_angle_ext.xml"));
+        assert!(!p.contains("egl_angle_ext.xml"), "GL loader must not name the EGL ANGLE file");
     }
 
     #[test]
     fn preamble_includes_angle_for_egl() {
-        let fs = stub_fs("egl");
+        let mut fs = stub_fs("egl");
+        fs.source_keys = vec!["egl.xml".into(), "egl_angle_ext.xml".into()];
         let p = build_preamble(&fs, "gloam --api egl c");
         assert!(p.contains("ANGLE"));
+        // Exactly the EGL file is listed (note "egl_angle_ext.xml" itself
+        // contains the substring "gl_angle_ext.xml", so check the full list).
+        assert!(p.contains("ANGLE project (egl_angle_ext.xml)."));
+    }
+
+    #[test]
+    fn preamble_excludes_angle_for_gl_core() {
+        // The bug fix: gl:core never merges gl_angle_ext.xml, so no ANGLE notice.
+        let mut fs = stub_fs("gl");
+        fs.source_keys = vec!["gl.xml".into(), "glsl_exts.xml".into(), "KHR/khrplatform.h".into()];
+        let p = build_preamble(&fs, "gloam --api gl:core=3.3 c");
+        assert!(!p.contains("ANGLE"), "gl:core must not advertise ANGLE");
+        assert!(!p.contains("BSD-3-Clause"));
     }
 
     #[test]
     fn preamble_excludes_angle_for_vulkan() {
-        let fs = stub_fs("vk");
+        let mut fs = stub_fs("vk");
+        fs.source_keys = vec!["vk.xml".into()];
         let p = build_preamble(&fs, "gloam --api vk=1.3 c");
         assert!(!p.contains("ANGLE"));
         assert!(!p.contains("BSD-3-Clause"));
@@ -252,7 +281,8 @@ mod tests {
 
     #[test]
     fn preamble_excludes_angle_for_glx() {
-        let fs = stub_fs("glx");
+        let mut fs = stub_fs("glx");
+        fs.source_keys = vec!["glx.xml".into()];
         let p = build_preamble(&fs, "gloam --api glx c");
         assert!(!p.contains("ANGLE"));
     }

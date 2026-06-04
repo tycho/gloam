@@ -73,7 +73,8 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
                 .push(req);
         }
         for (spec_name, reqs) in &by_spec {
-            let sources = fetch::load_spec(spec_name, cli.use_fetch())?;
+            let apis: Vec<&str> = reqs.iter().map(|r| r.name.as_str()).collect();
+            let sources = fetch::load_spec(spec_name, &apis, cli.use_fetch())?;
             let raw = parse::parse(&sources, spec_name)?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,
@@ -83,13 +84,14 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
                 want_promoted: promoted,
                 want_predecessors: predecessors,
             };
-            let fs = resolve_feature_set(&raw, reqs, &config)?;
+            let fs = resolve_feature_set(&raw, reqs, &config, &sources.source_keys)?;
             feature_sets.push(fs);
         }
     } else {
         for req in &requests {
             let spec_name = req.spec_name();
-            let sources = fetch::load_spec(spec_name, cli.use_fetch())?;
+            let apis = [req.name.as_str()];
+            let sources = fetch::load_spec(spec_name, &apis, cli.use_fetch())?;
             let raw = parse::parse(&sources, spec_name)?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,
@@ -99,7 +101,7 @@ pub fn build_feature_sets(cli: &Cli) -> Result<Vec<FeatureSet>> {
                 want_promoted: promoted,
                 want_predecessors: predecessors,
             };
-            let fs = resolve_feature_set(&raw, std::slice::from_ref(req), &config)?;
+            let fs = resolve_feature_set(&raw, std::slice::from_ref(req), &config, &sources.source_keys)?;
             feature_sets.push(fs);
         }
     }
@@ -115,6 +117,7 @@ fn resolve_feature_set(
     raw: &RawSpec,
     requests: &[ApiRequest],
     config: &ResolveConfig<'_>,
+    xml_source_keys: &[String],
 ) -> Result<FeatureSet> {
     let spec_name = &raw.spec_name;
     let spec = SpecInfo::new(spec_name);
@@ -258,6 +261,18 @@ fn resolve_feature_set(
 
     let required_headers = collect_required_headers(raw, &reqs.req_types, spec_name);
 
+    // Contributing source provenance: the merged XML sources, plus the
+    // auxiliary headers emitted into the output tree and xxhash.h (always used
+    // by the generated .c for hash-based extension detection).  Sorted/deduped.
+    let source_keys = {
+        let mut keys: Vec<String> = xml_source_keys.to_vec();
+        keys.extend(required_headers.iter().cloned());
+        keys.push("xxhash.h".to_string());
+        keys.sort();
+        keys.dedup();
+        keys
+    };
+
     // ==================================================================
     // Phase 3: Protection grouping
     // ==================================================================
@@ -328,6 +343,7 @@ fn resolve_feature_set(
         ext_subset_indices,
         alias_pairs,
         required_headers,
+        source_keys,
         excluded_explicit,
         excluded_baseline,
         include_type_groups,

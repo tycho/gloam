@@ -230,6 +230,36 @@ pub fn primary_key(spec_name: &str) -> Option<&'static str> {
     })
 }
 
+/// Supplemental XML keys merged into a spec, given the canonical API names in
+/// scope for this generation.  The merge is **request-aware**: ANGLE's GLES
+/// extension XML is merged only when a GLES API is requested, so a desktop-only
+/// `gl:core` loader neither parses nor attributes it.
+///
+/// - `gl`: `glsl_exts.xml` always (it carries `supported="gl"` and
+///   `supported="gl|gles2"` entries); `gl_angle_ext.xml` only when `gles1`/
+///   `gles2` is in scope.
+/// - `egl`: `egl_angle_ext.xml` (the EGL spec is only loaded when EGL is
+///   requested).
+pub fn supplemental_keys(spec_name: &str, apis: &[&str]) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    match spec_name {
+        "gl" => {
+            out.push("glsl_exts.xml");
+            if apis.iter().any(|a| matches!(*a, "gles1" | "gles2")) {
+                out.push("gl_angle_ext.xml");
+            }
+        }
+        "egl" => out.push("egl_angle_ext.xml"),
+        _ => {}
+    }
+    out
+}
+
+/// True if `key` belongs to a cluster attributed to the ANGLE project.
+pub fn is_angle_key(key: &str) -> bool {
+    find(key).is_some_and(|(c, _)| std::ptr::eq(c.attribution, &ATTR_ANGLE))
+}
+
 // ---------------------------------------------------------------------------
 // Runtime resolved provenance
 // ---------------------------------------------------------------------------
