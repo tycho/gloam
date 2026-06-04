@@ -306,17 +306,15 @@ mirroring the old script).
 
 ### `gloam lock` — manifest-only snapshot subcommand
 
-`gloam lock` resolves clusters and writes a provenance-only manifest (no loader
-output) — the reusable point-in-time lock referenced in the consumer guide. It
-shares the acquisition path with the xtask and `--fetch`.
+`gloam lock --out <file>` writes a provenance-only manifest (no loader output;
+an empty `output` BOM) pinning **every supported upstream source** — the
+reusable point-in-time lock referenced in the consumer guide. It shares the
+loader path with `--fetch`: bundled provenance by default, or upstream HEAD with
+`--fetch` (as in the pregen preflight). The name mirrors the `--lock` input
+flag: `gloam lock` produces what `--lock` consumes.
 
-- With no `--api`, it resolves **all supported APIs / all known files** (the full
-  snapshot, used by the pregen preflight).
-- With `--api` filters, it resolves only the files those APIs require, producing
-  a narrower lock.
-
-The name mirrors the `--lock` input flag: `gloam lock` produces what `--lock`
-consumes.
+Today the snapshot always covers all sources — a safe superset for any subset
+`--lock`. Per-`--api` narrowing is a possible future refinement.
 
 ---
 

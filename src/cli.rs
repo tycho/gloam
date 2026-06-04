@@ -35,8 +35,9 @@ pub struct Cli {
     /// API specifiers: comma-separated name[:profile]=version pairs.  Profile
     /// is required for GL (core|compat). Version is optional (latest if
     /// omitted).  Example: gl:core=3.3,gles2=3.0
-    #[arg(long, required = true)]
-    pub api: String,
+    /// Required for generation; ignored by `gloam lock`.
+    #[arg(long)]
+    pub api: Option<String>,
 
     /// Extension filter: path to a file (one per line), a comma-separated
     /// list of extension names, or "all" (the default if omitted).  Prefix a
@@ -87,6 +88,17 @@ pub struct Cli {
 pub enum Generator {
     /// Generate a C loader.
     C(CArgs),
+    /// Write a provenance-only snapshot manifest (no loader output) pinning
+    /// every supported upstream source at the current bundle (or, with --fetch,
+    /// upstream HEAD).  Reuse it later with --lock for reproducible generation.
+    Lock(LockArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct LockArgs {
+    /// Output path for the snapshot manifest.
+    #[arg(long, default_value = "manifest.json")]
+    pub out: String,
 }
 
 #[derive(Args, Debug)]
@@ -109,8 +121,11 @@ pub struct CArgs {
 
 impl Cli {
     pub fn api_requests(&self) -> Result<Vec<ApiRequest>> {
-        self.api
-            .split(',')
+        let api = self
+            .api
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("--api is required for generation"))?;
+        api.split(',')
             .map(|s| ApiRequest::parse(s.trim()))
             .collect()
     }

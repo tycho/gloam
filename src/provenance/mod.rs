@@ -198,6 +198,14 @@ pub static CLUSTERS: &[Cluster] = &[
 // Registry lookups
 // ---------------------------------------------------------------------------
 
+/// Every registry file key, in registry order.
+pub fn all_keys() -> Vec<&'static str> {
+    CLUSTERS
+        .iter()
+        .flat_map(|c| c.files.iter().map(|f| f.key))
+        .collect()
+}
+
 /// Find the cluster and file spec for a logical key.
 pub fn find(key: &str) -> Option<(&'static Cluster, &'static FileSpec)> {
     for cluster in CLUSTERS {

@@ -75,6 +75,11 @@ fn run() -> Result<()> {
         lock: lock_pins.as_ref(),
     };
 
+    // `gloam lock`: write a provenance-only snapshot, no loader generation.
+    if let Generator::Lock(lock_args) = &cli.generator {
+        return write_lock_snapshot(&ctx, &command_line, lock_args, cli.quiet);
+    }
+
     if !cli.quiet {
         eprintln!("gloam: resolving feature sets...");
     }
@@ -102,6 +107,7 @@ fn run() -> Result<()> {
                 }
             }
         }
+        Generator::Lock(_) => unreachable!("handled above"),
     }
 
     write_manifest(out, &command_line, pins, files)?;
@@ -110,6 +116,54 @@ fn run() -> Result<()> {
         eprintln!("gloam: done.");
     }
 
+    Ok(())
+}
+
+/// gloam self-metadata for a manifest.
+fn gloam_meta(command_line: &str) -> GloamMeta {
+    GloamMeta {
+        version: build_info::PKG_VERSION.to_string(),
+        describe: build_info::VERSION.to_string(),
+        commit: build_info::GIT_SHA.unwrap_or("").to_string(),
+        command_line: command_line.to_string(),
+    }
+}
+
+/// `gloam lock`: resolve provenance for every supported source and write a
+/// provenance-only snapshot manifest (no output BOM).
+fn write_lock_snapshot(
+    ctx: &provenance::load::LoadCtx,
+    command_line: &str,
+    args: &cli::LockArgs,
+    quiet: bool,
+) -> Result<()> {
+    if !quiet {
+        eprintln!("gloam: snapshotting provenance...");
+    }
+    let keys = provenance::all_keys();
+    let mut pins: IndexMap<String, ProvenancePin> = provenance::load::resolve(&keys, ctx)?
+        .into_iter()
+        .map(|(key, src)| (key, src.pin))
+        .collect();
+    pins.sort_keys();
+
+    let manifest = Manifest {
+        schema_version: SCHEMA_VERSION,
+        gloam: gloam_meta(command_line),
+        provenance: pins,
+        output: Vec::new(),
+    };
+
+    let path = std::path::Path::new(&args.out);
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(path, manifest.to_json_pretty() + "\n")?;
+    if !quiet {
+        eprintln!("gloam: wrote {}", path.display());
+    }
     Ok(())
 }
 
@@ -127,12 +181,7 @@ fn write_manifest(
 
     let manifest = Manifest {
         schema_version: SCHEMA_VERSION,
-        gloam: GloamMeta {
-            version: build_info::PKG_VERSION.to_string(),
-            describe: build_info::VERSION.to_string(),
-            commit: build_info::GIT_SHA.unwrap_or("").to_string(),
-            command_line: command_line.to_string(),
-        },
+        gloam: gloam_meta(command_line),
         provenance: pins,
         output: files.into_values().collect(),
     };

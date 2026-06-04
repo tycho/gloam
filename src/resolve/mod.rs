@@ -60,6 +60,7 @@ pub fn build_feature_sets(cli: &Cli, ctx: &crate::provenance::load::LoadCtx) -> 
 
     let alias = match &cli.generator {
         crate::cli::Generator::C(c) => c.alias,
+        crate::cli::Generator::Lock(_) => false, // never reached: lock skips resolution
     };
 
     let mut feature_sets = Vec::new();
