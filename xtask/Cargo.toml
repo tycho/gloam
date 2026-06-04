@@ -1,0 +1,11 @@
+[package]
+name         = "xtask"
+version      = "0.0.0"
+edition      = "2024"
+publish      = false
+description   = "Dev task runner for gloam (bundle refresh)."
+
+[dependencies]
+anyhow   = "1"
+gloam    = { path = "..", features = ["fetch"] }
+indexmap = { version = "2", features = ["serde"] }

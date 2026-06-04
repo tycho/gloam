@@ -207,6 +207,17 @@ pub fn find(key: &str) -> Option<(&'static Cluster, &'static FileSpec)> {
     None
 }
 
+/// Relative path, under the repository's `bundled/` directory, where a registry
+/// file's bytes are stored on disk and embedded.  XML specs live under `xml/`,
+/// everything else under `headers/` (preserving any subdirectory in the key).
+pub fn bundled_rel_path(key: &str) -> String {
+    if key.ends_with(".xml") {
+        format!("xml/{key}")
+    } else {
+        format!("headers/{key}")
+    }
+}
+
 /// The primary spec XML key for a spec family name (`gl`, `egl`, …).
 pub fn primary_key(spec_name: &str) -> Option<&'static str> {
     Some(match spec_name {

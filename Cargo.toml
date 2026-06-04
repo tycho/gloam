@@ -1,3 +1,6 @@
+[workspace]
+members = ["xtask"]
+
 [package]
 name           = "gloam"
 version        = "0.4.9"
