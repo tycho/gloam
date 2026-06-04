@@ -13,6 +13,7 @@ mod generator;
 mod ir;
 mod parse;
 mod preamble;
+pub mod provenance;
 mod resolve;
 
 use anyhow::Result;
