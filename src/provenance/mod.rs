@@ -20,6 +20,10 @@ pub mod acquire;
 #[cfg(feature = "fetch")]
 pub mod cache;
 
+/// Unified fetch engine (acquisition + cache).
+#[cfg(feature = "fetch")]
+pub mod engine;
+
 // ---------------------------------------------------------------------------
 // Attribution
 // ---------------------------------------------------------------------------

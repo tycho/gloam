@@ -170,6 +170,22 @@ impl Github {
         Ok((sha, content))
     }
 
+    /// Resolve a single file at a commit to its blob SHA and content, fetching
+    /// the blob separately when the Contents API didn't inline it (large file).
+    pub fn file_at_commit(
+        &self,
+        repo: &str,
+        path: &str,
+        commit: &str,
+    ) -> Result<(String, Vec<u8>)> {
+        let (blob, inline) = self.contents(repo, path, commit)?;
+        let content = match inline {
+            Some(c) => c,
+            None => self.blob_content(repo, &blob)?,
+        };
+        Ok((blob, content))
+    }
+
     /// Fetch a blob's content by its SHA (content-addressed; used for large
     /// files and for `--lock`).
     pub fn blob_content(&self, repo: &str, blob_sha: &str) -> Result<Vec<u8>> {
