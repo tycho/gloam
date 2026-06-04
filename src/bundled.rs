@@ -66,21 +66,16 @@ pub const VK_VIDEO_VP9STD_DECODE_H: &str =
 // ---------------------------------------------------------------------------
 
 /// The embedded provenance manifest describing where each bundled file came
-/// from.  Populated by `cargo xtask bundle`; an empty pin set until then.
-// Consumed by --version and bundled-mode provenance in later slices.
-#[allow(dead_code)]
+/// from.  Populated by `cargo xtask bundle`.
 pub const PROVENANCE_JSON: &str = include_str!("../bundled/provenance.json");
 
 /// Parse the embedded `bundled/provenance.json`.
-#[allow(dead_code)]
 pub fn bundled_provenance() -> Result<BundledProvenance> {
     BundledProvenance::from_json(PROVENANCE_JSON).context("parsing bundled/provenance.json")
 }
 
 /// Map a provenance registry key to its embedded file content, or `None` when
 /// the key is unknown or its bundled copy is empty (not yet populated).
-// Wired into cache seeding when fetch loading moves onto the engine.
-#[allow(dead_code)]
 pub fn content_by_key(key: &str) -> Option<&'static str> {
     raw_content_by_key(key).filter(|c| !c.is_empty())
 }
