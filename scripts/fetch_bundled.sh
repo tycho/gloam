@@ -29,6 +29,8 @@ EGL_BASE="https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/main/api"
 VK_XML_BASE="https://raw.githubusercontent.com/KhronosGroup/Vulkan-Docs/main/xml"
 VK_HDR_BASE="https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/main/include/vulkan"
 ANGLE_BASE="https://raw.githubusercontent.com/google/angle/main/scripts"
+XXHASH_TAG="refs/heads/dev"
+XXHASH_URL="https://raw.githubusercontent.com/Cyan4973/xxHash/${XXHASH_TAG}/xxhash.h"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -127,8 +129,6 @@ if [[ $DO_HDRS -eq 1 ]]; then
 
     # xxhash — use the single-file amalgamation from the official release.
     # We pin to a specific tag for reproducibility.
-    XXHASH_TAG="v0.8.3"
-    XXHASH_URL="https://raw.githubusercontent.com/Cyan4973/xxHash/${XXHASH_TAG}/xxhash.h"
     fetch "$XXHASH_URL" "$HDR_DIR/xxhash.h" "xxhash.h ($XXHASH_TAG)"
 
     # KHR / EGL platform headers — from the EGL registry.
