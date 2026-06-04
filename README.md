@@ -71,6 +71,8 @@ Output directory:
 
 ```
 generated/
+  .gloam/
+    manifest.json     # provenance + output bill of materials
   include/
     gloam/
       gl.h            # merged GL + GLES2 public header
@@ -101,7 +103,8 @@ only, `gles2` for GLES2 only, `vulkan` for Vulkan, etc.
 gloam [OPTIONS] <COMMAND>
 
 Options:
-  --api <SPEC>          API specifiers (required). Comma-separated list of
+  --api <SPEC>          API specifiers (required for generation; not used by
+                        `gloam lock`). Comma-separated list of
                         name[:profile][=major.minor] tokens. Profile is
                         required for GL (core|compat). Version is optional
                         (latest if omitted). Examples:
@@ -139,8 +142,15 @@ Options:
                         output file. Required when combining gl and gles2.
   --out-path <DIR>      Output directory [default: .]
   --quiet               Suppress progress messages.
-  --fetch               Fetch XML specs from upstream Khronos URLs instead
-                        of the bundled copies. Any fetch failure is fatal.
+  --fetch               Resolve XML specs and headers from upstream (via the
+                        GitHub API) instead of the bundled copies, capturing
+                        full provenance. Set GITHUB_TOKEN to lift the API rate
+                        limit. Any fetch failure is fatal.
+  --lock <MANIFEST>     Pin upstream sources to the provenance recorded in a
+                        previous .gloam/manifest.json (or a `gloam lock`
+                        snapshot), for reproducible output. Requires either
+                        --fetch or a gloam build whose bundled files match the
+                        locked blobs. See "Provenance and reproducible builds".
 
 Commands:
   c     Generate a C loader.
@@ -157,6 +167,12 @@ Commands:
                   following the same pattern as Volk. Auxiliary headers
                   (vk_platform.h, vk_video/*) are not bundled in the
                   output directory.
+
+  lock  Write a provenance-only snapshot manifest (no loader output)
+        pinning every supported upstream source — at the current bundle,
+        or at upstream HEAD with --fetch. Reuse it later with --lock.
+        --out <FILE>
+                  Output path for the snapshot [default: manifest.json].
 ```
 
 ### Extension selection flags
@@ -169,6 +185,48 @@ The extension-related flags are orthogonal and compose freely:
 | `--promoted` | *Selection*: adds extensions promoted into the requested core version |
 | `--predecessors` | *Selection*: adds predecessor extensions of the already-selected set |
 | `--baseline` | *Selection*: excludes extensions fully promoted into the baseline version |
+
+## Provenance and reproducible builds
+
+Every generated loader records exactly which upstream sources produced it. Each
+file's repository, `git describe` version, upstream commit, and git blob hash
+appear in three places:
+
+- the comment header of every generated `.h`/`.c` file;
+- `gloam --version`, which lists the embedded bundle's provenance; and
+- `.gloam/manifest.json`, written to the root of every output tree — a
+  machine-readable bill of materials (gloam version, the source provenance pin
+  set, and a `git hash-object` blob hash for every emitted file). It contains no
+  timestamps, so the same inputs and gloam version produce byte-identical
+  output.
+
+### Pinning sources with `gloam lock` and `--lock`
+
+`gloam lock` writes a provenance-only snapshot manifest that pins every
+supported upstream source:
+
+```sh
+gloam --fetch lock --out manifest.json   # snapshot upstream HEAD (via the GitHub API)
+gloam lock --out manifest.json           # snapshot the embedded bundle
+```
+
+Feed that manifest — or any generated `.gloam/manifest.json` — back with
+`--lock` to regenerate against exactly those pinned sources:
+
+```sh
+gloam --api gl:core=4.6 --lock manifest.json --out-path generated c --alias --loader
+```
+
+A locked regeneration with otherwise identical arguments is byte-identical to
+the original (the `--lock` flag itself is excluded from the recorded command
+line). If the manifest lacks provenance for a file the new command requires,
+gloam refuses rather than silently substituting a different version. `--lock`
+needs either `--fetch` (to fetch the pinned blobs) or a gloam build whose
+bundled files already match the pinned blobs.
+
+This is the mechanism used to generate several loaders from one consistent
+upstream snapshot: take a single `gloam lock` snapshot, then drive each
+generation with `--lock`.
 
 ## Generated output
 
