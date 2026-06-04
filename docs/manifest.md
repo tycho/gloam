@@ -244,10 +244,11 @@ Semantics:
 
 ### Snapshot manifests
 
-gloam can also emit a **manifest-only snapshot** covering every supported API
-and every possible input file, without generating any loader. This gives you a
-single point-in-time lock you can reuse across many different loader
-generations. See the producer guide for the subcommand.
+`gloam lock` emits a **manifest-only snapshot** without generating any loader —
+covering every supported API and input file by default, or a narrower set when
+given `--api` filters. This gives you a single point-in-time lock you can reuse
+across many different loader generations (`gloam lock` produces what `--lock`
+consumes).
 
 ---
 

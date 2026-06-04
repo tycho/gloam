@@ -1,5 +1,10 @@
 # Contributing to gloam
 
+> **Design specs:** provenance tracking and the generated `.gloam/manifest.json`
+> are specified in [docs/manifest.md](docs/manifest.md) (consumer-facing format)
+> and [docs/provenance-internals.md](docs/provenance-internals.md) (producer
+> internals: acquisition, cache, bundler, header layout).
+
 ## Architecture overview
 
 The pipeline is strictly linear: **parse -> IR -> resolve -> generate**.
