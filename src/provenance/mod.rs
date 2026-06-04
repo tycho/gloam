@@ -9,6 +9,9 @@
 //! These types are available in every build.  Only acquisition (network) and
 //! the cache (SQLite) are gated behind the `fetch` feature.
 
+/// Serializable manifest / bundle-provenance schemas (all builds).
+pub mod manifest;
+
 /// GitHub-API provenance acquisition (network).
 #[cfg(feature = "fetch")]
 pub mod acquire;
