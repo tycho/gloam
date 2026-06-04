@@ -94,7 +94,7 @@ pub fn build_preamble(
     }
 
     // ---- upstream source provenance, grouped by repository ----
-    let groups = grouped_sources(fs, pins);
+    let groups = provenance::group_pins_by_repo(pins);
     if !groups.is_empty() {
         lines.push(" *".to_string());
         lines.push(" * Generated from the following upstream sources:".to_string());
@@ -133,36 +133,6 @@ fn contributing_attributions(fs: &FeatureSet) -> Vec<&'static Attribution> {
     }
     seen.sort_by(|a, b| a.license.cmp(b.license).then(a.holder.cmp(b.holder)));
     seen
-}
-
-/// One repository's contribution to the sources block.
-struct SourceGroup {
-    repo: String,
-    describe: String,
-    /// (path_in_repo, blob), sorted by path.
-    files: Vec<(String, String)>,
-}
-
-/// Group this loader's source pins by repository, sorted by repo slug then by
-/// file path — deterministic, and keeping per-repo `git describe` on one line so
-/// a commit bump doesn't churn every file's line in downstream diffs.
-fn grouped_sources(fs: &FeatureSet, pins: &IndexMap<String, ProvenancePin>) -> Vec<SourceGroup> {
-    let mut by_repo: IndexMap<String, SourceGroup> = IndexMap::new();
-    for key in &fs.source_keys {
-        let Some(pin) = pins.get(key) else { continue };
-        let group = by_repo.entry(pin.repo.clone()).or_insert_with(|| SourceGroup {
-            repo: pin.repo.clone(),
-            describe: pin.describe.clone(),
-            files: Vec::new(),
-        });
-        group.files.push((pin.path_in_repo.clone(), pin.blob.clone()));
-    }
-    let mut groups: Vec<SourceGroup> = by_repo.into_values().collect();
-    groups.sort_by(|a, b| a.repo.to_lowercase().cmp(&b.repo.to_lowercase()));
-    for g in &mut groups {
-        g.files.sort();
-    }
-    groups
 }
 
 /// Short (7-char) form of a blob SHA-1 for the header's source list.

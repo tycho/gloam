@@ -259,6 +259,42 @@ pub fn supplemental_keys(spec_name: &str, apis: &[&str]) -> Vec<&'static str> {
 }
 
 // ---------------------------------------------------------------------------
+// Source grouping (shared by the header preamble and --version)
+// ---------------------------------------------------------------------------
+
+/// One repository's contribution: its `git describe` and the files taken from
+/// it (path + blob), for the grouped "upstream sources" listing.
+pub struct RepoSources {
+    pub repo: String,
+    pub describe: String,
+    /// (path_in_repo, blob), sorted by path.
+    pub files: Vec<(String, String)>,
+}
+
+/// Group provenance pins by repository — repos sorted case-insensitively by
+/// slug, files within a repo sorted by path.  Deterministic; shared by the
+/// generated-header sources block and `--version` so the two never drift.
+pub fn group_pins_by_repo(
+    pins: &indexmap::IndexMap<String, manifest::ProvenancePin>,
+) -> Vec<RepoSources> {
+    let mut by_repo: indexmap::IndexMap<String, RepoSources> = indexmap::IndexMap::new();
+    for pin in pins.values() {
+        let group = by_repo.entry(pin.repo.clone()).or_insert_with(|| RepoSources {
+            repo: pin.repo.clone(),
+            describe: pin.describe.clone(),
+            files: Vec::new(),
+        });
+        group.files.push((pin.path_in_repo.clone(), pin.blob.clone()));
+    }
+    let mut groups: Vec<RepoSources> = by_repo.into_values().collect();
+    groups.sort_by(|a, b| a.repo.to_lowercase().cmp(&b.repo.to_lowercase()));
+    for g in &mut groups {
+        g.files.sort();
+    }
+    groups
+}
+
+// ---------------------------------------------------------------------------
 // Runtime resolved provenance
 // ---------------------------------------------------------------------------
 

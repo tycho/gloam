@@ -15,6 +15,7 @@ mod parse;
 mod preamble;
 pub mod provenance;
 mod resolve;
+mod version;
 
 use anyhow::{Context, Result};
 use clap::Parser;
