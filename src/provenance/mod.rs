@@ -12,6 +12,9 @@
 /// Serializable manifest / bundle-provenance schemas (all builds).
 pub mod manifest;
 
+/// Unified source loading (pins + content) for bundled and fetch modes.
+pub mod load;
+
 /// GitHub-API provenance acquisition (network).
 #[cfg(feature = "fetch")]
 pub mod acquire;
