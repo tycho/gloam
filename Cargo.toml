@@ -22,7 +22,7 @@ fetch   = ["dep:reqwest", "dep:base64", "dep:rusqlite", "dep:directories"]
 anyhow         = "1"
 base64         = { version = "0.22", optional = true }
 clap           = { version = "4", features = ["derive"] }
-directories    = { version = "5", optional = true }
+directories    = { version = "6", optional = true }
 indexmap       = { version = "2", features = ["serde"] }
 minijinja      = "2"
 reqwest        = { version = "0.13", features = ["blocking", "rustls"], default-features = false, optional = true}
