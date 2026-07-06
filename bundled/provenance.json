@@ -29,8 +29,8 @@
       "repo": "google/angle",
       "repo_url": "https://github.com/google/angle",
       "path_in_repo": "scripts/egl_angle_ext.xml",
-      "commit": "ea467c307853f502fc16707b8bc9170bc8d3102c",
-      "describe": "ea467c3",
+      "commit": "c053bf85793bbb83016b1196d04e5df3594b9bcc",
+      "describe": "c053bf8",
       "blob": "5ff7f83dcd72014797d9972f1fbe3809f4849d76"
     },
     "gl.xml": {
@@ -45,16 +45,16 @@
       "repo": "google/angle",
       "repo_url": "https://github.com/google/angle",
       "path_in_repo": "scripts/gl_angle_ext.xml",
-      "commit": "ea467c307853f502fc16707b8bc9170bc8d3102c",
-      "describe": "ea467c3",
+      "commit": "c053bf85793bbb83016b1196d04e5df3594b9bcc",
+      "describe": "c053bf8",
       "blob": "1c4b34c8b37a5900244e89ef6883990f0452426e"
     },
     "glsl_exts.xml": {
       "repo": "tycho/gloam",
       "repo_url": "https://github.com/tycho/gloam",
       "path_in_repo": "bundled/xml/glsl_exts.xml",
-      "commit": "0c8ced30f035da2c45386595d296fdd3209efaec",
-      "describe": "0.4.11",
+      "commit": "eff581223fc4853c2e79e1edbfde9c8ac727624c",
+      "describe": "0.4.12",
       "blob": "f4651bd4d326c0eb4504dc19c99efb7f323ed5ca"
     },
     "glx.xml": {
