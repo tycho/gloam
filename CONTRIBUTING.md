@@ -151,7 +151,8 @@ explicitly. These are documented in code comments as "Spec gotcha #N":
 
 Integration tests live in `tests/`. They invoke the binary via
 `assert_cmd`, generate into temp directories, and optionally compile the
-output with `cc` when available.
+output with `cc` when available. Shared helpers (the gloam runner, compile
+check, header/source readers) live in `tests/common/mod.rs`.
 
 | Test file | Coverage |
 |---|---|
@@ -159,12 +160,38 @@ output with `cc` when available.
 | `generate_vulkan.rs` | Vulkan-specific generation |
 | `generate_wgl_glx.rs` | WGL, GLX, and cross-API edge cases |
 | `predecessor_promoted.rs` | `--promoted` and `--predecessors` flag behavior |
+| `provenance_manifest.rs` | Implicit provenance baseline on regeneration |
+| `integration_coverage.rs` | Determinism, exclusions, baselines, flag matrix |
+| `golden.rs` | Byte-exact snapshots of generated output (see below) |
 
 Run the full suite:
 
 ```sh
 cargo test
 ```
+
+### Golden snapshots
+
+`tests/golden.rs` compares generated `.h`/`.c` output (preamble stripped)
+byte-for-byte against checked-in snapshots under `tests/golden/`, one config
+per spec family plus the merged GL+GLES2 build. A refactor that should not
+change output is proven neutral by `cargo test`. When output changes
+deliberately — or a bundle refresh changes resolved content — re-bless and
+review the diff:
+
+```sh
+GLOAM_BLESS=1 cargo test --test golden
+git diff tests/golden/
+```
+
+### Regenerating downstream trees
+
+`cargo xtask regen <tree-root>` re-runs the command line recorded in every
+gloam manifest under `<tree-root>` (e.g. a gloam-pregen checkout) using the
+current working copy, pinned to each tree's recorded provenance via
+`--lock`, so `git diff` in the tree shows only the effect of code changes.
+Pass `--fresh` to run the recorded commands verbatim instead (advancing
+pins to upstream HEAD — the normal tree-update workflow).
 
 ## Style notes
 
