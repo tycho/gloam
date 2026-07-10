@@ -96,7 +96,11 @@ pub enum Generator {
 
 #[derive(Args, Debug)]
 pub struct LockArgs {
-    /// Output path for the snapshot manifest.
+    /// Output path for the snapshot manifest.  If the file already exists,
+    /// repos whose pinned files are all byte-identical to it keep their
+    /// previously recorded commit/describe, so upstream commits that don't
+    /// touch any pinned file don't churn the manifest.  Delete the file to
+    /// force a full re-snapshot.
     #[arg(long, default_value = "manifest.json")]
     pub out: String,
 }

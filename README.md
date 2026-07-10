@@ -173,6 +173,10 @@ Commands:
         or at upstream HEAD with --fetch. Reuse it later with --lock.
         --out <FILE>
                   Output path for the snapshot [default: manifest.json].
+                  If the file already exists, a repo whose pinned files
+                  all match it keeps its previously recorded
+                  commit/describe; delete the file to force a full
+                  re-snapshot.
 ```
 
 ### Extension selection flags
@@ -227,6 +231,17 @@ bundled files already match the pinned blobs.
 This is the mechanism used to generate several loaders from one consistent
 upstream snapshot: take a single `gloam lock` snapshot, then drive each
 generation with `--lock`.
+
+When the `--out` file already exists from a previous snapshot, `gloam lock`
+compares against it per repository: a repo whose pinned files are all
+byte-identical (same key set, paths, and blobs) keeps its previously recorded
+commit/describe instead of advancing to the current HEAD. Upstream commits that
+don't touch any pinned file therefore leave the manifest — and everything
+regenerated from it — byte-identical, which keeps scheduled re-snapshot jobs
+from churning. Any content change (a changed blob, or a file added, removed, or
+renamed) advances the whole repo to the newly resolved commit, so pins from one
+repo never disagree about their snapshot. To force every repo to its current
+commit regardless, delete the existing snapshot file first.
 
 ## Generated output
 
