@@ -12,7 +12,9 @@ use anyhow::{Context, Result, bail};
 use indexmap::IndexMap;
 
 use gloam::provenance::acquire::Github;
-use gloam::provenance::manifest::{BundledProvenance, ProvenancePin, SCHEMA_VERSION};
+use gloam::provenance::manifest::{
+    BundledProvenance, ProvenancePin, SCHEMA_VERSION, preserve_unchanged_repos,
+};
 use gloam::provenance::{CLUSTERS, bundled_rel_path};
 
 fn main() -> Result<()> {
@@ -21,6 +23,15 @@ fn main() -> Result<()> {
         Some("bundle") | None => bundle(),
         Some(other) => bail!("unknown xtask command '{other}' (try: bundle)"),
     }
+}
+
+/// Best-effort read of the checked-in provenance manifest.  Missing,
+/// unreadable, or schema-mismatched files are ignored — the bundle is simply
+/// recorded fresh at the newly resolved commits.
+fn read_previous(path: &Path) -> Option<BundledProvenance> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let m = BundledProvenance::from_json(&text).ok()?;
+    (m.schema_version == SCHEMA_VERSION).then_some(m)
 }
 
 /// Repository root (xtask lives directly under it).
@@ -78,11 +89,23 @@ fn bundle() -> Result<()> {
         provenance.insert(key, pin);
     }
 
+    let dest = bundled_dir.join("provenance.json");
+
+    // Carry forward commit/describe from the checked-in manifest for every
+    // repo whose pinned content is unchanged, mirroring `gloam lock`.  An
+    // upstream commit that touches nothing we bundle then leaves
+    // provenance.json — and `--version` and every bundled-mode preamble
+    // derived from it — byte-identical across re-bundles.
+    if let Some(prev) = read_previous(&dest) {
+        for repo in preserve_unchanged_repos(&mut provenance, &prev.provenance) {
+            eprintln!("    {repo}: pinned content unchanged, keeping previous commit");
+        }
+    }
+
     let manifest = BundledProvenance {
         schema_version: SCHEMA_VERSION,
         provenance,
     };
-    let dest = bundled_dir.join("provenance.json");
     // Trailing newline so the file ends cleanly for diffs/editors.
     std::fs::write(&dest, manifest.to_json_pretty() + "\n")
         .with_context(|| format!("writing {}", dest.display()))?;
