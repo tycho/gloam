@@ -3,119 +3,13 @@
 //! These tests require that the bundled XML files are populated.
 //! They also attempt a C compile step if `cc` is available on PATH.
 
-use std::path::Path;
+mod common;
+use common::{
+    assert_c_output_exists, collect_files, generate, gloam, has_ext, read_header, read_source,
+    try_compile_c,
+};
 
 use tempfile::TempDir;
-
-// ---------------------------------------------------------------------------
-// Helpers (shared pattern with existing test files)
-// ---------------------------------------------------------------------------
-
-fn gloam() -> assert_cmd::Command {
-    assert_cmd::Command::cargo_bin("gloam").expect("gloam binary not found")
-}
-
-/// Attempt to compile generated C sources with the system C compiler.
-/// Uses the `cc` crate for compiler detection (handles MSVC, GCC, Clang,
-/// cross-compilation toolchains, CC env override, etc.).
-/// Silently skips if no compiler is available.
-fn try_compile_c(out: &Path) {
-    let src_dir = out.join("src");
-    let c_files: Vec<_> = std::fs::read_dir(&src_dir)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension() == Some("c".as_ref()))
-        .collect();
-
-    if c_files.is_empty() {
-        return;
-    }
-
-    let target = env!("TARGET");
-    let mut build = cc::Build::new();
-    build
-        .target(target)
-        .host(target)
-        .opt_level(0)
-        .out_dir(&src_dir)
-        .include(out.join("include"))
-        .warnings(true)
-        .cargo_warnings(false)
-        .std("c11")
-        .flag_if_supported("-Wno-unused-function");
-
-    for f in &c_files {
-        build.file(f);
-    }
-
-    if let Err(e) = build.try_compile("gloam_test") {
-        let msg = e.to_string();
-        if msg.contains("Failed to find tool")
-            || msg.contains("not found")
-            || msg.contains("couldn't find")
-        {
-            eprintln!("compile check skipped: no C compiler found");
-        } else {
-            panic!(
-                "generated C files in {} failed to compile: {}",
-                src_dir.display(),
-                e
-            );
-        }
-    }
-}
-
-fn assert_c_output_exists(out: &Path, stem: &str) {
-    assert!(
-        out.join("include")
-            .join("gloam")
-            .join(format!("{stem}.h"))
-            .exists(),
-        "missing include/gloam/{stem}.h"
-    );
-    assert!(
-        out.join("src").join(format!("{stem}.c")).exists(),
-        "missing src/{stem}.c"
-    );
-}
-
-fn read_header(out: &Path, stem: &str) -> String {
-    std::fs::read_to_string(out.join("include").join("gloam").join(format!("{stem}.h")))
-        .unwrap_or_else(|_| panic!("missing include/gloam/{stem}.h"))
-}
-
-fn read_source(out: &Path, stem: &str) -> String {
-    std::fs::read_to_string(out.join("src").join(format!("{stem}.c")))
-        .unwrap_or_else(|_| panic!("missing src/{stem}.c"))
-}
-
-fn has_ext(header: &str, short_name: &str) -> bool {
-    header.contains(&format!("unsigned char {short_name};"))
-}
-
-/// Recursively collect all file paths relative to `root`.
-fn collect_files(root: &Path) -> Vec<std::path::PathBuf> {
-    let mut files = Vec::new();
-    collect_files_recursive(root, root, &mut files);
-    files.sort();
-    files
-}
-
-fn collect_files_recursive(base: &Path, dir: &Path, out: &mut Vec<std::path::PathBuf>) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                collect_files_recursive(base, &path, out);
-            } else {
-                out.push(path.strip_prefix(base).unwrap().to_path_buf());
-            }
-        }
-    }
-}
 
 // ===========================================================================
 // 1. Determinism — byte-identical output across runs
@@ -174,20 +68,15 @@ fn deterministic_merged_gl_gles2() {
 
 #[test]
 fn extension_exclusion_removes_extension() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=3.3",
             "--extensions",
             "all,-GL_ARB_tessellation_shader",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
     assert!(
         !has_ext(&header, "ARB_tessellation_shader"),
@@ -198,20 +87,15 @@ fn extension_exclusion_removes_extension() {
 #[test]
 fn extension_exclusion_overrides_explicit_include() {
     // When both included and excluded, exclusion wins.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=3.3",
             "--extensions",
             "GL_ARB_sync,-GL_ARB_sync",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
     assert!(
         !has_ext(&header, "ARB_sync"),
@@ -227,9 +111,8 @@ fn extension_exclusion_overrides_explicit_include() {
 fn baseline_excludes_promoted_extensions() {
     // With --baseline gl:core=3.3 and --promoted, extensions promoted into
     // 3.3 or earlier should be excluded.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=4.6",
             "--extensions",
@@ -237,13 +120,9 @@ fn baseline_excludes_promoted_extensions() {
             "--promoted",
             "--baseline",
             "gl:core=3.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
 
     // ARB_copy_buffer was promoted into GL 3.1, which is <= 3.3 baseline,
@@ -258,9 +137,8 @@ fn baseline_excludes_promoted_extensions() {
 fn baseline_keep_pin_overrides_exclusion() {
     // With `--extensions all,GL_ARB_copy_buffer`, the explicit pin should
     // survive baseline exclusion.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=4.6",
             "--extensions",
@@ -268,13 +146,9 @@ fn baseline_keep_pin_overrides_exclusion() {
             "--promoted",
             "--baseline",
             "gl:core=3.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
     assert!(
         has_ext(&header, "ARB_copy_buffer"),
@@ -288,18 +162,7 @@ fn baseline_keep_pin_overrides_exclusion() {
 
 #[test]
 fn multi_api_without_merge_produces_separate_files() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3,egl",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3,egl"], &[]);
     // Both APIs should produce their own output files.
     assert_c_output_exists(dir.path(), "gl");
     assert_c_output_exists(dir.path(), "egl");
@@ -311,18 +174,7 @@ fn multi_api_without_merge_produces_separate_files() {
 
 #[test]
 fn gl_source_contains_key_symbols() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3"], &[]);
     let source = read_source(dir.path(), "gl");
     assert!(
         source.contains("GloamGLContext"),
@@ -336,20 +188,7 @@ fn gl_source_contains_key_symbols() {
 
 #[test]
 fn vulkan_source_contains_key_symbols() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3", "--extensions", ""], &[]);
     let source = read_source(dir.path(), "vulkan");
     assert!(
         source.contains("GloamVulkanContext"),
@@ -460,36 +299,14 @@ fn version_with_extra_dots_fails() {
 
 #[test]
 fn gles1_generates_and_compiles() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gles1",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gles1"], &[]);
     assert_c_output_exists(dir.path(), "gles1");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn gles1_header_has_context_struct() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gles1",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gles1"], &[]);
     let header = read_header(dir.path(), "gles1");
     assert!(
         header.contains("GloamGLContext"),
@@ -503,37 +320,13 @@ fn gles1_header_has_context_struct() {
 
 #[test]
 fn glx_with_loader_generates() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "glx",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--loader",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "glx"], &["--loader"]);
     assert_c_output_exists(dir.path(), "glx");
 }
 
 #[test]
 fn wgl_with_loader_generates() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "wgl",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--loader",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "wgl"], &["--loader"]);
     assert_c_output_exists(dir.path(), "wgl");
 }
 
@@ -543,20 +336,7 @@ fn wgl_with_loader_generates() {
 
 #[test]
 fn egl_with_extension_filter() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "egl",
-            "--extensions",
-            "EGL_KHR_debug",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "egl", "--extensions", "EGL_KHR_debug"], &[]);
     let header = read_header(dir.path(), "egl");
     assert!(
         has_ext(&header, "KHR_debug"),
@@ -571,20 +351,7 @@ fn egl_with_extension_filter() {
 
 #[test]
 fn vulkan_11_has_11_but_not_12() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.1",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.1", "--extensions", ""], &[]);
     let header = read_header(dir.path(), "vulkan");
     assert!(
         header.contains("VK_VERSION_1_0 1"),
@@ -602,20 +369,7 @@ fn vulkan_11_has_11_but_not_12() {
 
 #[test]
 fn vulkan_12_has_12_but_not_13() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.2",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.2", "--extensions", ""], &[]);
     let header = read_header(dir.path(), "vulkan");
     assert!(
         header.contains("VK_VERSION_1_1 1"),
@@ -637,70 +391,32 @@ fn vulkan_12_has_12_but_not_13() {
 
 #[test]
 fn merged_gl_gles2_with_loader() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3,gles2=3.0",
-            "--merge",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--loader",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3,gles2=3.0", "--merge"], &["--loader"]);
     assert_c_output_exists(dir.path(), "gl");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn merged_gl_gles2_with_alias() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3,gles2=3.0",
-            "--merge",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--alias",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3,gles2=3.0", "--merge"], &["--alias"]);
     assert_c_output_exists(dir.path(), "gl");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn merged_gl_gles2_all_flags() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3,gles2=3.0",
-            "--merge",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--alias",
-            "--loader",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(
+        &["--api", "gl:core=3.3,gles2=3.0", "--merge"],
+        &["--alias", "--loader"],
+    );
     assert_c_output_exists(dir.path(), "gl");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn merged_gl_gles2_with_promoted_predecessors() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=3.3,gles2=3.0",
             "--merge",
@@ -708,13 +424,9 @@ fn merged_gl_gles2_with_promoted_predecessors() {
             "",
             "--promoted",
             "--predecessors",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     assert_c_output_exists(dir.path(), "gl");
     try_compile_c(dir.path());
 }
@@ -725,20 +437,7 @@ fn merged_gl_gles2_with_promoted_predecessors() {
 
 #[test]
 fn gl_core_21_has_correct_version_range() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=2.1",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=2.1", "--extensions", ""], &[]);
     let header = read_header(dir.path(), "gl");
     assert!(
         header.contains("GL_VERSION_2_1 1"),
@@ -756,20 +455,10 @@ fn gl_core_21_has_correct_version_range() {
 
 #[test]
 fn vulkan_extension_exclusion() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--extensions",
-            "all,-VK_KHR_swapchain",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(
+        &["--api", "vk=1.3", "--extensions", "all,-VK_KHR_swapchain"],
+        &[],
+    );
     let header = read_header(dir.path(), "vulkan");
     assert!(
         !has_ext(&header, "KHR_swapchain"),
@@ -783,18 +472,7 @@ fn vulkan_extension_exclusion() {
 
 #[test]
 fn gl_header_has_include_guard() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3"], &[]);
     let header = read_header(dir.path(), "gl");
     assert!(
         header.contains("#ifndef GLOAM_GL_H"),
@@ -808,18 +486,7 @@ fn gl_header_has_include_guard() {
 
 #[test]
 fn vulkan_header_has_include_guard() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3"], &[]);
     let header = read_header(dir.path(), "vulkan");
     assert!(
         header.contains("#ifndef GLOAM_VULKAN_H"),
@@ -833,19 +500,7 @@ fn vulkan_header_has_include_guard() {
 
 #[test]
 fn alias_flag_produces_alias_resolution_in_source() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--alias",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3"], &["--alias"]);
     let source = read_source(dir.path(), "gl");
     assert!(
         source.contains("alias"),
@@ -855,20 +510,7 @@ fn alias_flag_produces_alias_resolution_in_source() {
 
 #[test]
 fn no_alias_flag_omits_alias_resolution() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3", "--extensions", ""], &[]);
     let source = read_source(dir.path(), "gl");
     // Without --alias, there should be no alias pair table.
     // The word "alias" can appear in comments, so check for the specific
@@ -885,20 +527,7 @@ fn no_alias_flag_omits_alias_resolution() {
 
 #[test]
 fn gles2_all_flags_generates_and_compiles() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gles2=3.0",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--alias",
-            "--loader",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gles2=3.0"], &["--alias", "--loader"]);
     assert_c_output_exists(dir.path(), "gles2");
     try_compile_c(dir.path());
 }
@@ -909,20 +538,7 @@ fn gles2_all_flags_generates_and_compiles() {
 
 #[test]
 fn egl_all_flags_generates_and_compiles() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "egl",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--alias",
-            "--loader",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "egl"], &["--alias", "--loader"]);
     assert_c_output_exists(dir.path(), "egl");
     try_compile_c(dir.path());
 }
@@ -933,18 +549,7 @@ fn egl_all_flags_generates_and_compiles() {
 
 #[test]
 fn preamble_contains_gloam_command() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3"], &[]);
     let header = read_header(dir.path(), "gl");
     assert!(
         header.contains("gloam"),

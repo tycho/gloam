@@ -20,25 +20,8 @@
 //     There are no commands in either extension — this exercises the
 //     enum-alias path that was previously unimplemented.
 
-use tempfile::TempDir;
-
-fn gloam() -> assert_cmd::Command {
-    assert_cmd::Command::cargo_bin("gloam").expect("gloam binary not found")
-}
-
-/// Read the generated header for the given stem from `out`.
-fn read_header(out: &std::path::Path, stem: &str) -> String {
-    std::fs::read_to_string(out.join("include").join("gloam").join(format!("{stem}.h")))
-        .unwrap_or_else(|_| panic!("missing include/gloam/{stem}.h"))
-}
-
-/// True if the extArray struct contains a slot for `short_name`
-/// (e.g. "ARB_copy_buffer").
-fn has_ext(header: &str, short_name: &str) -> bool {
-    // The generated struct member looks like:
-    //   unsigned char ARB_copy_buffer;
-    header.contains(&format!("unsigned char {short_name};"))
-}
+mod common;
+use common::{generate, has_ext, read_header};
 
 // ---------------------------------------------------------------------------
 // --promoted: same-name promotion
@@ -48,21 +31,10 @@ fn has_ext(header: &str, short_name: &str) -> bool {
 fn promoted_includes_arb_copy_buffer_same_name() {
     // glCopyBufferSubData was promoted into GL 3.1 with the same name.
     // ARB_copy_buffer should be auto-selected with --promoted.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3",
-            "--extensions",
-            "", // empty list — no explicit extensions
-            "--promoted",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(
+        &["--api", "gl:core=3.3", "--extensions", "", "--promoted"],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
     assert!(
         has_ext(&header, "ARB_copy_buffer"),
@@ -72,20 +44,7 @@ fn promoted_includes_arb_copy_buffer_same_name() {
 
 #[test]
 fn without_promoted_arb_copy_buffer_absent() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3", "--extensions", ""], &[]);
     let header = read_header(dir.path(), "gl");
     assert!(
         !has_ext(&header, "ARB_copy_buffer"),
@@ -101,21 +60,10 @@ fn without_promoted_arb_copy_buffer_absent() {
 fn promoted_includes_arb_multitexture_renamed() {
     // glActiveTextureARB was renamed to glActiveTexture when promoted into
     // GL 1.3. ARB_multitexture should be auto-selected with --promoted.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3",
-            "--extensions",
-            "",
-            "--promoted",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(
+        &["--api", "gl:core=3.3", "--extensions", "", "--promoted"],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
     assert!(
         has_ext(&header, "ARB_multitexture"),
@@ -125,20 +73,7 @@ fn promoted_includes_arb_multitexture_renamed() {
 
 #[test]
 fn without_promoted_arb_multitexture_absent() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "gl:core=3.3",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "gl:core=3.3", "--extensions", ""], &[]);
     let header = read_header(dir.path(), "gl");
     assert!(
         !has_ext(&header, "ARB_multitexture"),
@@ -155,21 +90,16 @@ fn predecessors_includes_arb_parallel_shader_compile() {
     // GL_KHR_parallel_shader_compile is explicitly requested.
     // GL_ARB_parallel_shader_compile is its predecessor via the command alias
     // glMaxShaderCompilerThreadsARB / glMaxShaderCompilerThreadsKHR.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=3.3",
             "--extensions",
             "GL_KHR_parallel_shader_compile",
             "--predecessors",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
     assert!(
         has_ext(&header, "KHR_parallel_shader_compile"),
@@ -183,20 +113,15 @@ fn predecessors_includes_arb_parallel_shader_compile() {
 
 #[test]
 fn without_predecessors_arb_parallel_shader_compile_absent() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=3.3",
             "--extensions",
             "GL_KHR_parallel_shader_compile",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
     assert!(
         has_ext(&header, "KHR_parallel_shader_compile"),
@@ -219,21 +144,16 @@ fn predecessors_includes_egl_ext_platform_wayland_via_enum_alias() {
     // neither extension has any commands.  This exercises the enum-alias
     // path in the predecessor search:
     //   EGL_PLATFORM_WAYLAND_EXT alias="EGL_PLATFORM_WAYLAND_KHR"
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "egl",
             "--extensions",
             "EGL_KHR_platform_wayland",
             "--predecessors",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "egl");
     assert!(
         has_ext(&header, "KHR_platform_wayland"),
@@ -247,20 +167,10 @@ fn predecessors_includes_egl_ext_platform_wayland_via_enum_alias() {
 
 #[test]
 fn without_predecessors_egl_ext_platform_wayland_absent() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "egl",
-            "--extensions",
-            "EGL_KHR_platform_wayland",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(
+        &["--api", "egl", "--extensions", "EGL_KHR_platform_wayland"],
+        &[],
+    );
     let header = read_header(dir.path(), "egl");
     assert!(
         has_ext(&header, "KHR_platform_wayland"),
@@ -287,22 +197,17 @@ fn promoted_in_merged_build_does_not_cross_contaminate() {
     // It should appear in the merged output because it's promoted for GL.
     // The important thing is that the merged build succeeds without panics
     // or incorrect output — and that the extension appears exactly once.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=3.3,gles2=3.0",
             "--merge",
             "--extensions",
             "",
             "--promoted",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
 
     // ARB_copy_buffer should be included (promoted into GL 3.1 core).
@@ -330,22 +235,17 @@ fn promoted_seeds_predecessor_search() {
     //
     // More importantly, this verifies the ordering: promoted runs first,
     // then predecessors operates on the expanded set.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=3.3",
             "--extensions",
             "",
             "--promoted",
             "--predecessors",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
 
     // --promoted should still include ARB_copy_buffer.
@@ -367,22 +267,17 @@ fn predecessors_finds_chain_through_promoted_extension() {
     // --predecessors should find GL_ARB_parallel_shader_compile as its
     // predecessor.  Combined with --promoted, the entire chain should
     // resolve correctly.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "gl:core=3.3",
             "--extensions",
             "GL_KHR_parallel_shader_compile",
             "--promoted",
             "--predecessors",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "gl");
 
     assert!(

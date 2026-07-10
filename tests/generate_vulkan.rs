@@ -7,89 +7,8 @@
 //! guards that are not defined during the compile check, so they pose no
 //! issue even without a Vulkan SDK installed.
 
-use std::path::Path;
-
-use tempfile::TempDir;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-fn gloam() -> assert_cmd::Command {
-    assert_cmd::Command::cargo_bin("gloam").expect("gloam binary not found")
-}
-
-/// Attempt to compile generated C sources with the system C compiler.
-/// Uses the `cc` crate for compiler detection (handles MSVC, GCC, Clang,
-/// cross-compilation toolchains, CC env override, etc.).
-/// Silently skips if no compiler is available.
-fn try_compile_c(out: &Path) {
-    let src_dir = out.join("src");
-    let c_files: Vec<_> = std::fs::read_dir(&src_dir)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension() == Some("c".as_ref()))
-        .collect();
-
-    if c_files.is_empty() {
-        return;
-    }
-
-    let target = env!("TARGET");
-    let mut build = cc::Build::new();
-    build
-        .target(target)
-        .host(target)
-        .opt_level(0)
-        .out_dir(&src_dir)
-        .include(out.join("include"))
-        .warnings(true)
-        .cargo_warnings(false)
-        .std("c11")
-        .flag_if_supported("-Wno-unused-function");
-
-    for f in &c_files {
-        build.file(f);
-    }
-
-    if let Err(e) = build.try_compile("gloam_test") {
-        let msg = e.to_string();
-        if msg.contains("Failed to find tool")
-            || msg.contains("not found")
-            || msg.contains("couldn't find")
-        {
-            eprintln!("compile check skipped: no C compiler found");
-        } else {
-            panic!(
-                "generated C files in {} failed to compile: {}",
-                src_dir.display(),
-                e
-            );
-        }
-    }
-}
-
-fn assert_c_output_exists(out: &Path, stem: &str) {
-    assert!(
-        out.join("include")
-            .join("gloam")
-            .join(format!("{stem}.h"))
-            .exists(),
-        "missing include/gloam/{stem}.h"
-    );
-    assert!(
-        out.join("src").join(format!("{stem}.c")).exists(),
-        "missing src/{stem}.c"
-    );
-}
-
-fn read_header(out: &Path, stem: &str) -> String {
-    std::fs::read_to_string(out.join("include").join("gloam").join(format!("{stem}.h")))
-        .unwrap_or_else(|_| panic!("missing include/gloam/{stem}.h"))
-}
+mod common;
+use common::{assert_c_output_exists, generate, read_header, read_source, try_compile_c};
 
 // ---------------------------------------------------------------------------
 // Core Vulkan generation
@@ -97,76 +16,28 @@ fn read_header(out: &Path, stem: &str) -> String {
 
 #[test]
 fn vulkan_13_generates_expected_files() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3"], &[]);
     assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn vulkan_13_with_loader_generates_and_compiles() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--loader",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3"], &["--loader"]);
     assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn vulkan_13_with_alias_generates_and_compiles() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--alias",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3"], &["--alias"]);
     assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn vulkan_13_all_flags_generates_and_compiles() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--alias",
-            "--loader",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3"], &["--alias", "--loader"]);
     assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
@@ -174,38 +45,18 @@ fn vulkan_13_all_flags_generates_and_compiles() {
 #[test]
 fn vulkan_latest_version_generates() {
     // No version — should use latest available.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vulkan",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vulkan"], &[]);
     assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
 
 #[test]
-fn vulkan_long_name_normalizes_to_vk_stem() {
-    // "--api vulkan=1.3" must produce the same output as "--api vk=1.3":
-    // files named vk.h / vk.c, not vulkan.h / vulkan.c.
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vulkan=1.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+fn vulkan_long_name_matches_short_name_output() {
+    // "--api vulkan=1.3" must behave exactly like "--api vk=1.3".
+    //
+    // NOTE(refactor phase 3): the output stem will change from "vulkan" to
+    // "vk" as a deliberate feat! break; update the stem here when it lands.
+    let dir = generate(&["--api", "vulkan=1.3"], &[]);
     assert_c_output_exists(dir.path(), "vulkan");
     try_compile_c(dir.path());
 }
@@ -216,20 +67,7 @@ fn vulkan_long_name_normalizes_to_vk_stem() {
 
 #[test]
 fn vulkan_header_has_core_commands() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3", "--extensions", ""], &[]);
     let header = read_header(dir.path(), "vulkan");
 
     // Fundamental Vulkan entry points that must always be present.
@@ -253,20 +91,7 @@ fn vulkan_header_has_core_commands() {
 
 #[test]
 fn vulkan_header_has_version_macros() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3", "--extensions", ""], &[]);
     let header = read_header(dir.path(), "vulkan");
 
     assert!(
@@ -289,20 +114,7 @@ fn vulkan_header_has_version_macros() {
 
 #[test]
 fn vulkan_10_does_not_have_13_features() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.0",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.0", "--extensions", ""], &[]);
     let header = read_header(dir.path(), "vulkan");
 
     assert!(
@@ -322,22 +134,17 @@ fn vulkan_10_does_not_have_13_features() {
 
 #[test]
 fn vulkan_has_physical_device_extension_loader() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
+    let dir = generate(
+        &[
             "--api",
             "vk=1.3",
             "--extensions",
             "VK_KHR_fragment_shading_rate",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+        ],
+        &[],
+    );
     let header = read_header(dir.path(), "vulkan");
-    let source = std::fs::read_to_string(dir.path().join("src/vulkan.c")).unwrap();
+    let source = read_source(dir.path(), "vulkan");
 
     // Header should declare all four variants.
     assert!(
@@ -370,20 +177,7 @@ fn vulkan_has_physical_device_extension_loader() {
 
 #[test]
 fn vulkan_header_uses_inline_dispatch() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3", "--extensions", ""], &[]);
     let header = read_header(dir.path(), "vulkan");
 
     // Inline functions should be present, not macro dispatch.
@@ -403,20 +197,10 @@ fn vulkan_header_uses_inline_dispatch() {
 
 #[test]
 fn vulkan_external_headers_does_not_bundle_vulkan_headers() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--external-headers",
-        ])
-        .assert()
-        .success();
+    let dir = generate(
+        &["--api", "vk=1.3", "--extensions", ""],
+        &["--external-headers"],
+    );
 
     // xxhash.h should still be bundled (used by the generated .c).
     assert!(
@@ -441,21 +225,10 @@ fn vulkan_external_headers_does_not_bundle_vulkan_headers() {
 
 #[test]
 fn vulkan_external_headers_generates() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--extensions",
-            "",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--external-headers",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(
+        &["--api", "vk=1.3", "--extensions", ""],
+        &["--external-headers"],
+    );
     assert_c_output_exists(dir.path(), "vulkan");
 
     let header = read_header(dir.path(), "vulkan");
@@ -503,38 +276,13 @@ fn vulkan_external_headers_generates() {
 
 #[test]
 fn vulkan_external_headers_with_loader_generates() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--external-headers",
-            "--loader",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3"], &["--external-headers", "--loader"]);
     assert_c_output_exists(dir.path(), "vulkan");
 }
 
 #[test]
 fn vulkan_external_headers_with_all_extensions_generates() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-            "--external-headers",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(&["--api", "vk=1.3"], &["--external-headers"]);
     assert_c_output_exists(dir.path(), "vulkan");
 
     let header = read_header(dir.path(), "vulkan");
@@ -556,20 +304,10 @@ fn vulkan_external_headers_with_all_extensions_generates() {
 
 #[test]
 fn vulkan_with_extension_filter_generates() {
-    let dir = TempDir::new().unwrap();
-    gloam()
-        .args([
-            "--api",
-            "vk=1.3",
-            "--extensions",
-            "VK_KHR_swapchain",
-            "--out-path",
-            dir.path().to_str().unwrap(),
-            "c",
-        ])
-        .assert()
-        .success();
-
+    let dir = generate(
+        &["--api", "vk=1.3", "--extensions", "VK_KHR_swapchain"],
+        &[],
+    );
     let header = read_header(dir.path(), "vulkan");
     assert!(
         header.contains("KHR_swapchain"),
