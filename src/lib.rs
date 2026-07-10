@@ -93,6 +93,29 @@ fn run() -> Result<()> {
     let out = std::path::Path::new(&cli.out_path);
     std::fs::create_dir_all(out)?;
 
+    // Without an explicit --lock, generation is an implicit lock-then-generate:
+    // snapshot every source this tree needs (XML source keys plus the
+    // auxiliary-header closure), carry forward commit/describe from the tree's
+    // existing .gloam/manifest.json for repos whose pinned content is
+    // unchanged, and generate from that settled pin set.  Settling the pins
+    // once, before any output is written, keeps every preamble and the
+    // manifest agreeing on one commit per repo; upstream commits that don't
+    // touch any contributing file leave the whole tree byte-identical.
+    let implicit_pins: Option<IndexMap<String, ProvenancePin>> = match &cli.generator {
+        Generator::C(c_args) if cli.lock.is_none() => Some(implicit_lock_pins(
+            &feature_sets,
+            c_args.external_headers,
+            out,
+            &ctx,
+            cli.quiet,
+        )?),
+        _ => None,
+    };
+    let gen_ctx = provenance::load::LoadCtx {
+        use_fetch: cli.use_fetch(),
+        lock: implicit_pins.as_ref().or(lock_pins.as_ref()),
+    };
+
     // Aggregate provenance pins and the output BOM across all feature sets
     // written into this tree, for `.gloam/manifest.json`.
     let mut pins: IndexMap<String, ProvenancePin> = IndexMap::new();
@@ -104,7 +127,7 @@ fn run() -> Result<()> {
                 eprintln!("gloam: generating C loader...");
             }
             for fs in &feature_sets {
-                let tree = generator::c::generate(fs, c_args, out, &ctx, &command_line)?;
+                let tree = generator::c::generate(fs, c_args, out, &gen_ctx, &command_line)?;
                 pins.extend(tree.pins);
                 for f in tree.files {
                     files.entry(f.path.clone()).or_insert(f);
@@ -182,6 +205,48 @@ fn write_lock_snapshot(
         eprintln!("gloam: wrote {}", path.display());
     }
     Ok(())
+}
+
+/// Build the implicit lock pin set for a generation run without `--lock`:
+/// resolve every source the feature sets need (XML source keys plus the
+/// auxiliary-header closure), then carry forward commit/describe from the
+/// output tree's existing `.gloam/manifest.json` for every repo whose pinned
+/// content is unchanged.  Unlike an explicit `--lock`, the previous manifest
+/// is a best-effort baseline, not a contract: keys it lacks resolve fresh
+/// (advancing their whole repo) instead of being refused.
+fn implicit_lock_pins(
+    feature_sets: &[resolve::FeatureSet],
+    external_headers: bool,
+    out: &std::path::Path,
+    ctx: &provenance::load::LoadCtx,
+    quiet: bool,
+) -> Result<IndexMap<String, ProvenancePin>> {
+    let mut keys: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for fs in feature_sets {
+        let aux = generator::c::aux_header_keys(fs, ctx, external_headers)?;
+        for key in fs.source_keys.iter().cloned().chain(aux) {
+            if seen.insert(key.clone()) {
+                keys.push(key);
+            }
+        }
+    }
+
+    let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
+    let mut pins: IndexMap<String, ProvenancePin> = provenance::load::resolve(&key_refs, ctx)?
+        .into_iter()
+        .map(|(key, src)| (key, src.pin))
+        .collect();
+
+    if let Some(prev) = read_snapshot(&out.join(".gloam").join("manifest.json")) {
+        let kept = provenance::manifest::preserve_unchanged_repos(&mut pins, &prev.provenance);
+        if !quiet {
+            for repo in &kept {
+                eprintln!("gloam: {repo}: pinned content unchanged, keeping previous commit");
+            }
+        }
+    }
+    Ok(pins)
 }
 
 /// Best-effort read of an existing snapshot manifest.  Missing, unreadable, or

@@ -234,14 +234,25 @@ generation with `--lock`.
 
 When the `--out` file already exists from a previous snapshot, `gloam lock`
 compares against it per repository: a repo whose pinned files are all
-byte-identical (same key set, paths, and blobs) keeps its previously recorded
+byte-identical (same paths and blobs) keeps its previously recorded
 commit/describe instead of advancing to the current HEAD. Upstream commits that
 don't touch any pinned file therefore leave the manifest — and everything
 regenerated from it — byte-identical, which keeps scheduled re-snapshot jobs
-from churning. Any content change (a changed blob, or a file added, removed, or
-renamed) advances the whole repo to the newly resolved commit, so pins from one
-repo never disagree about their snapshot. To force every repo to its current
-commit regardless, delete the existing snapshot file first.
+from churning. Any content change (a changed blob, a renamed path, or a file
+new to the snapshot) advances the whole repo to the newly resolved commit, so
+pins from one repo never disagree about their snapshot. To force every repo to
+its current commit regardless, delete the existing snapshot file first.
+
+Generation without an explicit `--lock` applies the same rule to its own output
+tree: an existing `<out-path>/.gloam/manifest.json` becomes the baseline for an
+implicit lock-then-generate. gloam snapshots exactly the sources the requested
+loaders need (the XML specs plus the auxiliary-header closure), keeps the
+previously recorded commit/describe for every repo whose contributing files are
+byte-identical, and generates from that settled pin set — so re-running the
+same command rewrites the tree only when upstream content it actually uses has
+changed. Unlike an explicit `--lock`, the baseline is best-effort rather than a
+contract: sources missing from the old manifest resolve fresh (advancing their
+whole repo) instead of being refused.
 
 ## Generated output
 

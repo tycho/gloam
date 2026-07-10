@@ -146,24 +146,22 @@ impl FnNameLayout {
 // Auxiliary header copying
 // ---------------------------------------------------------------------------
 
-/// Copy auxiliary headers (khrplatform.h, vk_platform.h, etc.) to the output
-/// include tree, then transitively follow any quoted `#include` directives
-/// found inside them.  This catches implicit dependencies like
-/// `vulkan_video_codecs_common.h` which are `#include`'d by other vk_video
-/// headers but never declared in the XML spec.
+/// Compute the transitive auxiliary-header closure for a feature set:
+/// xxhash.h plus the spec-required headers (khrplatform.h, vk_platform.h,
+/// etc.), plus any quoted `#include` directives found inside them.  This
+/// catches implicit dependencies like `vulkan_video_codecs_common.h` which are
+/// `#include`'d by other vk_video headers but never declared in the XML spec.
+/// Content is resolved via `ctx` only to scan for includes; keys are returned
+/// in emit order.
 ///
 /// When `external_headers` is true the Vulkan type-definition headers
 /// (vk_platform.h, vk_video/*) come from the system include path, so we
 /// skip bundling them.  xxhash.h is still needed by the generated .c.
-///
-/// Returns one [`AuxHeader`] per emitted file (its registry key, output path,
-/// and provenance pin) for the manifest BOM.
-fn copy_auxiliary_headers(
+pub fn aux_header_keys(
     fs: &FeatureSet,
-    include_dir: &Path,
     ctx: &LoadCtx,
     external_headers: bool,
-) -> Result<Vec<AuxHeader>> {
+) -> Result<Vec<String>> {
     // xxhash.h is always needed by the generated .c (extension hash search).
     let mut queue: Vec<String> = std::iter::once("xxhash.h".to_string())
         .chain(if external_headers && fs.is_vulkan {
@@ -175,31 +173,21 @@ fn copy_auxiliary_headers(
         })
         .collect();
     let mut visited: HashSet<String> = HashSet::new();
-    let mut emitted: Vec<AuxHeader> = Vec::new();
+    let mut keys: Vec<String> = Vec::new();
 
     while let Some(hdr_path) = queue.pop() {
         if !visited.insert(hdr_path.clone()) {
             continue;
         }
 
-        let dest = include_dir.join(&hdr_path);
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        // Resolve content + provenance pin together (cache-warm; instant in
-        // bundled mode).
+        // Resolve for content (cache-warm; instant in bundled mode).
         let resolved = load::resolve(&[hdr_path.as_str()], ctx)
             .with_context(|| format!("loading auxiliary header '{}'", hdr_path))?;
         let src = resolved
             .get(&hdr_path)
             .ok_or_else(|| anyhow!("auxiliary header '{}' was not resolved", hdr_path))?;
-        std::fs::write(&dest, &src.content)?;
         let content = String::from_utf8_lossy(&src.content);
-        emitted.push(AuxHeader {
-            key: hdr_path.clone(),
-            rel_path: format!("include/{hdr_path}"),
-            pin: src.pin.clone(),
-        });
+        keys.push(hdr_path.clone());
 
         // Scan for `#include "relative/path.h"` lines and enqueue them,
         // resolved relative to the directory of the current header.
@@ -234,6 +222,36 @@ fn copy_auxiliary_headers(
         }
     }
 
+    Ok(keys)
+}
+
+/// Copy the auxiliary-header closure (see [`aux_header_keys`]) to the output
+/// include tree.  Returns one [`AuxHeader`] per emitted file (its registry
+/// key, output path, and provenance pin) for the manifest BOM.
+fn copy_auxiliary_headers(
+    fs: &FeatureSet,
+    include_dir: &Path,
+    ctx: &LoadCtx,
+    external_headers: bool,
+) -> Result<Vec<AuxHeader>> {
+    let mut emitted: Vec<AuxHeader> = Vec::new();
+    for hdr_path in aux_header_keys(fs, ctx, external_headers)? {
+        let dest = include_dir.join(&hdr_path);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let resolved = load::resolve(&[hdr_path.as_str()], ctx)
+            .with_context(|| format!("loading auxiliary header '{}'", hdr_path))?;
+        let src = resolved
+            .get(&hdr_path)
+            .ok_or_else(|| anyhow!("auxiliary header '{}' was not resolved", hdr_path))?;
+        std::fs::write(&dest, &src.content)?;
+        emitted.push(AuxHeader {
+            key: hdr_path.clone(),
+            rel_path: format!("include/{hdr_path}"),
+            pin: src.pin.clone(),
+        });
+    }
     Ok(emitted)
 }
 

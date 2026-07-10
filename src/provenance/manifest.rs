@@ -102,10 +102,13 @@ impl Manifest {
 /// single resolved commit (cluster resolution), and both the generated
 /// preamble and `--version` print one `repo (describe)` line per repo, so
 /// per-file preservation could make pins from the same repo disagree.  A repo
-/// is preserved only when its key set matches the previous snapshot exactly
-/// and every pin has the same `repo_url`, `path_in_repo`, and `blob`; any
-/// difference (changed blob, added/removed/renamed file) keeps the whole repo
-/// at the newly resolved commit.
+/// is preserved only when every one of its pins in `pins` has a previous pin
+/// with the same `repo_url`, `path_in_repo`, and `blob`; a changed blob, a
+/// renamed path, or a pin absent from `prev` keeps the whole repo at the newly
+/// resolved commit.  Extra `prev` entries no current pin needs are ignored —
+/// `pins` may legitimately cover a subset of the previous snapshot (a
+/// generation run needs only its own sources; a lock across gloam versions may
+/// drop registry files).
 pub fn preserve_unchanged_repos(
     pins: &mut IndexMap<String, ProvenancePin>,
     prev: &IndexMap<String, ProvenancePin>,
@@ -120,10 +123,6 @@ pub fn preserve_unchanged_repos(
 
     let mut preserved = Vec::new();
     for (repo, keys) in &by_repo {
-        let prev_count = prev.values().filter(|p| &p.repo == repo).count();
-        if prev_count != keys.len() {
-            continue;
-        }
         let unchanged = keys.iter().all(|k| {
             prev.get(k).is_some_and(|old| {
                 let new = &pins[k];
@@ -309,15 +308,19 @@ mod tests {
     }
 
     #[test]
-    fn preserve_advances_on_removed_file() {
+    fn preserve_ignores_extra_previous_entries() {
+        // `pins` may cover a subset of `prev` (narrower generation run, or a
+        // registry file dropped across gloam versions); the extra previous
+        // entries don't block preservation.
         let prev = pins(&[
             ("a.xml", pin("org/repo", "x/a.xml", "oldcommit", "blob-a")),
             ("b.xml", pin("org/repo", "x/b.xml", "oldcommit", "blob-b")),
         ]);
         let mut new = pins(&[("a.xml", pin("org/repo", "x/a.xml", "newcommit", "blob-a"))]);
 
-        assert!(preserve_unchanged_repos(&mut new, &prev).is_empty());
-        assert_eq!(new["a.xml"].commit, "newcommit");
+        let kept = preserve_unchanged_repos(&mut new, &prev);
+        assert_eq!(kept, vec!["org/repo"]);
+        assert_eq!(new["a.xml"].commit, "oldcommit");
     }
 
     #[test]

@@ -251,13 +251,40 @@ point-in-time lock you can reuse across many different loader generations
 
 If the `--out` file already exists, the snapshot is **incremental per
 repository**: a repo whose pins are all byte-identical to the previous snapshot
-(same key set, `path_in_repo`s, and `blob`s) keeps its previous
-`commit`/`describe` rather than advancing to the current HEAD, so
-content-neutral upstream commits don't churn the manifest. Any content change
-advances every pin of that repo together — pins from one repo always share one
-recorded commit. A missing, unreadable, or schema-incompatible `--out` file is
-ignored and the snapshot is taken fresh, so deleting the file re-snapshots
-every repo at its current commit.
+(same `path_in_repo`s and `blob`s) keeps its previous `commit`/`describe`
+rather than advancing to the current HEAD, so content-neutral upstream commits
+don't churn the manifest. Any content change advances every pin of that repo
+together — pins from one repo always share one recorded commit. Extra entries
+in the previous snapshot that the new one doesn't cover are ignored. A missing,
+unreadable, or schema-incompatible `--out` file is ignored and the snapshot is
+taken fresh, so deleting the file re-snapshots every repo at its current
+commit.
+
+### Implicit baseline during generation
+
+Generation **without** `--lock` performs an implicit lock-then-generate against
+its own output tree. gloam snapshots every source the requested loaders need —
+the XML source keys plus the transitive auxiliary-header closure — and, if
+`<out-path>/.gloam/manifest.json` already exists, uses its `provenance` section
+as the baseline under the same per-repository rule as `gloam lock`: repos whose
+contributing files are all byte-identical keep their previously recorded
+`commit`/`describe`; any content change advances the whole repo. The settled
+pin set then drives generation exactly like an explicit `--lock`, so the
+preambles and the manifest agree on one commit per repo, and re-running the
+same command against unchanged upstream content leaves the tree byte-identical.
+
+Differences from an explicit `--lock`:
+
+- **Scope.** The baseline covers only this tree's inputs, and the freshly
+  written manifest likewise records only the sources the run used. The old
+  manifest's `output` section is never an input — it is regenerated.
+- **Best-effort, not a contract.** A source missing from the old manifest
+  (e.g. an API newly added to `--api`) resolves fresh and advances its whole
+  repo, rather than being refused the way `--lock` refuses insufficient
+  provenance.
+- **Content is always current.** With `--fetch`, file content still comes from
+  upstream HEAD; only the *recorded* commit/describe is carried forward, and
+  only when the content is provably identical (same blob).
 
 ---
 
