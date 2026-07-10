@@ -249,6 +249,16 @@ any loader — covering every supported upstream source. This gives you a single
 point-in-time lock you can reuse across many different loader generations
 (`gloam lock` produces what `--lock` consumes).
 
+If the `--out` file already exists, the snapshot is **incremental per
+repository**: a repo whose pins are all byte-identical to the previous snapshot
+(same key set, `path_in_repo`s, and `blob`s) keeps its previous
+`commit`/`describe` rather than advancing to the current HEAD, so
+content-neutral upstream commits don't churn the manifest. Any content change
+advances every pin of that repo together — pins from one repo always share one
+recorded commit. A missing, unreadable, or schema-incompatible `--out` file is
+ignored and the snapshot is taken fresh, so deleting the file re-snapshots
+every repo at its current commit.
+
 ---
 
 ## Schema versioning

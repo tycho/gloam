@@ -94,6 +94,60 @@ impl Manifest {
     }
 }
 
+/// Carry forward `commit`/`describe` from a previous pin set for every
+/// repository whose pinned content is unchanged, returning the preserved repo
+/// slugs.
+///
+/// Granularity is per repository, not per file: pins from one repo share a
+/// single resolved commit (cluster resolution), and both the generated
+/// preamble and `--version` print one `repo (describe)` line per repo, so
+/// per-file preservation could make pins from the same repo disagree.  A repo
+/// is preserved only when its key set matches the previous snapshot exactly
+/// and every pin has the same `repo_url`, `path_in_repo`, and `blob`; any
+/// difference (changed blob, added/removed/renamed file) keeps the whole repo
+/// at the newly resolved commit.
+pub fn preserve_unchanged_repos(
+    pins: &mut IndexMap<String, ProvenancePin>,
+    prev: &IndexMap<String, ProvenancePin>,
+) -> Vec<String> {
+    let mut by_repo: IndexMap<String, Vec<String>> = IndexMap::new();
+    for (key, pin) in pins.iter() {
+        by_repo
+            .entry(pin.repo.clone())
+            .or_default()
+            .push(key.clone());
+    }
+
+    let mut preserved = Vec::new();
+    for (repo, keys) in &by_repo {
+        let prev_count = prev.values().filter(|p| &p.repo == repo).count();
+        if prev_count != keys.len() {
+            continue;
+        }
+        let unchanged = keys.iter().all(|k| {
+            prev.get(k).is_some_and(|old| {
+                let new = &pins[k];
+                old.repo == new.repo
+                    && old.repo_url == new.repo_url
+                    && old.path_in_repo == new.path_in_repo
+                    && old.blob == new.blob
+            })
+        });
+        if !unchanged {
+            continue;
+        }
+        for k in keys {
+            let old = &prev[k];
+            let (commit, describe) = (old.commit.clone(), old.describe.clone());
+            let pin = pins.get_mut(k).unwrap();
+            pin.commit = commit;
+            pin.describe = describe;
+        }
+        preserved.push(repo.clone());
+    }
+    preserved
+}
+
 /// Compute the git blob SHA-1 of `content` — identical to `git hash-object`,
 /// so manifest hashes equal the file's blob hash in any git repo.
 pub fn git_blob_sha1(content: &[u8]) -> String {
@@ -184,5 +238,128 @@ mod tests {
         };
         let json2 = serde_json::to_string(&e2).unwrap();
         assert!(json2.contains("\"verbatim\":true"));
+    }
+
+    // ---- preserve_unchanged_repos ----
+
+    fn pin(repo: &str, path: &str, commit: &str, blob: &str) -> ProvenancePin {
+        ProvenancePin {
+            repo: repo.to_string(),
+            repo_url: format!("https://github.com/{repo}"),
+            path_in_repo: path.to_string(),
+            commit: commit.to_string(),
+            describe: commit[..commit.len().min(7)].to_string(),
+            blob: blob.to_string(),
+        }
+    }
+
+    fn pins(entries: &[(&str, ProvenancePin)]) -> IndexMap<String, ProvenancePin> {
+        entries
+            .iter()
+            .map(|(k, p)| (k.to_string(), p.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn preserve_keeps_previous_commit_when_blobs_unchanged() {
+        let prev = pins(&[
+            ("a.xml", pin("org/repo", "x/a.xml", "oldcommit", "blob-a")),
+            ("b.xml", pin("org/repo", "x/b.xml", "oldcommit", "blob-b")),
+        ]);
+        let mut new = pins(&[
+            ("a.xml", pin("org/repo", "x/a.xml", "newcommit", "blob-a")),
+            ("b.xml", pin("org/repo", "x/b.xml", "newcommit", "blob-b")),
+        ]);
+
+        let kept = preserve_unchanged_repos(&mut new, &prev);
+        assert_eq!(kept, vec!["org/repo"]);
+        assert_eq!(new["a.xml"].commit, "oldcommit");
+        assert_eq!(new["a.xml"].describe, "oldcomm");
+        assert_eq!(new["b.xml"].commit, "oldcommit");
+    }
+
+    #[test]
+    fn preserve_advances_whole_repo_when_any_blob_changed() {
+        let prev = pins(&[
+            ("a.xml", pin("org/repo", "x/a.xml", "oldcommit", "blob-a")),
+            ("b.xml", pin("org/repo", "x/b.xml", "oldcommit", "blob-b")),
+        ]);
+        let mut new = pins(&[
+            ("a.xml", pin("org/repo", "x/a.xml", "newcommit", "blob-a")),
+            ("b.xml", pin("org/repo", "x/b.xml", "newcommit", "blob-b2")),
+        ]);
+
+        let kept = preserve_unchanged_repos(&mut new, &prev);
+        assert!(kept.is_empty());
+        // Both pins advance together — no intra-repo commit divergence.
+        assert_eq!(new["a.xml"].commit, "newcommit");
+        assert_eq!(new["b.xml"].commit, "newcommit");
+    }
+
+    #[test]
+    fn preserve_advances_on_added_file() {
+        let prev = pins(&[("a.xml", pin("org/repo", "x/a.xml", "oldcommit", "blob-a"))]);
+        let mut new = pins(&[
+            ("a.xml", pin("org/repo", "x/a.xml", "newcommit", "blob-a")),
+            ("b.xml", pin("org/repo", "x/b.xml", "newcommit", "blob-b")),
+        ]);
+
+        assert!(preserve_unchanged_repos(&mut new, &prev).is_empty());
+        assert_eq!(new["a.xml"].commit, "newcommit");
+    }
+
+    #[test]
+    fn preserve_advances_on_removed_file() {
+        let prev = pins(&[
+            ("a.xml", pin("org/repo", "x/a.xml", "oldcommit", "blob-a")),
+            ("b.xml", pin("org/repo", "x/b.xml", "oldcommit", "blob-b")),
+        ]);
+        let mut new = pins(&[("a.xml", pin("org/repo", "x/a.xml", "newcommit", "blob-a"))]);
+
+        assert!(preserve_unchanged_repos(&mut new, &prev).is_empty());
+        assert_eq!(new["a.xml"].commit, "newcommit");
+    }
+
+    #[test]
+    fn preserve_advances_on_renamed_path() {
+        let prev = pins(&[("a.xml", pin("org/repo", "x/a.xml", "oldcommit", "blob-a"))]);
+        let mut new = pins(&[("a.xml", pin("org/repo", "y/a.xml", "newcommit", "blob-a"))]);
+
+        assert!(preserve_unchanged_repos(&mut new, &prev).is_empty());
+        assert_eq!(new["a.xml"].commit, "newcommit");
+    }
+
+    #[test]
+    fn preserve_ignores_repo_absent_from_previous() {
+        let prev = pins(&[("a.xml", pin("org/repo", "x/a.xml", "oldcommit", "blob-a"))]);
+        let mut new = pins(&[
+            ("a.xml", pin("org/repo", "x/a.xml", "newcommit", "blob-a")),
+            ("c.xml", pin("org/other", "x/c.xml", "newcommit", "blob-c")),
+        ]);
+
+        let kept = preserve_unchanged_repos(&mut new, &prev);
+        assert_eq!(kept, vec!["org/repo"]);
+        assert_eq!(new["a.xml"].commit, "oldcommit");
+        assert_eq!(new["c.xml"].commit, "newcommit");
+    }
+
+    #[test]
+    fn preserve_handles_repos_independently() {
+        let prev = pins(&[
+            ("a.xml", pin("org/stable", "x/a.xml", "oldcommit", "blob-a")),
+            ("b.xml", pin("org/churny", "x/b.xml", "oldcommit", "blob-b")),
+        ]);
+        let mut new = pins(&[
+            ("a.xml", pin("org/stable", "x/a.xml", "newcommit", "blob-a")),
+            (
+                "b.xml",
+                pin("org/churny", "x/b.xml", "newcommit", "blob-b2"),
+            ),
+        ]);
+
+        let kept = preserve_unchanged_repos(&mut new, &prev);
+        assert_eq!(kept, vec!["org/stable"]);
+        assert_eq!(new["a.xml"].commit, "oldcommit");
+        assert_eq!(new["b.xml"].commit, "newcommit");
     }
 }

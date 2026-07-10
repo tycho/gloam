@@ -151,6 +151,22 @@ fn write_lock_snapshot(
         .collect();
     pins.sort_keys();
 
+    let path = std::path::Path::new(&args.out);
+
+    // Carry forward commit/describe from an existing snapshot at --out for
+    // every repo whose pinned content is unchanged.  An upstream commit that
+    // doesn't touch any pinned file then leaves the manifest — and everything
+    // regenerated from it — byte-identical.  Deleting the file forces a full
+    // re-snapshot.
+    if let Some(prev) = read_snapshot(path) {
+        let kept = provenance::manifest::preserve_unchanged_repos(&mut pins, &prev.provenance);
+        if !quiet {
+            for repo in &kept {
+                eprintln!("gloam: {repo}: pinned content unchanged, keeping previous commit");
+            }
+        }
+    }
+
     let manifest = Manifest {
         schema_version: SCHEMA_VERSION,
         gloam: gloam_meta(command_line),
@@ -158,7 +174,6 @@ fn write_lock_snapshot(
         output: Vec::new(),
     };
 
-    let path = std::path::Path::new(&args.out);
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
@@ -167,6 +182,14 @@ fn write_lock_snapshot(
         eprintln!("gloam: wrote {}", path.display());
     }
     Ok(())
+}
+
+/// Best-effort read of an existing snapshot manifest.  Missing, unreadable, or
+/// schema-mismatched files are ignored — the snapshot is simply taken fresh.
+fn read_snapshot(path: &std::path::Path) -> Option<Manifest> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let m = Manifest::from_json(&text).ok()?;
+    (m.schema_version == SCHEMA_VERSION).then_some(m)
 }
 
 /// Write `.gloam/manifest.json` — the deterministic, pretty-printed bill of
