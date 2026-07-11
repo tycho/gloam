@@ -35,6 +35,15 @@ jobs:
         # compile time if any fetched file is empty or missing.
         run: cargo build --release --no-default-features
 
+      - name: Re-bless golden snapshots
+        # tests/golden.rs pins generated output byte-for-byte.  A spec update
+        # that changes resolved content must re-bless the snapshots in the
+        # same PR — the tests/golden/ diff then documents exactly how the new
+        # specs changed generated output, alongside the bundle diff itself.
+        env:
+          GLOAM_BLESS: "1"
+        run: cargo test --release --no-default-features --test golden
+
       - name: Run test suite against updated files
         run: cargo test --release --no-default-features
 
@@ -60,11 +69,14 @@ jobs:
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          add-paths: bundled/
+          add-paths: |
+            bundled/
+            tests/golden/
           commit-message: |
             chore: update bundled specs, headers, and provenance
 
-            Refresh bundled/ from upstream via `cargo xtask bundle`.
+            Refresh bundled/ from upstream via `cargo xtask bundle`, and
+            re-bless the golden output snapshots against the new specs.
 
             Pinned upstream sources:
             ${{ steps.prov.outputs.summary }}
@@ -74,7 +86,7 @@ jobs:
             headers, and `bundled/provenance.json`) via `cargo xtask bundle`.
 
             The build and test suite passed against the new files before this
-            PR was opened.
+            PR was opened, and the golden output snapshots were re-blessed.
 
             ### Pinned upstream sources
 
@@ -82,7 +94,9 @@ jobs:
 
             Per-file blob hashes and exact commits are recorded in
             `bundled/provenance.json`; review its diff to see precisely what
-            moved.
+            moved.  Any diff under `tests/golden/` shows exactly how the new
+            specs change generated loader output; no golden diff means the
+            update is output-neutral for the snapshot configs.
           branch: update-bundled-xml
           delete-branch: true
           labels: dependencies
