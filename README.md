@@ -435,7 +435,7 @@ Add the generated files to your C or C++ project:
 3. Include the appropriate header:
    ```c
    #include <gloam/gl.h>   // GL (or merged GL + GLES2 with --merge)
-   #include <gloam/vk.h>   // Vulkan (or vulkan.h without --merge)
+   #include <gloam/vk.h>   // Vulkan
    #include <gloam/egl.h>  // EGL
    ```
 

@@ -219,7 +219,7 @@ fn golden_vk_noext() {
         "vk_noext",
         &["--api", "vk=1.0", "--extensions", ""],
         &["--alias", "--loader"],
-        "vulkan",
+        "vk",
     );
 }
 
@@ -230,7 +230,7 @@ fn golden_vk_ext() {
         "vk_ext",
         &["--api", "vk=1.0", "--extensions", "VK_KHR_swapchain"],
         &["--loader"],
-        "vulkan",
+        "vk",
     );
 }
 
@@ -242,6 +242,6 @@ fn golden_vk_external_headers() {
         "vk_external_headers",
         &["--api", "vk=1.3", "--extensions", ""],
         &["--external-headers"],
-        "vulkan",
+        "vk",
     );
 }

@@ -45,7 +45,7 @@ use pfn::{build_ext_pfn_ranges, build_feature_pfn_ranges};
 use protect::{group_by_protection, group_by_protection_pairs};
 use requirements::RequirementCollector;
 use selection::{ExtensionSelection, SelectedExt, select_extensions, select_features};
-use spec_info::{ResolveConfig, SpecInfo, ext_short_name, version_short_name, xml_api_names};
+use spec_info::{ResolveConfig, SpecInfo, api_names as request_api_names, ext_short_name, version_short_name};
 use typedefs::{build_type_list, collect_required_headers};
 
 // ---------------------------------------------------------------------------
@@ -130,7 +130,7 @@ fn resolve_feature_set(
     let spec_kind = Spec::from_name(spec_name)
         .ok_or_else(|| anyhow::anyhow!("unknown spec family '{spec_name}'"))?;
     let spec = SpecInfo::new(spec_kind);
-    let api_names = xml_api_names(requests);
+    let api_names = request_api_names(requests);
 
     // ==================================================================
     // Phase 1: Selection + requirement gathering

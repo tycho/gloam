@@ -1,5 +1,5 @@
-#ifndef GLOAM_VULKAN_H
-#define GLOAM_VULKAN_H
+#ifndef GLOAM_VK_H
+#define GLOAM_VK_H
 
 #ifdef VULKAN_H_
   #error Vulkan (vulkan.h) header already included (API: vulkan), remove previous include!
@@ -54,15 +54,6 @@ extern "C" {
  * header.
  */
 #define VK_VERSION_1_0 1
-
-/* ---- Extension compile-time guards ---------------------------------------
- * These mirror the definitions in standard glext.h/gl2ext.h/eglext.h so
- * that code guarded by e.g. #ifdef GL_ARB_draw_indirect compiles correctly
- * against this header.
- */
-#define VK_KHR_surface 1
-#define VK_KHR_swapchain 1
-
 /* ---- Constants ----------------------------------------------------------- */
 #define VK_MAX_PHYSICAL_DEVICE_NAME_SIZE 256
 #define VK_UUID_SIZE 16
@@ -8339,11 +8330,6 @@ typedef VkScopeKHR VkScopeNV;
 
 typedef VkComponentTypeKHR VkComponentTypeNV;
 
-typedef struct VkSurfaceFormatKHR {
-    VkFormat                         format;
-    VkColorSpaceKHR                  colorSpace;
-} VkSurfaceFormatKHR;
-
 typedef VkExternalMemoryHandleTypeFlagBits VkExternalMemoryHandleTypeFlagBitsKHR;
 
 typedef VkExternalMemoryFeatureFlagBits VkExternalMemoryFeatureFlagBitsKHR;
@@ -8577,14 +8563,6 @@ typedef struct VkDispatchIndirectCommand {
     uint32_t y;
     uint32_t z;
 } VkDispatchIndirectCommand;
-
-typedef struct VkDeviceGroupPresentInfoKHR {
-    VkStructureType sType;
-    const void*                      pNext;
-    uint32_t         swapchainCount;
-    const uint32_t* pDeviceMasks;
-    VkDeviceGroupPresentModeFlagBitsKHR mode;
-} VkDeviceGroupPresentInfoKHR;
 
 typedef uint64_t VkFlags64;
 
@@ -9935,32 +9913,6 @@ typedef struct VkSubpassDependency {
     VkDependencyFlags      dependencyFlags;
 } VkSubpassDependency;
 
-typedef struct VkSurfaceCapabilitiesKHR {
-    uint32_t                         minImageCount;
-    uint32_t                         maxImageCount;
-    VkExtent2D                       currentExtent;
-    VkExtent2D                       minImageExtent;
-    VkExtent2D                       maxImageExtent;
-    uint32_t                         maxImageArrayLayers;
-    VkSurfaceTransformFlagsKHR       supportedTransforms;
-    VkSurfaceTransformFlagBitsKHR    currentTransform;
-    VkCompositeAlphaFlagsKHR         supportedCompositeAlpha;
-    VkImageUsageFlags supportedUsageFlags;
-} VkSurfaceCapabilitiesKHR;
-
-typedef struct VkDeviceGroupPresentCapabilitiesKHR {
-    VkStructureType sType;
-    void*            pNext;
-    uint32_t                         presentMask[VK_MAX_DEVICE_GROUP_SIZE];
-    VkDeviceGroupPresentModeFlagsKHR modes;
-} VkDeviceGroupPresentCapabilitiesKHR;
-
-typedef struct VkDeviceGroupSwapchainCreateInfoKHR {
-    VkStructureType sType;
-    const void*                      pNext;
-    VkDeviceGroupPresentModeFlagsKHR                         modes;
-} VkDeviceGroupSwapchainCreateInfoKHR;
-
 typedef VkBool32 (VKAPI_PTR *PFN_vkDebugReportCallbackEXT)(VkDebugReportFlagsEXT       flags, VkDebugReportObjectTypeEXT  objectType, uint64_t                    object, size_t                      location, int32_t                     messageCode, const char*                 pLayerPrefix, const char*                 pMessage, void*                       pUserData);
 
 typedef struct VkDebugUtilsMessengerCallbackDataEXT {
@@ -10110,61 +10062,6 @@ typedef struct VkFramebufferCreateInfo {
     uint32_t               height;
     uint32_t               layers;
 } VkFramebufferCreateInfo;
-
-typedef struct VkSwapchainCreateInfoKHR {
-    VkStructureType sType;
-    const void*                      pNext;
-    VkSwapchainCreateFlagsKHR        flags;
-    VkSurfaceKHR                     surface;
-    uint32_t                         minImageCount;
-    VkFormat                         imageFormat;
-    VkColorSpaceKHR                  imageColorSpace;
-    VkExtent2D                       imageExtent;
-    uint32_t                         imageArrayLayers;
-    VkImageUsageFlags imageUsage;
-    VkSharingMode                    imageSharingMode;
-    uint32_t         queueFamilyIndexCount;
-    const uint32_t*                  pQueueFamilyIndices;
-    VkSurfaceTransformFlagBitsKHR    preTransform;
-    VkCompositeAlphaFlagBitsKHR      compositeAlpha;
-    VkPresentModeKHR                 presentMode;
-    VkBool32                         clipped;
-    VkSwapchainKHR       oldSwapchain;
-} VkSwapchainCreateInfoKHR;
-
-typedef struct VkPresentInfoKHR {
-    VkStructureType sType;
-    const void*  pNext;
-    uint32_t         waitSemaphoreCount;
-    const VkSemaphore* pWaitSemaphores;
-    uint32_t                         swapchainCount;
-    const VkSwapchainKHR* pSwapchains;
-    const uint32_t* pImageIndices;
-    VkResult* pResults;
-} VkPresentInfoKHR;
-
-typedef struct VkImageSwapchainCreateInfoKHR {
-    VkStructureType sType;
-    const void*                      pNext;
-    VkSwapchainKHR   swapchain;
-} VkImageSwapchainCreateInfoKHR;
-
-typedef struct VkBindImageMemorySwapchainInfoKHR {
-    VkStructureType sType;
-    const void*                      pNext;
-    VkSwapchainKHR swapchain;
-    uint32_t                         imageIndex;
-} VkBindImageMemorySwapchainInfoKHR;
-
-typedef struct VkAcquireNextImageInfoKHR {
-    VkStructureType sType;
-    const void*                      pNext;
-    VkSwapchainKHR swapchain;
-    uint64_t                         timeout;
-    VkSemaphore semaphore;
-    VkFence fence;
-    uint32_t                         deviceMask;
-} VkAcquireNextImageInfoKHR;
 
 typedef struct VkClearRect {
     VkRect2D       rect;
@@ -10583,20 +10480,6 @@ typedef VkResult (VKAPI_PTR *PFN_vkSetEvent)(VkDevice device, VkEvent event);
 typedef void (VKAPI_PTR *PFN_vkUnmapMemory)(VkDevice device, VkDeviceMemory memory);
 typedef void (VKAPI_PTR *PFN_vkUpdateDescriptorSets)(VkDevice device, uint32_t descriptorWriteCount, const VkWriteDescriptorSet* pDescriptorWrites, uint32_t descriptorCopyCount, const VkCopyDescriptorSet* pDescriptorCopies);
 typedef VkResult (VKAPI_PTR *PFN_vkWaitForFences)(VkDevice device, uint32_t fenceCount, const VkFence* pFences, VkBool32 waitAll, uint64_t timeout);
-typedef VkResult (VKAPI_PTR *PFN_vkAcquireNextImage2KHR)(VkDevice device, const VkAcquireNextImageInfoKHR* pAcquireInfo, uint32_t* pImageIndex);
-typedef VkResult (VKAPI_PTR *PFN_vkAcquireNextImageKHR)(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t* pImageIndex);
-typedef VkResult (VKAPI_PTR *PFN_vkCreateSwapchainKHR)(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain);
-typedef void (VKAPI_PTR *PFN_vkDestroySwapchainKHR)(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator);
-typedef VkResult (VKAPI_PTR *PFN_vkGetDeviceGroupPresentCapabilitiesKHR)(VkDevice device, VkDeviceGroupPresentCapabilitiesKHR* pDeviceGroupPresentCapabilities);
-typedef VkResult (VKAPI_PTR *PFN_vkGetDeviceGroupSurfacePresentModesKHR)(VkDevice device, VkSurfaceKHR surface, VkDeviceGroupPresentModeFlagsKHR* pModes);
-typedef VkResult (VKAPI_PTR *PFN_vkGetPhysicalDevicePresentRectanglesKHR)(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t* pRectCount, VkRect2D* pRects);
-typedef VkResult (VKAPI_PTR *PFN_vkGetSwapchainImagesKHR)(VkDevice device, VkSwapchainKHR swapchain, uint32_t* pSwapchainImageCount, VkImage* pSwapchainImages);
-typedef VkResult (VKAPI_PTR *PFN_vkQueuePresentKHR)(VkQueue queue, const VkPresentInfoKHR* pPresentInfo);
-typedef void (VKAPI_PTR *PFN_vkDestroySurfaceKHR)(VkInstance instance, VkSurfaceKHR surface, const VkAllocationCallbacks* pAllocator);
-typedef VkResult (VKAPI_PTR *PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR)(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR* pSurfaceCapabilities);
-typedef VkResult (VKAPI_PTR *PFN_vkGetPhysicalDeviceSurfaceFormatsKHR)(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t* pSurfaceFormatCount, VkSurfaceFormatKHR* pSurfaceFormats);
-typedef VkResult (VKAPI_PTR *PFN_vkGetPhysicalDeviceSurfacePresentModesKHR)(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t* pPresentModeCount, VkPresentModeKHR* pPresentModes);
-typedef VkResult (VKAPI_PTR *PFN_vkGetPhysicalDeviceSurfaceSupportKHR)(VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex, VkSurfaceKHR surface, VkBool32* pSupported);
 
 
 /* ---- Context struct ------------------------------------------------------
@@ -10618,15 +10501,7 @@ typedef struct GloamVulkanContext {
     };
 
     union {
-        unsigned char extArray[2];
-        struct {
-        /*    0 */ unsigned char KHR_surface;
-        /*    1 */ unsigned char KHR_swapchain;
-        };
-    };
-
-    union {
-        void *pfnArray[151];
+        void *pfnArray[137];
         struct {
         /*    0 */ PFN_vkAllocateCommandBuffers AllocateCommandBuffers;
         /*    1 */ PFN_vkAllocateDescriptorSets AllocateDescriptorSets;
@@ -10765,20 +10640,6 @@ typedef struct GloamVulkanContext {
         /*  134 */ PFN_vkUnmapMemory UnmapMemory;
         /*  135 */ PFN_vkUpdateDescriptorSets UpdateDescriptorSets;
         /*  136 */ PFN_vkWaitForFences WaitForFences;
-        /*  137 */ PFN_vkAcquireNextImage2KHR AcquireNextImage2KHR;
-        /*  138 */ PFN_vkAcquireNextImageKHR AcquireNextImageKHR;
-        /*  139 */ PFN_vkCreateSwapchainKHR CreateSwapchainKHR;
-        /*  140 */ PFN_vkDestroySwapchainKHR DestroySwapchainKHR;
-        /*  141 */ PFN_vkGetDeviceGroupPresentCapabilitiesKHR GetDeviceGroupPresentCapabilitiesKHR;
-        /*  142 */ PFN_vkGetDeviceGroupSurfacePresentModesKHR GetDeviceGroupSurfacePresentModesKHR;
-        /*  143 */ PFN_vkGetPhysicalDevicePresentRectanglesKHR GetPhysicalDevicePresentRectanglesKHR;
-        /*  144 */ PFN_vkGetSwapchainImagesKHR GetSwapchainImagesKHR;
-        /*  145 */ PFN_vkQueuePresentKHR QueuePresentKHR;
-        /*  146 */ PFN_vkDestroySurfaceKHR DestroySurfaceKHR;
-        /*  147 */ PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR GetPhysicalDeviceSurfaceCapabilitiesKHR;
-        /*  148 */ PFN_vkGetPhysicalDeviceSurfaceFormatsKHR GetPhysicalDeviceSurfaceFormatsKHR;
-        /*  149 */ PFN_vkGetPhysicalDeviceSurfacePresentModesKHR GetPhysicalDeviceSurfacePresentModesKHR;
-        /*  150 */ PFN_vkGetPhysicalDeviceSurfaceSupportKHR GetPhysicalDeviceSurfaceSupportKHR;
         };
     };
 
@@ -10819,8 +10680,6 @@ extern GloamVulkanContext gloam_vk_context;
 #define GLOAM_VK_VERSION_1_0 (gloam_vk_context.VERSION_1_0)
 
 /* ---- Extension presence macros ------------------------------------------ */
-#define GLOAM_VK_KHR_surface (gloam_vk_context.KHR_surface)
-#define GLOAM_VK_KHR_swapchain (gloam_vk_context.KHR_swapchain)
 
 
 /* ---- Dispatch ------------------------------------------------------------ */
@@ -11236,48 +11095,6 @@ GLOAM_FORCE_INLINE void vkUpdateDescriptorSets(VkDevice device, uint32_t descrip
 GLOAM_FORCE_INLINE VkResult vkWaitForFences(VkDevice device, uint32_t fenceCount, const VkFence* pFences, VkBool32 waitAll, uint64_t timeout) {
     return gloam_vk_context.WaitForFences(device, fenceCount, pFences, waitAll, timeout);
 }
-GLOAM_FORCE_INLINE VkResult vkAcquireNextImage2KHR(VkDevice device, const VkAcquireNextImageInfoKHR* pAcquireInfo, uint32_t* pImageIndex) {
-    return gloam_vk_context.AcquireNextImage2KHR(device, pAcquireInfo, pImageIndex);
-}
-GLOAM_FORCE_INLINE VkResult vkAcquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t* pImageIndex) {
-    return gloam_vk_context.AcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, pImageIndex);
-}
-GLOAM_FORCE_INLINE VkResult vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
-    return gloam_vk_context.CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
-}
-GLOAM_FORCE_INLINE void vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
-    gloam_vk_context.DestroySwapchainKHR(device, swapchain, pAllocator);
-}
-GLOAM_FORCE_INLINE VkResult vkGetDeviceGroupPresentCapabilitiesKHR(VkDevice device, VkDeviceGroupPresentCapabilitiesKHR* pDeviceGroupPresentCapabilities) {
-    return gloam_vk_context.GetDeviceGroupPresentCapabilitiesKHR(device, pDeviceGroupPresentCapabilities);
-}
-GLOAM_FORCE_INLINE VkResult vkGetDeviceGroupSurfacePresentModesKHR(VkDevice device, VkSurfaceKHR surface, VkDeviceGroupPresentModeFlagsKHR* pModes) {
-    return gloam_vk_context.GetDeviceGroupSurfacePresentModesKHR(device, surface, pModes);
-}
-GLOAM_FORCE_INLINE VkResult vkGetPhysicalDevicePresentRectanglesKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t* pRectCount, VkRect2D* pRects) {
-    return gloam_vk_context.GetPhysicalDevicePresentRectanglesKHR(physicalDevice, surface, pRectCount, pRects);
-}
-GLOAM_FORCE_INLINE VkResult vkGetSwapchainImagesKHR(VkDevice device, VkSwapchainKHR swapchain, uint32_t* pSwapchainImageCount, VkImage* pSwapchainImages) {
-    return gloam_vk_context.GetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
-}
-GLOAM_FORCE_INLINE VkResult vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
-    return gloam_vk_context.QueuePresentKHR(queue, pPresentInfo);
-}
-GLOAM_FORCE_INLINE void vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface, const VkAllocationCallbacks* pAllocator) {
-    gloam_vk_context.DestroySurfaceKHR(instance, surface, pAllocator);
-}
-GLOAM_FORCE_INLINE VkResult vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR* pSurfaceCapabilities) {
-    return gloam_vk_context.GetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, pSurfaceCapabilities);
-}
-GLOAM_FORCE_INLINE VkResult vkGetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t* pSurfaceFormatCount, VkSurfaceFormatKHR* pSurfaceFormats) {
-    return gloam_vk_context.GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, pSurfaceFormatCount, pSurfaceFormats);
-}
-GLOAM_FORCE_INLINE VkResult vkGetPhysicalDeviceSurfacePresentModesKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t* pPresentModeCount, VkPresentModeKHR* pPresentModes) {
-    return gloam_vk_context.GetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, pPresentModeCount, pPresentModes);
-}
-GLOAM_FORCE_INLINE VkResult vkGetPhysicalDeviceSurfaceSupportKHR(VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex, VkSurfaceKHR surface, VkBool32* pSupported) {
-    return gloam_vk_context.GetPhysicalDeviceSurfaceSupportKHR(physicalDevice, queueFamilyIndex, surface, pSupported);
-}
 /* ---- API declarations ---------------------------------------------------- */
 
 #ifndef GLOAM_DEFINED_CALLBACK_TYPES_
@@ -11356,4 +11173,4 @@ void gloamLoaderResetVulkan(void);
 }
 #endif
 
-#endif /* GLOAM_VULKAN_H */
+#endif /* GLOAM_VK_H */

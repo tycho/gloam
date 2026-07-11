@@ -1,5 +1,14 @@
-#include <gloam/vulkan.h>
+#include <gloam/vk.h>
 
+#if defined(__CYGWIN__) || defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  undef APIENTRY       /* fix macro redefinition warning */
+#  include <windows.h>  /* LoadLibrary, GetProcAddress */
+#else
+#  include <dlfcn.h> /* dlopen, dlsym, dlclose */
+#endif
 
 #include <stdlib.h>  /* calloc, free    */
 #include <stddef.h>
@@ -38,6 +47,14 @@ typedef struct {
     uint16_t count;     /* number of consecutive slots       */
 } GloamPfnRange_t;
 
+/* Bijective alias pair: if canonical slot is null but secondary is loaded
+ * (or vice versa), the loaded pointer is propagated to both slots.
+ */
+typedef struct {
+    uint16_t first;  /* canonical (shortest name) pfnArray index */
+    uint16_t second; /* alias pfnArray index                     */
+} GloamAliasPair_t;
+
 #endif /* GLOAM_IMPL_UTIL_C_ */
 
 
@@ -53,6 +70,65 @@ typedef enum {
     GloamCommandScopeDevice   = 3
 } GloamCommandScope;
 
+
+#ifndef GLOAM_LOADER_LIBRARY_C_
+#define GLOAM_LOADER_LIBRARY_C_
+
+#if defined(GLOAM_PLATFORM_WINDOWS)
+
+static void *gloam_dlopen(const char *name)
+{
+    return (void *)LoadLibraryA(name);
+}
+static void gloam_dlclose(void *handle)
+{
+    FreeLibrary((HMODULE)handle);
+}
+static void *gloam_dlsym(void *handle, const char *name)
+{
+    return (void *)GetProcAddress((HMODULE)handle, name);
+}
+
+#else /* POSIX */
+
+static void *gloam_dlopen(const char *name)
+{
+    return dlopen(name, RTLD_LAZY | RTLD_LOCAL);
+}
+static void gloam_dlclose(void *handle)
+{
+    dlclose(handle);
+}
+static void *gloam_dlsym(void *handle, const char *name)
+{
+    return dlsym(handle, name);
+}
+
+#endif /* GLOAM_PLATFORM_WINDOWS */
+
+/* Try each name in turn; return the first handle that opens successfully. */
+static void *gloam_open_library(const char * const *names, int count)
+{
+    int i;
+    for (i = 0; i < count; ++i) {
+        void *h = gloam_dlopen(names[i]);
+        if (h) return h;
+    }
+    return NULL;
+}
+
+#endif /* GLOAM_LOADER_LIBRARY_C_ */
+
+
+static const char * const gloam_vk_lib_names[] = {
+#if defined(__APPLE__)
+    "libvulkan.dylib", "libvulkan.1.dylib", "libMoltenVK.dylib",
+#elif defined(GLOAM_PLATFORM_WINDOWS)
+    "vulkan-1.dll",
+#else
+    "libvulkan.so.1", "libvulkan.so",
+#endif
+};
 /* ---- Global context (zero-initialised at program startup) ---------------- */
 #ifdef __cplusplus
 GloamVulkanContext gloam_vk_context = {};
@@ -66,7 +142,7 @@ GloamVulkanContext gloam_vk_context = { 0 };
  * plus one relocation entry (~24 bytes in PIC builds) per command compared to
  * the traditional const char * const [] approach.
  */
-static const uint32_t kFnCount_Vulkan = 215;
+static const uint32_t kFnCount_Vulkan = 137;
 
 static const char kFnNameData_Vulkan[] =
     /*     0 */ "vkAllocateCommandBuffers\0"
@@ -206,84 +282,6 @@ static const char kFnNameData_Vulkan[] =
     /*  2852 */ "vkUnmapMemory\0"
     /*  2866 */ "vkUpdateDescriptorSets\0"
     /*  2889 */ "vkWaitForFences\0"
-    /*  2905 */ "vkBindBufferMemory2\0"
-    /*  2925 */ "vkBindImageMemory2\0"
-    /*  2944 */ "vkCmdDispatchBase\0"
-    /*  2962 */ "vkCmdSetDeviceMask\0"
-    /*  2981 */ "vkCreateDescriptorUpdateTemplate\0"
-    /*  3014 */ "vkCreateSamplerYcbcrConversion\0"
-    /*  3045 */ "vkDestroyDescriptorUpdateTemplate\0"
-    /*  3079 */ "vkDestroySamplerYcbcrConversion\0"
-    /*  3111 */ "vkEnumerateInstanceVersion\0"
-    /*  3138 */ "vkEnumeratePhysicalDeviceGroups\0"
-    /*  3170 */ "vkGetBufferMemoryRequirements2\0"
-    /*  3201 */ "vkGetDescriptorSetLayoutSupport\0"
-    /*  3233 */ "vkGetDeviceGroupPeerMemoryFeatures\0"
-    /*  3268 */ "vkGetDeviceQueue2\0"
-    /*  3286 */ "vkGetImageMemoryRequirements2\0"
-    /*  3316 */ "vkGetImageSparseMemoryRequirements2\0"
-    /*  3352 */ "vkGetPhysicalDeviceExternalBufferProperties\0"
-    /*  3396 */ "vkGetPhysicalDeviceExternalFenceProperties\0"
-    /*  3439 */ "vkGetPhysicalDeviceExternalSemaphoreProperties\0"
-    /*  3486 */ "vkGetPhysicalDeviceFeatures2\0"
-    /*  3515 */ "vkGetPhysicalDeviceFormatProperties2\0"
-    /*  3552 */ "vkGetPhysicalDeviceImageFormatProperties2\0"
-    /*  3594 */ "vkGetPhysicalDeviceMemoryProperties2\0"
-    /*  3631 */ "vkGetPhysicalDeviceProperties2\0"
-    /*  3662 */ "vkGetPhysicalDeviceQueueFamilyProperties2\0"
-    /*  3704 */ "vkGetPhysicalDeviceSparseImageFormatProperties2\0"
-    /*  3752 */ "vkTrimCommandPool\0"
-    /*  3770 */ "vkUpdateDescriptorSetWithTemplate\0"
-    /*  3804 */ "vkCmdBeginRenderPass2\0"
-    /*  3826 */ "vkCmdDrawIndexedIndirectCount\0"
-    /*  3856 */ "vkCmdDrawIndirectCount\0"
-    /*  3879 */ "vkCmdEndRenderPass2\0"
-    /*  3899 */ "vkCmdNextSubpass2\0"
-    /*  3917 */ "vkCreateRenderPass2\0"
-    /*  3937 */ "vkGetBufferDeviceAddress\0"
-    /*  3962 */ "vkGetBufferOpaqueCaptureAddress\0"
-    /*  3994 */ "vkGetDeviceMemoryOpaqueCaptureAddress\0"
-    /*  4032 */ "vkGetSemaphoreCounterValue\0"
-    /*  4059 */ "vkResetQueryPool\0"
-    /*  4076 */ "vkSignalSemaphore\0"
-    /*  4094 */ "vkWaitSemaphores\0"
-    /*  4111 */ "vkCmdBeginRendering\0"
-    /*  4131 */ "vkCmdBindVertexBuffers2\0"
-    /*  4155 */ "vkCmdBlitImage2\0"
-    /*  4171 */ "vkCmdCopyBuffer2\0"
-    /*  4188 */ "vkCmdCopyBufferToImage2\0"
-    /*  4212 */ "vkCmdCopyImage2\0"
-    /*  4228 */ "vkCmdCopyImageToBuffer2\0"
-    /*  4252 */ "vkCmdEndRendering\0"
-    /*  4270 */ "vkCmdPipelineBarrier2\0"
-    /*  4292 */ "vkCmdResetEvent2\0"
-    /*  4309 */ "vkCmdResolveImage2\0"
-    /*  4328 */ "vkCmdSetCullMode\0"
-    /*  4345 */ "vkCmdSetDepthBiasEnable\0"
-    /*  4369 */ "vkCmdSetDepthBoundsTestEnable\0"
-    /*  4399 */ "vkCmdSetDepthCompareOp\0"
-    /*  4422 */ "vkCmdSetDepthTestEnable\0"
-    /*  4446 */ "vkCmdSetDepthWriteEnable\0"
-    /*  4471 */ "vkCmdSetEvent2\0"
-    /*  4486 */ "vkCmdSetFrontFace\0"
-    /*  4504 */ "vkCmdSetPrimitiveRestartEnable\0"
-    /*  4535 */ "vkCmdSetPrimitiveTopology\0"
-    /*  4561 */ "vkCmdSetRasterizerDiscardEnable\0"
-    /*  4593 */ "vkCmdSetScissorWithCount\0"
-    /*  4618 */ "vkCmdSetStencilOp\0"
-    /*  4636 */ "vkCmdSetStencilTestEnable\0"
-    /*  4662 */ "vkCmdSetViewportWithCount\0"
-    /*  4688 */ "vkCmdWaitEvents2\0"
-    /*  4705 */ "vkCmdWriteTimestamp2\0"
-    /*  4726 */ "vkCreatePrivateDataSlot\0"
-    /*  4750 */ "vkDestroyPrivateDataSlot\0"
-    /*  4775 */ "vkGetDeviceBufferMemoryRequirements\0"
-    /*  4811 */ "vkGetDeviceImageMemoryRequirements\0"
-    /*  4846 */ "vkGetDeviceImageSparseMemoryRequirements\0"
-    /*  4887 */ "vkGetPhysicalDeviceToolProperties\0"
-    /*  4921 */ "vkGetPrivateData\0"
-    /*  4938 */ "vkQueueSubmit2\0"
-    /*  4953 */ "vkSetPrivateData\0"
 ;
 static const uint16_t kFnNameOffsets_Vulkan[] = {
     /*    0 */     0, /* vkAllocateCommandBuffers */
@@ -422,85 +420,7 @@ static const uint16_t kFnNameOffsets_Vulkan[] = {
     /*  133 */  2841, /* vkSetEvent */
     /*  134 */  2852, /* vkUnmapMemory */
     /*  135 */  2866, /* vkUpdateDescriptorSets */
-    /*  136 */  2889, /* vkWaitForFences */
-    /*  137 */  2905, /* vkBindBufferMemory2 */
-    /*  138 */  2925, /* vkBindImageMemory2 */
-    /*  139 */  2944, /* vkCmdDispatchBase */
-    /*  140 */  2962, /* vkCmdSetDeviceMask */
-    /*  141 */  2981, /* vkCreateDescriptorUpdateTemplate */
-    /*  142 */  3014, /* vkCreateSamplerYcbcrConversion */
-    /*  143 */  3045, /* vkDestroyDescriptorUpdateTemplate */
-    /*  144 */  3079, /* vkDestroySamplerYcbcrConversion */
-    /*  145 */  3111, /* vkEnumerateInstanceVersion */
-    /*  146 */  3138, /* vkEnumeratePhysicalDeviceGroups */
-    /*  147 */  3170, /* vkGetBufferMemoryRequirements2 */
-    /*  148 */  3201, /* vkGetDescriptorSetLayoutSupport */
-    /*  149 */  3233, /* vkGetDeviceGroupPeerMemoryFeatures */
-    /*  150 */  3268, /* vkGetDeviceQueue2 */
-    /*  151 */  3286, /* vkGetImageMemoryRequirements2 */
-    /*  152 */  3316, /* vkGetImageSparseMemoryRequirements2 */
-    /*  153 */  3352, /* vkGetPhysicalDeviceExternalBufferProperties */
-    /*  154 */  3396, /* vkGetPhysicalDeviceExternalFenceProperties */
-    /*  155 */  3439, /* vkGetPhysicalDeviceExternalSemaphoreProperties */
-    /*  156 */  3486, /* vkGetPhysicalDeviceFeatures2 */
-    /*  157 */  3515, /* vkGetPhysicalDeviceFormatProperties2 */
-    /*  158 */  3552, /* vkGetPhysicalDeviceImageFormatProperties2 */
-    /*  159 */  3594, /* vkGetPhysicalDeviceMemoryProperties2 */
-    /*  160 */  3631, /* vkGetPhysicalDeviceProperties2 */
-    /*  161 */  3662, /* vkGetPhysicalDeviceQueueFamilyProperties2 */
-    /*  162 */  3704, /* vkGetPhysicalDeviceSparseImageFormatProperties2 */
-    /*  163 */  3752, /* vkTrimCommandPool */
-    /*  164 */  3770, /* vkUpdateDescriptorSetWithTemplate */
-    /*  165 */  3804, /* vkCmdBeginRenderPass2 */
-    /*  166 */  3826, /* vkCmdDrawIndexedIndirectCount */
-    /*  167 */  3856, /* vkCmdDrawIndirectCount */
-    /*  168 */  3879, /* vkCmdEndRenderPass2 */
-    /*  169 */  3899, /* vkCmdNextSubpass2 */
-    /*  170 */  3917, /* vkCreateRenderPass2 */
-    /*  171 */  3937, /* vkGetBufferDeviceAddress */
-    /*  172 */  3962, /* vkGetBufferOpaqueCaptureAddress */
-    /*  173 */  3994, /* vkGetDeviceMemoryOpaqueCaptureAddress */
-    /*  174 */  4032, /* vkGetSemaphoreCounterValue */
-    /*  175 */  4059, /* vkResetQueryPool */
-    /*  176 */  4076, /* vkSignalSemaphore */
-    /*  177 */  4094, /* vkWaitSemaphores */
-    /*  178 */  4111, /* vkCmdBeginRendering */
-    /*  179 */  4131, /* vkCmdBindVertexBuffers2 */
-    /*  180 */  4155, /* vkCmdBlitImage2 */
-    /*  181 */  4171, /* vkCmdCopyBuffer2 */
-    /*  182 */  4188, /* vkCmdCopyBufferToImage2 */
-    /*  183 */  4212, /* vkCmdCopyImage2 */
-    /*  184 */  4228, /* vkCmdCopyImageToBuffer2 */
-    /*  185 */  4252, /* vkCmdEndRendering */
-    /*  186 */  4270, /* vkCmdPipelineBarrier2 */
-    /*  187 */  4292, /* vkCmdResetEvent2 */
-    /*  188 */  4309, /* vkCmdResolveImage2 */
-    /*  189 */  4328, /* vkCmdSetCullMode */
-    /*  190 */  4345, /* vkCmdSetDepthBiasEnable */
-    /*  191 */  4369, /* vkCmdSetDepthBoundsTestEnable */
-    /*  192 */  4399, /* vkCmdSetDepthCompareOp */
-    /*  193 */  4422, /* vkCmdSetDepthTestEnable */
-    /*  194 */  4446, /* vkCmdSetDepthWriteEnable */
-    /*  195 */  4471, /* vkCmdSetEvent2 */
-    /*  196 */  4486, /* vkCmdSetFrontFace */
-    /*  197 */  4504, /* vkCmdSetPrimitiveRestartEnable */
-    /*  198 */  4535, /* vkCmdSetPrimitiveTopology */
-    /*  199 */  4561, /* vkCmdSetRasterizerDiscardEnable */
-    /*  200 */  4593, /* vkCmdSetScissorWithCount */
-    /*  201 */  4618, /* vkCmdSetStencilOp */
-    /*  202 */  4636, /* vkCmdSetStencilTestEnable */
-    /*  203 */  4662, /* vkCmdSetViewportWithCount */
-    /*  204 */  4688, /* vkCmdWaitEvents2 */
-    /*  205 */  4705, /* vkCmdWriteTimestamp2 */
-    /*  206 */  4726, /* vkCreatePrivateDataSlot */
-    /*  207 */  4750, /* vkDestroyPrivateDataSlot */
-    /*  208 */  4775, /* vkGetDeviceBufferMemoryRequirements */
-    /*  209 */  4811, /* vkGetDeviceImageMemoryRequirements */
-    /*  210 */  4846, /* vkGetDeviceImageSparseMemoryRequirements */
-    /*  211 */  4887, /* vkGetPhysicalDeviceToolProperties */
-    /*  212 */  4921, /* vkGetPrivateData */
-    /*  213 */  4938, /* vkQueueSubmit2 */
-    /*  214 */  4953 /* vkSetPrivateData */
+    /*  136 */  2889 /* vkWaitForFences */
 };
 /* ---- Command scope table -------------------------------------------------
  * Indexed in lockstep with kFnNameOffsets_Vulkan[].
@@ -646,84 +566,6 @@ static const uint8_t kCommandScopes_Vulkan[] = {
     /*  134 */ GloamCommandScopeDevice  , /* vkUnmapMemory */
     /*  135 */ GloamCommandScopeDevice  , /* vkUpdateDescriptorSets */
     /*  136 */ GloamCommandScopeDevice  , /* vkWaitForFences */
-    /*  137 */ GloamCommandScopeDevice  , /* vkBindBufferMemory2 */
-    /*  138 */ GloamCommandScopeDevice  , /* vkBindImageMemory2 */
-    /*  139 */ GloamCommandScopeDevice  , /* vkCmdDispatchBase */
-    /*  140 */ GloamCommandScopeDevice  , /* vkCmdSetDeviceMask */
-    /*  141 */ GloamCommandScopeDevice  , /* vkCreateDescriptorUpdateTemplate */
-    /*  142 */ GloamCommandScopeDevice  , /* vkCreateSamplerYcbcrConversion */
-    /*  143 */ GloamCommandScopeDevice  , /* vkDestroyDescriptorUpdateTemplate */
-    /*  144 */ GloamCommandScopeDevice  , /* vkDestroySamplerYcbcrConversion */
-    /*  145 */ GloamCommandScopeGlobal  , /* vkEnumerateInstanceVersion */
-    /*  146 */ GloamCommandScopeInstance, /* vkEnumeratePhysicalDeviceGroups */
-    /*  147 */ GloamCommandScopeDevice  , /* vkGetBufferMemoryRequirements2 */
-    /*  148 */ GloamCommandScopeDevice  , /* vkGetDescriptorSetLayoutSupport */
-    /*  149 */ GloamCommandScopeDevice  , /* vkGetDeviceGroupPeerMemoryFeatures */
-    /*  150 */ GloamCommandScopeDevice  , /* vkGetDeviceQueue2 */
-    /*  151 */ GloamCommandScopeDevice  , /* vkGetImageMemoryRequirements2 */
-    /*  152 */ GloamCommandScopeDevice  , /* vkGetImageSparseMemoryRequirements2 */
-    /*  153 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceExternalBufferProperties */
-    /*  154 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceExternalFenceProperties */
-    /*  155 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceExternalSemaphoreProperties */
-    /*  156 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceFeatures2 */
-    /*  157 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceFormatProperties2 */
-    /*  158 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceImageFormatProperties2 */
-    /*  159 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceMemoryProperties2 */
-    /*  160 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceProperties2 */
-    /*  161 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceQueueFamilyProperties2 */
-    /*  162 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceSparseImageFormatProperties2 */
-    /*  163 */ GloamCommandScopeDevice  , /* vkTrimCommandPool */
-    /*  164 */ GloamCommandScopeDevice  , /* vkUpdateDescriptorSetWithTemplate */
-    /*  165 */ GloamCommandScopeDevice  , /* vkCmdBeginRenderPass2 */
-    /*  166 */ GloamCommandScopeDevice  , /* vkCmdDrawIndexedIndirectCount */
-    /*  167 */ GloamCommandScopeDevice  , /* vkCmdDrawIndirectCount */
-    /*  168 */ GloamCommandScopeDevice  , /* vkCmdEndRenderPass2 */
-    /*  169 */ GloamCommandScopeDevice  , /* vkCmdNextSubpass2 */
-    /*  170 */ GloamCommandScopeDevice  , /* vkCreateRenderPass2 */
-    /*  171 */ GloamCommandScopeDevice  , /* vkGetBufferDeviceAddress */
-    /*  172 */ GloamCommandScopeDevice  , /* vkGetBufferOpaqueCaptureAddress */
-    /*  173 */ GloamCommandScopeDevice  , /* vkGetDeviceMemoryOpaqueCaptureAddress */
-    /*  174 */ GloamCommandScopeDevice  , /* vkGetSemaphoreCounterValue */
-    /*  175 */ GloamCommandScopeDevice  , /* vkResetQueryPool */
-    /*  176 */ GloamCommandScopeDevice  , /* vkSignalSemaphore */
-    /*  177 */ GloamCommandScopeDevice  , /* vkWaitSemaphores */
-    /*  178 */ GloamCommandScopeDevice  , /* vkCmdBeginRendering */
-    /*  179 */ GloamCommandScopeDevice  , /* vkCmdBindVertexBuffers2 */
-    /*  180 */ GloamCommandScopeDevice  , /* vkCmdBlitImage2 */
-    /*  181 */ GloamCommandScopeDevice  , /* vkCmdCopyBuffer2 */
-    /*  182 */ GloamCommandScopeDevice  , /* vkCmdCopyBufferToImage2 */
-    /*  183 */ GloamCommandScopeDevice  , /* vkCmdCopyImage2 */
-    /*  184 */ GloamCommandScopeDevice  , /* vkCmdCopyImageToBuffer2 */
-    /*  185 */ GloamCommandScopeDevice  , /* vkCmdEndRendering */
-    /*  186 */ GloamCommandScopeDevice  , /* vkCmdPipelineBarrier2 */
-    /*  187 */ GloamCommandScopeDevice  , /* vkCmdResetEvent2 */
-    /*  188 */ GloamCommandScopeDevice  , /* vkCmdResolveImage2 */
-    /*  189 */ GloamCommandScopeDevice  , /* vkCmdSetCullMode */
-    /*  190 */ GloamCommandScopeDevice  , /* vkCmdSetDepthBiasEnable */
-    /*  191 */ GloamCommandScopeDevice  , /* vkCmdSetDepthBoundsTestEnable */
-    /*  192 */ GloamCommandScopeDevice  , /* vkCmdSetDepthCompareOp */
-    /*  193 */ GloamCommandScopeDevice  , /* vkCmdSetDepthTestEnable */
-    /*  194 */ GloamCommandScopeDevice  , /* vkCmdSetDepthWriteEnable */
-    /*  195 */ GloamCommandScopeDevice  , /* vkCmdSetEvent2 */
-    /*  196 */ GloamCommandScopeDevice  , /* vkCmdSetFrontFace */
-    /*  197 */ GloamCommandScopeDevice  , /* vkCmdSetPrimitiveRestartEnable */
-    /*  198 */ GloamCommandScopeDevice  , /* vkCmdSetPrimitiveTopology */
-    /*  199 */ GloamCommandScopeDevice  , /* vkCmdSetRasterizerDiscardEnable */
-    /*  200 */ GloamCommandScopeDevice  , /* vkCmdSetScissorWithCount */
-    /*  201 */ GloamCommandScopeDevice  , /* vkCmdSetStencilOp */
-    /*  202 */ GloamCommandScopeDevice  , /* vkCmdSetStencilTestEnable */
-    /*  203 */ GloamCommandScopeDevice  , /* vkCmdSetViewportWithCount */
-    /*  204 */ GloamCommandScopeDevice  , /* vkCmdWaitEvents2 */
-    /*  205 */ GloamCommandScopeDevice  , /* vkCmdWriteTimestamp2 */
-    /*  206 */ GloamCommandScopeDevice  , /* vkCreatePrivateDataSlot */
-    /*  207 */ GloamCommandScopeDevice  , /* vkDestroyPrivateDataSlot */
-    /*  208 */ GloamCommandScopeDevice  , /* vkGetDeviceBufferMemoryRequirements */
-    /*  209 */ GloamCommandScopeDevice  , /* vkGetDeviceImageMemoryRequirements */
-    /*  210 */ GloamCommandScopeDevice  , /* vkGetDeviceImageSparseMemoryRequirements */
-    /*  211 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceToolProperties */
-    /*  212 */ GloamCommandScopeDevice  , /* vkGetPrivateData */
-    /*  213 */ GloamCommandScopeDevice  , /* vkQueueSubmit2 */
-    /*  214 */ GloamCommandScopeDevice  , /* vkSetPrivateData */
 };
 
 
@@ -734,9 +576,6 @@ static const uint8_t kCommandScopes_Vulkan[] = {
  */
 static const GloamPfnRange_t kFeatPfnRanges_Vulkan[] = {
     {    0,    0,  137 }, /* VK_VERSION_1_0 */
-    {    1,  137,   28 }, /* VK_VERSION_1_1 */
-    {    2,  165,   13 }, /* VK_VERSION_1_2 */
-    {    3,  178,   37 }, /* VK_VERSION_1_3 */
 };
 
 /* ---- Vulkan scope-aware PFN range helper ---------------------------------
@@ -792,9 +631,6 @@ static void gloam_vk_apply_version(GloamVulkanContext *context, uint32_t api_ver
         (((api_version >> 22) & 0x7fu) << 8) | ((api_version >> 12) & 0x3ffu));
 
     context->VERSION_1_0 = (unsigned char)(version_value >= 0x0100);
-    context->VERSION_1_1 = (unsigned char)(version_value >= 0x0101);
-    context->VERSION_1_2 = (unsigned char)(version_value >= 0x0102);
-    context->VERSION_1_3 = (unsigned char)(version_value >= 0x0103);
 }
 
 /* Load Global-scope PFNs via vkGetInstanceProcAddr(NULL, name).
@@ -817,7 +653,7 @@ static void gloam_vk_load_global_pfns(GloamVulkanContext *context, PFN_vkGetInst
  */
 
 /* --------------------------------------------------------------------------
- * API: vulkan
+ * API: vk
  * --------------------------------------------------------------------------
  */
 /* Determine the Vulkan API version and set featArray bits accordingly.
@@ -877,9 +713,6 @@ static int gloam_vk_find_core(GloamVulkanContext *context, VkPhysicalDevice phys
     version_value = (uint16_t)((major << 8) | minor);
 
     context->VERSION_1_0 = (unsigned char)(version_value >= 0x0100);
-    context->VERSION_1_1 = (unsigned char)(version_value >= 0x0101);
-    context->VERSION_1_2 = (unsigned char)(version_value >= 0x0102);
-    context->VERSION_1_3 = (unsigned char)(version_value >= 0x0103);
 
     return (int)version_value;
 }
@@ -945,6 +778,51 @@ static int gloamVulkanDiscoverContext(GloamVulkanContext *context, VkInstance in
  * Vulkan enabled API — phased loading
  * ==========================================================================
  */
+
+/* gloamVulkanInitializeContext — Phase 0: open libvulkan, load Global-scope
+ * PFNs (vkCreateInstance, vkEnumerateInstance*, vkGetInstanceProcAddr).
+ * If library_handle is non-NULL, use it without taking ownership.
+ * If NULL, dlopen the platform default and take ownership.
+ */
+int gloamVulkanInitializeContext(GloamVulkanContext *context, void *library_handle)
+{
+    PFN_vkGetInstanceProcAddr gipa;
+
+    /* In case there's an open handle in the context that we own, we should
+     * tear that down now before zeroing the context. Use Finalize to do that.
+     */
+    gloamVulkanFinalizeContext(context);
+
+    if (library_handle) {
+        context->gloam_loader_handle = library_handle;
+        context->gloam_loader_owns_handle = 0;
+    } else {
+        context->gloam_loader_handle = gloam_open_library(
+            gloam_vk_lib_names, GLOAM_ARRAYSIZE(gloam_vk_lib_names));
+        if (!context->gloam_loader_handle)
+            return 0;
+        context->gloam_loader_owns_handle = 1;
+    }
+
+    gipa = (PFN_vkGetInstanceProcAddr)gloam_dlsym(
+        context->gloam_loader_handle, "vkGetInstanceProcAddr");
+    if (!gipa) {
+        if (context->gloam_loader_owns_handle)
+            gloam_dlclose(context->gloam_loader_handle);
+        memset(context, 0, sizeof(*context));
+        return 0;
+    }
+
+    /* Store GIPA in the context, then load Global-scope PFNs. */
+    context->GetInstanceProcAddr = gipa;
+    gloam_vk_load_global_pfns(context, gipa);
+    return 1;
+}
+
+int gloamVulkanInitialize(void *library_handle)
+{
+    return gloamVulkanInitializeContext(&gloam_vk_context, library_handle);
+}
 
 /* gloamVulkanInitializeCustomContext — Phase 0 variant: caller provides
  * vkGetInstanceProcAddr directly. No library handle management.
@@ -1128,10 +1006,145 @@ VkInstance gloamVulkanGetLoadedInstance(void)
  */
 void gloamVulkanFinalizeContext(GloamVulkanContext *context)
 {
+    if (context->gloam_loader_owns_handle && context->gloam_loader_handle)
+        gloam_dlclose(context->gloam_loader_handle);
     memset(context, 0, sizeof(*context));
 }
 
 void gloamVulkanFinalize(void)
 {
     gloamVulkanFinalizeContext(&gloam_vk_context);
+}
+
+/* ==========================================================================
+ * Built-in loader (--loader)
+ * ==========================================================================
+ */
+#ifndef GLOAM_LOADER_LIBRARY_C_
+#define GLOAM_LOADER_LIBRARY_C_
+
+#if defined(GLOAM_PLATFORM_WINDOWS)
+
+static void *gloam_dlopen(const char *name)
+{
+    return (void *)LoadLibraryA(name);
+}
+static void gloam_dlclose(void *handle)
+{
+    FreeLibrary((HMODULE)handle);
+}
+static void *gloam_dlsym(void *handle, const char *name)
+{
+    return (void *)GetProcAddress((HMODULE)handle, name);
+}
+
+#else /* POSIX */
+
+static void *gloam_dlopen(const char *name)
+{
+    return dlopen(name, RTLD_LAZY | RTLD_LOCAL);
+}
+static void gloam_dlclose(void *handle)
+{
+    dlclose(handle);
+}
+static void *gloam_dlsym(void *handle, const char *name)
+{
+    return dlsym(handle, name);
+}
+
+#endif /* GLOAM_PLATFORM_WINDOWS */
+
+/* Try each name in turn; return the first handle that opens successfully. */
+static void *gloam_open_library(const char * const *names, int count)
+{
+    int i;
+    for (i = 0; i < count; ++i) {
+        void *h = gloam_dlopen(names[i]);
+        if (h) return h;
+    }
+    return NULL;
+}
+
+#endif /* GLOAM_LOADER_LIBRARY_C_ */
+
+
+/* ---- Vulkan built-in discovery loader ----------------------------------- */
+
+/* gloamLoaderLoadVulkanContext
+ *
+ * Opens the Vulkan library into context->gloam_loader_handle if it is not
+ * already set, stores vkGetInstanceProcAddr in the context, then delegates to
+ * gloamVulkanDiscoverContext. Follows the same additive multi-call contract
+ * as the underlying discover function.
+ */
+int gloamLoaderLoadVulkanContext(GloamVulkanContext *context, VkInstance instance, VkPhysicalDevice physical_device, VkDevice device)
+{
+    int did_open = 0;
+    int version;
+    void *handle;
+
+    handle = context->gloam_loader_handle;
+
+    if (!handle) {
+        handle = gloam_open_library(
+            gloam_vk_lib_names, GLOAM_ARRAYSIZE(gloam_vk_lib_names));
+        did_open = 1;
+    }
+
+    if (!handle)
+        return 0;
+
+    if (!context->GetInstanceProcAddr)
+        context->GetInstanceProcAddr =
+            (PFN_vkGetInstanceProcAddr)gloam_dlsym(handle, "vkGetInstanceProcAddr");
+
+    if (!context->GetInstanceProcAddr) {
+        if (did_open)
+            gloam_dlclose(handle);
+        return 0;
+    }
+
+    version = gloamVulkanDiscoverContext(context, instance, physical_device, device);
+
+    if (!version && did_open) {
+        gloam_dlclose(handle);
+        return 0;
+    }
+
+    context->gloam_loader_handle = handle;
+    context->gloam_loader_owns_handle |= (uint8_t)did_open;
+
+    return version;
+}
+
+int gloamLoaderLoadVulkan(VkInstance instance, VkPhysicalDevice physical_device, VkDevice device)
+{
+    return gloamLoaderLoadVulkanContext(&gloam_vk_context, instance,
+                                        physical_device, device);
+}
+
+/* Close the library handle (if set) then zero all context state. */
+void gloamLoaderUnloadVulkanContext(GloamVulkanContext *context)
+{
+    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
+        gloam_dlclose(context->gloam_loader_handle);
+    }
+    gloamLoaderResetVulkanContext(context);
+}
+
+void gloamLoaderUnloadVulkan(void)
+{
+    gloamLoaderUnloadVulkanContext(&gloam_vk_context);
+}
+
+/* Zero all context state without touching the library handle. */
+void gloamLoaderResetVulkanContext(GloamVulkanContext *context)
+{
+    memset(context, 0, sizeof(*context));
+}
+
+void gloamLoaderResetVulkan(void)
+{
+    gloamLoaderResetVulkanContext(&gloam_vk_context);
 }

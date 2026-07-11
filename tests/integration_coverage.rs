@@ -189,7 +189,7 @@ fn gl_source_contains_key_symbols() {
 #[test]
 fn vulkan_source_contains_key_symbols() {
     let dir = generate(&["--api", "vk=1.3", "--extensions", ""], &[]);
-    let source = read_source(dir.path(), "vulkan");
+    let source = read_source(dir.path(), "vk");
     assert!(
         source.contains("GloamVulkanContext"),
         "source should reference the context struct"
@@ -352,7 +352,7 @@ fn egl_with_extension_filter() {
 #[test]
 fn vulkan_11_has_11_but_not_12() {
     let dir = generate(&["--api", "vk=1.1", "--extensions", ""], &[]);
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
     assert!(
         header.contains("VK_VERSION_1_0 1"),
         "should have VK_VERSION_1_0"
@@ -370,7 +370,7 @@ fn vulkan_11_has_11_but_not_12() {
 #[test]
 fn vulkan_12_has_12_but_not_13() {
     let dir = generate(&["--api", "vk=1.2", "--extensions", ""], &[]);
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
     assert!(
         header.contains("VK_VERSION_1_1 1"),
         "should have VK_VERSION_1_1"
@@ -459,7 +459,7 @@ fn vulkan_extension_exclusion() {
         &["--api", "vk=1.3", "--extensions", "all,-VK_KHR_swapchain"],
         &[],
     );
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
     assert!(
         !has_ext(&header, "KHR_swapchain"),
         "VK_KHR_swapchain should be excluded by - prefix"
@@ -487,10 +487,10 @@ fn gl_header_has_include_guard() {
 #[test]
 fn vulkan_header_has_include_guard() {
     let dir = generate(&["--api", "vk=1.3"], &[]);
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
     assert!(
-        header.contains("#ifndef GLOAM_VULKAN_H"),
-        "header should have GLOAM_VULKAN_H include guard"
+        header.contains("#ifndef GLOAM_VK_H"),
+        "header should have GLOAM_VK_H include guard"
     );
 }
 

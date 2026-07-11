@@ -75,13 +75,13 @@ pub(super) fn version_short_name(name: &str, api: Api) -> String {
         .to_string()
 }
 
-/// Build the set of API names in XML-canonical form for the given requests.
+/// Build the list of API names in CLI-canonical form for the given requests.
 ///
-/// Uses the XML-canonical form ("vulkan" not "vk") because these flow into
-/// generated C symbol suffixes (kExtIdx_vulkan, etc.) and IndexMap keys used
-/// by the templates.
-pub(super) fn xml_api_names(requests: &[ApiRequest]) -> Vec<String> {
-    requests.iter().map(|r| r.api.xml_name().to_string()).collect()
+/// These become `FeatureSet.apis` — the template-visible API identities that
+/// flow into generated C symbol suffixes (`kExtIdx_vk`, etc.), the per-API
+/// IndexMap keys, and (for non-merged builds) the output file stem.
+pub(super) fn api_names(requests: &[ApiRequest]) -> Vec<String> {
+    requests.iter().map(|r| r.api.as_str().to_string()).collect()
 }
 
 /// Build the set of API name strings for fast membership testing against

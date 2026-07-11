@@ -1,5 +1,5 @@
-#ifndef GLOAM_VULKAN_H
-#define GLOAM_VULKAN_H
+#ifndef GLOAM_VK_H
+#define GLOAM_VK_H
 
 
 /* ---- Platform detection ------------------------------------------------ */
@@ -1129,4 +1129,4 @@ void gloamVulkanFinalize(void);
 }
 #endif
 
-#endif /* GLOAM_VULKAN_H */
+#endif /* GLOAM_VK_H */

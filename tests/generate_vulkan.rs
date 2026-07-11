@@ -17,28 +17,28 @@ use common::{assert_c_output_exists, generate, read_header, read_source, try_com
 #[test]
 fn vulkan_13_generates_expected_files() {
     let dir = generate(&["--api", "vk=1.3"], &[]);
-    assert_c_output_exists(dir.path(), "vulkan");
+    assert_c_output_exists(dir.path(), "vk");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn vulkan_13_with_loader_generates_and_compiles() {
     let dir = generate(&["--api", "vk=1.3"], &["--loader"]);
-    assert_c_output_exists(dir.path(), "vulkan");
+    assert_c_output_exists(dir.path(), "vk");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn vulkan_13_with_alias_generates_and_compiles() {
     let dir = generate(&["--api", "vk=1.3"], &["--alias"]);
-    assert_c_output_exists(dir.path(), "vulkan");
+    assert_c_output_exists(dir.path(), "vk");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn vulkan_13_all_flags_generates_and_compiles() {
     let dir = generate(&["--api", "vk=1.3"], &["--alias", "--loader"]);
-    assert_c_output_exists(dir.path(), "vulkan");
+    assert_c_output_exists(dir.path(), "vk");
     try_compile_c(dir.path());
 }
 
@@ -46,18 +46,16 @@ fn vulkan_13_all_flags_generates_and_compiles() {
 fn vulkan_latest_version_generates() {
     // No version — should use latest available.
     let dir = generate(&["--api", "vulkan"], &[]);
-    assert_c_output_exists(dir.path(), "vulkan");
+    assert_c_output_exists(dir.path(), "vk");
     try_compile_c(dir.path());
 }
 
 #[test]
 fn vulkan_long_name_matches_short_name_output() {
-    // "--api vulkan=1.3" must behave exactly like "--api vk=1.3".
-    //
-    // NOTE(refactor phase 3): the output stem will change from "vulkan" to
-    // "vk" as a deliberate feat! break; update the stem here when it lands.
+    // "--api vulkan=1.3" must behave exactly like "--api vk=1.3": the output
+    // stem is the CLI-canonical short name (vk.h / vk.c), never vulkan.*.
     let dir = generate(&["--api", "vulkan=1.3"], &[]);
-    assert_c_output_exists(dir.path(), "vulkan");
+    assert_c_output_exists(dir.path(), "vk");
     try_compile_c(dir.path());
 }
 
@@ -68,7 +66,7 @@ fn vulkan_long_name_matches_short_name_output() {
 #[test]
 fn vulkan_header_has_core_commands() {
     let dir = generate(&["--api", "vk=1.3", "--extensions", ""], &[]);
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
 
     // Fundamental Vulkan entry points that must always be present.
     assert!(
@@ -92,7 +90,7 @@ fn vulkan_header_has_core_commands() {
 #[test]
 fn vulkan_header_has_version_macros() {
     let dir = generate(&["--api", "vk=1.3", "--extensions", ""], &[]);
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
 
     assert!(
         header.contains("VK_VERSION_1_0 1"),
@@ -115,7 +113,7 @@ fn vulkan_header_has_version_macros() {
 #[test]
 fn vulkan_10_does_not_have_13_features() {
     let dir = generate(&["--api", "vk=1.0", "--extensions", ""], &[]);
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
 
     assert!(
         header.contains("VK_VERSION_1_0 1"),
@@ -143,8 +141,8 @@ fn vulkan_has_physical_device_extension_loader() {
         ],
         &[],
     );
-    let header = read_header(dir.path(), "vulkan");
-    let source = read_source(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
+    let source = read_source(dir.path(), "vk");
 
     // Header should declare all four variants.
     assert!(
@@ -178,7 +176,7 @@ fn vulkan_has_physical_device_extension_loader() {
 #[test]
 fn vulkan_header_uses_inline_dispatch() {
     let dir = generate(&["--api", "vk=1.3", "--extensions", ""], &[]);
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
 
     // Inline functions should be present, not macro dispatch.
     assert!(
@@ -229,9 +227,9 @@ fn vulkan_external_headers_generates() {
         &["--api", "vk=1.3", "--extensions", ""],
         &["--external-headers"],
     );
-    assert_c_output_exists(dir.path(), "vulkan");
+    assert_c_output_exists(dir.path(), "vk");
 
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
 
     // Should include upstream vulkan headers.
     assert!(
@@ -277,15 +275,15 @@ fn vulkan_external_headers_generates() {
 #[test]
 fn vulkan_external_headers_with_loader_generates() {
     let dir = generate(&["--api", "vk=1.3"], &["--external-headers", "--loader"]);
-    assert_c_output_exists(dir.path(), "vulkan");
+    assert_c_output_exists(dir.path(), "vk");
 }
 
 #[test]
 fn vulkan_external_headers_with_all_extensions_generates() {
     let dir = generate(&["--api", "vk=1.3"], &["--external-headers"]);
-    assert_c_output_exists(dir.path(), "vulkan");
+    assert_c_output_exists(dir.path(), "vk");
 
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
 
     // Platform-specific headers should be conditionally included.
     assert!(
@@ -308,7 +306,7 @@ fn vulkan_with_extension_filter_generates() {
         &["--api", "vk=1.3", "--extensions", "VK_KHR_swapchain"],
         &[],
     );
-    let header = read_header(dir.path(), "vulkan");
+    let header = read_header(dir.path(), "vk");
     assert!(
         header.contains("KHR_swapchain"),
         "VK_KHR_swapchain should be present when explicitly requested"

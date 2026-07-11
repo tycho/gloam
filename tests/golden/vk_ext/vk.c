@@ -1,4 +1,4 @@
-#include <gloam/vulkan.h>
+#include <gloam/vk.h>
 
 #if defined(__CYGWIN__) || defined(_WIN32)
 #  ifndef WIN32_LEAN_AND_MEAN
@@ -15,6 +15,22 @@
 #include <stdio.h>   /* sscanf          */
 #include <string.h>  /* strlen, strncmp */
 
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64)
+#  ifndef XXH_VECTOR
+#    define XXH_VECTOR XXH_SSE2
+#  endif
+#  include <immintrin.h>
+#elif defined(__aarch64__) || defined(__arm__) || defined(_M_ARM) || defined(_M_ARM64)
+#  ifndef XXH_VECTOR
+#    define XXH_VECTOR XXH_NEON
+#  endif
+#  include <arm_neon.h>
+#endif
+#ifndef GLOAM_EXTERNAL_XXHASH
+#  define XXH_INLINE_ALL
+#  define XXH_NO_STREAM
+#endif
+#include "xxhash.h"
 
 #ifndef GLOAM_IMPL_UTIL_C_
 #define GLOAM_IMPL_UTIL_C_
@@ -47,16 +63,102 @@ typedef struct {
     uint16_t count;     /* number of consecutive slots       */
 } GloamPfnRange_t;
 
-/* Bijective alias pair: if canonical slot is null but secondary is loaded
- * (or vice versa), the loaded pointer is propagated to both slots.
- */
-typedef struct {
-    uint16_t first;  /* canonical (shortest name) pfnArray index */
-    uint16_t second; /* alias pfnArray index                     */
-} GloamAliasPair_t;
-
 #endif /* GLOAM_IMPL_UTIL_C_ */
 
+
+#ifndef GLOAM_IMPL_HASHSEARCH_C_
+#define GLOAM_IMPL_HASHSEARCH_C_
+
+/* gloam_sort_hashes — in-place Shellsort on a uint64_t array.
+ *
+ * Ciura (2001) gap sequence.  Gaps larger than n are skipped at runtime so
+ * small arrays (< 10 extensions) take only a couple of passes.  No heap
+ * allocation; code size is ~80 bytes on x86-64.
+ */
+GLOAM_NO_INLINE static void gloam_sort_hashes(uint64_t *a, size_t n)
+{
+    static const size_t kGaps[] = { 701, 301, 132, 57, 23, 10, 4, 1 };
+    size_t gi = 0;
+    if (!a || n < 2) return;
+    /* Skip gaps that are larger than the array. */
+    while (gi < GLOAM_ARRAYSIZE(kGaps) && kGaps[gi] >= n) ++gi;
+    for (; gi < GLOAM_ARRAYSIZE(kGaps); ++gi) {
+        size_t gap = kGaps[gi], i;
+        for (i = gap; i < n; ++i) {
+            uint64_t v = a[i];
+            size_t j = i;
+            while (j >= gap && a[j - gap] > v) {
+                a[j] = a[j - gap];
+                j -= gap;
+            }
+            a[j] = v;
+        }
+    }
+}
+
+/* gloam_hash_search — binary search for `target` in a sorted uint64_t array.
+ * Returns 1 if found, 0 otherwise.
+ */
+GLOAM_NO_INLINE static int gloam_hash_search(const uint64_t *arr, uint32_t size, uint64_t target)
+{
+    int32_t lo = 0, hi = (int32_t)size - 1;
+    while (lo <= hi) {
+        int32_t mid = lo + (hi - lo) / 2;
+        if (arr[mid] == target) return 1;
+        if (arr[mid] < target)  lo = mid + 1;
+        else                    hi = mid - 1;
+    }
+    return 0;
+}
+
+/* gloam_hash_string — hash a NUL-terminated string with XXH3-64.
+ * The same algorithm is used at generator time to pre-bake kExtHashes[],
+ * guaranteeing that driver-reported names and the embedded table match.
+ */
+GLOAM_NO_INLINE static uint64_t gloam_hash_string(const char *str, size_t length)
+{
+    return XXH3_64bits(str, length);
+}
+
+/* ---- Extension string tokenizer ------------------------------------------
+   Two-pass tokenize-and-hash for space-separated extension strings (GL, EGL,
+   GLX, WGL).  First pass counts tokens, second pass hashes them.  Result is
+   sorted for binary search in find_extensions. */
+GLOAM_NO_INLINE static int gloam_hash_ext_string(const char *ext_str, uint64_t **out_exts, uint32_t *out_num_exts)
+{
+    const char *cur, *next;
+    uint64_t *exts = NULL;
+    uint32_t num_exts = 0, j;
+
+    for (j = 0; j < 2; ++j) {
+        num_exts = 0;
+        cur  = ext_str;
+        next = cur + strcspn(cur, " ");
+        while (1) {
+            size_t len;
+            cur += strspn(cur, " ");
+            if (!cur[0])
+                break;
+            len = (size_t)(next - cur);
+            if (exts)
+                exts[num_exts] = gloam_hash_string(cur, len);
+            ++num_exts;
+            cur  = next + strspn(next, " ");
+            next = cur  + strcspn(cur,  " ");
+        }
+        if (!exts) {
+            exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
+            if (!exts)
+                return 0;
+        }
+    }
+
+    gloam_sort_hashes(exts, num_exts);
+    *out_exts     = exts;
+    *out_num_exts = num_exts;
+    return 1;
+}
+#endif /* GLOAM_IMPL_HASHSEARCH_C_ */
 
 
 /*
@@ -142,7 +244,7 @@ GloamVulkanContext gloam_vk_context = { 0 };
  * plus one relocation entry (~24 bytes in PIC builds) per command compared to
  * the traditional const char * const [] approach.
  */
-static const uint32_t kFnCount_Vulkan = 137;
+static const uint32_t kFnCount_Vulkan = 151;
 
 static const char kFnNameData_Vulkan[] =
     /*     0 */ "vkAllocateCommandBuffers\0"
@@ -282,6 +384,20 @@ static const char kFnNameData_Vulkan[] =
     /*  2852 */ "vkUnmapMemory\0"
     /*  2866 */ "vkUpdateDescriptorSets\0"
     /*  2889 */ "vkWaitForFences\0"
+    /*  2905 */ "vkAcquireNextImage2KHR\0"
+    /*  2928 */ "vkAcquireNextImageKHR\0"
+    /*  2950 */ "vkCreateSwapchainKHR\0"
+    /*  2971 */ "vkDestroySwapchainKHR\0"
+    /*  2993 */ "vkGetDeviceGroupPresentCapabilitiesKHR\0"
+    /*  3032 */ "vkGetDeviceGroupSurfacePresentModesKHR\0"
+    /*  3071 */ "vkGetPhysicalDevicePresentRectanglesKHR\0"
+    /*  3111 */ "vkGetSwapchainImagesKHR\0"
+    /*  3135 */ "vkQueuePresentKHR\0"
+    /*  3153 */ "vkDestroySurfaceKHR\0"
+    /*  3173 */ "vkGetPhysicalDeviceSurfaceCapabilitiesKHR\0"
+    /*  3215 */ "vkGetPhysicalDeviceSurfaceFormatsKHR\0"
+    /*  3252 */ "vkGetPhysicalDeviceSurfacePresentModesKHR\0"
+    /*  3294 */ "vkGetPhysicalDeviceSurfaceSupportKHR\0"
 ;
 static const uint16_t kFnNameOffsets_Vulkan[] = {
     /*    0 */     0, /* vkAllocateCommandBuffers */
@@ -420,7 +536,21 @@ static const uint16_t kFnNameOffsets_Vulkan[] = {
     /*  133 */  2841, /* vkSetEvent */
     /*  134 */  2852, /* vkUnmapMemory */
     /*  135 */  2866, /* vkUpdateDescriptorSets */
-    /*  136 */  2889 /* vkWaitForFences */
+    /*  136 */  2889, /* vkWaitForFences */
+    /*  137 */  2905, /* vkAcquireNextImage2KHR */
+    /*  138 */  2928, /* vkAcquireNextImageKHR */
+    /*  139 */  2950, /* vkCreateSwapchainKHR */
+    /*  140 */  2971, /* vkDestroySwapchainKHR */
+    /*  141 */  2993, /* vkGetDeviceGroupPresentCapabilitiesKHR */
+    /*  142 */  3032, /* vkGetDeviceGroupSurfacePresentModesKHR */
+    /*  143 */  3071, /* vkGetPhysicalDevicePresentRectanglesKHR */
+    /*  144 */  3111, /* vkGetSwapchainImagesKHR */
+    /*  145 */  3135, /* vkQueuePresentKHR */
+    /*  146 */  3153, /* vkDestroySurfaceKHR */
+    /*  147 */  3173, /* vkGetPhysicalDeviceSurfaceCapabilitiesKHR */
+    /*  148 */  3215, /* vkGetPhysicalDeviceSurfaceFormatsKHR */
+    /*  149 */  3252, /* vkGetPhysicalDeviceSurfacePresentModesKHR */
+    /*  150 */  3294 /* vkGetPhysicalDeviceSurfaceSupportKHR */
 };
 /* ---- Command scope table -------------------------------------------------
  * Indexed in lockstep with kFnNameOffsets_Vulkan[].
@@ -566,8 +696,29 @@ static const uint8_t kCommandScopes_Vulkan[] = {
     /*  134 */ GloamCommandScopeDevice  , /* vkUnmapMemory */
     /*  135 */ GloamCommandScopeDevice  , /* vkUpdateDescriptorSets */
     /*  136 */ GloamCommandScopeDevice  , /* vkWaitForFences */
+    /*  137 */ GloamCommandScopeDevice  , /* vkAcquireNextImage2KHR */
+    /*  138 */ GloamCommandScopeDevice  , /* vkAcquireNextImageKHR */
+    /*  139 */ GloamCommandScopeDevice  , /* vkCreateSwapchainKHR */
+    /*  140 */ GloamCommandScopeDevice  , /* vkDestroySwapchainKHR */
+    /*  141 */ GloamCommandScopeDevice  , /* vkGetDeviceGroupPresentCapabilitiesKHR */
+    /*  142 */ GloamCommandScopeDevice  , /* vkGetDeviceGroupSurfacePresentModesKHR */
+    /*  143 */ GloamCommandScopeInstance, /* vkGetPhysicalDevicePresentRectanglesKHR */
+    /*  144 */ GloamCommandScopeDevice  , /* vkGetSwapchainImagesKHR */
+    /*  145 */ GloamCommandScopeDevice  , /* vkQueuePresentKHR */
+    /*  146 */ GloamCommandScopeInstance, /* vkDestroySurfaceKHR */
+    /*  147 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceSurfaceCapabilitiesKHR */
+    /*  148 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceSurfaceFormatsKHR */
+    /*  149 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceSurfacePresentModesKHR */
+    /*  150 */ GloamCommandScopeInstance, /* vkGetPhysicalDeviceSurfaceSupportKHR */
 };
 
+/* ---- Extension hash table ------------------------------------------------
+   One XXH3-64 hash per extension, in extArray index order.
+   Pre-baked at generator time with the same algorithm used at load time. */
+static const uint64_t kExtHashes_Vulkan[] = {
+    /*    0 */ 0x2c4f009293a35548ULL, /* VK_KHR_surface */
+    /*    1 */ 0x6cefabf4c944ccecULL  /* VK_KHR_swapchain */
+};
 
 /* ---- Feature PFN range table ---------------------------------------------
  * Each entry maps one feature (by featArray index) to a contiguous run of
@@ -653,9 +804,112 @@ static void gloam_vk_load_global_pfns(GloamVulkanContext *context, PFN_vkGetInst
  */
 
 /* --------------------------------------------------------------------------
- * API: vulkan
+ * API: vk
  * --------------------------------------------------------------------------
  */
+
+/* Extension index subset for vk: extArray indices this API supports. */
+static const uint16_t kExtIdx_vk[] = {
+       0, /* VK_KHR_surface */
+       1, /* VK_KHR_swapchain */
+};
+
+/* Extension PFN range table for vk. */
+static const GloamPfnRange_t kExtPfnRanges_vk[] = {
+    {    1,  137,    9 }, /* VK_KHR_swapchain */
+    {    0,  146,    5 }, /* VK_KHR_surface */
+};
+
+/* Enumerate Vulkan extensions and return a heap-allocated, sorted array of
+ * XXH3-64 hashes. Only enumerates scopes not yet cached on the context:
+ * instance extensions are skipped if vk_found_instance_exts is set, device
+ * extensions are skipped if vk_found_device_exts is set. The caller
+ * (find_extensions) uses |= when merging results so bits only accumulate.
+ */
+static int gloam_vk_get_extensions_vk(GloamVulkanContext *context,  VkPhysicalDevice physical_device, uint64_t **out_exts, uint32_t *out_num_exts)
+{
+    uint32_t inst_count = 0, dev_count = 0, total, i;
+    VkExtensionProperties *props = NULL;
+    uint64_t *exts = NULL;
+
+    if (!context->vk_found_instance_exts) {
+        if (!context->EnumerateInstanceExtensionProperties)
+            return 0;
+        context->EnumerateInstanceExtensionProperties(NULL, &inst_count, NULL);
+    }
+    if (physical_device != NULL && !context->vk_found_device_exts &&
+            context->EnumerateDeviceExtensionProperties != NULL)
+        context->EnumerateDeviceExtensionProperties(physical_device, NULL, &dev_count, NULL);
+
+    total = inst_count + dev_count;
+    if (total == 0) {
+        *out_exts = NULL;
+        *out_num_exts = 0;
+        return 1;
+    }
+
+    /* Single allocation covers the larger of inst / dev for the props buffer,
+     * and the exact total for the hash array.
+     */
+    props = (VkExtensionProperties *)calloc(
+        (inst_count > dev_count ? inst_count : dev_count), sizeof(*props));
+    exts  = (uint64_t *)calloc(total, sizeof(uint64_t));
+    if (!props || !exts) {
+        free(props);
+        free(exts);
+        return 0;
+    }
+
+    if (inst_count) {
+        context->EnumerateInstanceExtensionProperties(NULL, &inst_count, props);
+        for (i = 0; i < inst_count; ++i)
+            exts[i] = gloam_hash_string(props[i].extensionName,
+                                        strlen(props[i].extensionName));
+        context->vk_found_instance_exts = 1;
+    }
+
+    if (dev_count) {
+        context->EnumerateDeviceExtensionProperties(physical_device, NULL, &dev_count, props);
+        for (i = 0; i < dev_count; ++i)
+            exts[inst_count + i] = gloam_hash_string(props[i].extensionName,
+                                                     strlen(props[i].extensionName));
+        context->vk_found_device_exts = 1;
+    }
+
+    free(props);
+    gloam_sort_hashes(exts, total);
+    *out_exts     = exts;
+    *out_num_exts = total;
+    return 1;
+}
+
+/* Search pre-baked kExtHashes_Vulkan against the sorted driver hash list and set
+ * extArray flags for every matching extension.
+ */
+static int gloam_vk_find_extensions_vk(GloamVulkanContext *context, VkPhysicalDevice physical_device)
+{
+    uint64_t *exts = NULL;
+    uint32_t  num_exts = 0, i;
+
+    /* Skip if there is nothing new to enumerate. */
+    if (context->vk_found_instance_exts &&
+        (physical_device == NULL || context->vk_found_device_exts))
+        return 1;
+
+    if (!gloam_vk_get_extensions_vk(context, physical_device, &exts, &num_exts))
+        return 0;
+
+    /* |= so that bits from a previous call (instance-only) are preserved
+       when this call adds device extensions. */
+    for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_vk); ++i) {
+        const uint16_t extIdx = kExtIdx_vk[i];
+        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_Vulkan[extIdx]);
+    }
+
+    free(exts);
+    return 1;
+}
+
 /* Determine the Vulkan API version and set featArray bits accordingly.
  *
  * Called on every gloamLoaderLoadVulkanContext call so that version fields can be
@@ -717,6 +971,36 @@ static int gloam_vk_find_core(GloamVulkanContext *context, VkPhysicalDevice phys
     return (int)version_value;
 }
 
+/* Hash user-provided extension name arrays, search against kExtHashes, and
+ * set the corresponding extArray bits. Uses |= so bits from a previous
+ * call (e.g. instance extensions) are preserved when device extensions are
+ * added.
+ */
+static int gloam_vk_apply_extensions_vk(GloamVulkanContext *context, uint32_t num_exts, const char *const *ext_names)
+{
+    uint32_t i;
+    uint64_t *exts;
+
+    if (num_exts == 0)
+        return 1;
+
+    exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
+    if (!exts)
+        return 0;
+
+    for (i = 0; i < num_exts; ++i)
+        exts[i] = gloam_hash_string(ext_names[i], strlen(ext_names[i]));
+    gloam_sort_hashes(exts, num_exts);
+
+    for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_vk); ++i) {
+        const uint16_t extIdx = kExtIdx_vk[i];
+        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_Vulkan[extIdx]);
+    }
+
+    free(exts);
+    return 1;
+}
+
 /* gloamVulkanDiscoverContext — canonical Vulkan discovery loader.
  *
  * May be called multiple times on the same context as the application
@@ -768,6 +1052,15 @@ static int gloamVulkanDiscoverContext(GloamVulkanContext *context, VkInstance in
     for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_Vulkan); ++i) {
         const GloamPfnRange_t *r = &kFeatPfnRanges_Vulkan[i];
         if (context->featArray[r->extension])
+            gloam_load_pfn_range_vk(context, instance, device, r->start, r->count);
+    }
+
+    if (!gloam_vk_find_extensions_vk(context, physical_device))
+        return 0;
+
+    for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_vk); ++i) {
+        const GloamPfnRange_t *r = &kExtPfnRanges_vk[i];
+        if (context->extArray[r->extension])
             gloam_load_pfn_range_vk(context, instance, device, r->start, r->count);
     }
 
@@ -857,10 +1150,21 @@ int gloamVulkanLoadInstanceContext(GloamVulkanContext *context, VkInstance insta
 
     gloam_vk_apply_version(context, api_version);
 
+    if (!gloam_vk_apply_extensions_vk(context,
+            num_instance_extensions, instance_extensions))
+        return 0;
+
     /* Load PFNs for every enabled feature (instance + global scope). */
     for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_Vulkan); ++i) {
         const GloamPfnRange_t *r = &kFeatPfnRanges_Vulkan[i];
         if (context->featArray[r->extension])
+            gloam_load_pfn_range_vk(context, instance, NULL, r->start, r->count);
+    }
+
+    /* Load PFNs for every enabled extension (instance + global scope). */
+    for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_vk); ++i) {
+        const GloamPfnRange_t *r = &kExtPfnRanges_vk[i];
+        if (context->extArray[r->extension])
             gloam_load_pfn_range_vk(context, instance, NULL, r->start, r->count);
     }
 
@@ -892,6 +1196,25 @@ int gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version, uint32_t 
  */
 void gloamVulkanLoadPhysicalDeviceExtensionsContext(GloamVulkanContext *context,  uint32_t num_device_extensions, const char *const *device_extensions)
 {
+
+    VkInstance instance = context->vk_loaded_instance;
+    uint32_t j;
+
+    if (!context->GetInstanceProcAddr || !instance)
+        return;
+
+    for (j = 0; j < num_device_extensions; ++j) {
+        const uint64_t hash = gloam_hash_string(device_extensions[j],
+                                                 strlen(device_extensions[j]));
+        uint32_t i;
+        for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_vk); ++i) {
+            const GloamPfnRange_t *r = &kExtPfnRanges_vk[i];
+            if (kExtHashes_Vulkan[r->extension] == hash)
+                gloam_load_pfn_range_vk(context, instance, NULL,
+                    r->start, r->count);
+        }
+    }
+
 
     GLOAM_UNUSED(num_device_extensions);
     GLOAM_UNUSED(device_extensions);
@@ -943,10 +1266,21 @@ int gloamVulkanLoadDeviceContext(GloamVulkanContext *context, VkDevice device, V
     context->GetPhysicalDeviceProperties(physical_device, &props);
     gloam_vk_apply_version(context, props.apiVersion);
 
+    if (!gloam_vk_apply_extensions_vk(context,
+            num_device_extensions, device_extensions))
+        return 0;
+
     /* Reload PFNs for enabled features — Device-scope gets the fast path. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_Vulkan); ++i) {
         const GloamPfnRange_t *r = &kFeatPfnRanges_Vulkan[i];
         if (context->featArray[r->extension])
+            gloam_load_pfn_range_vk(context, instance, device, r->start, r->count);
+    }
+
+    /* Load PFNs for every enabled extension (all scopes). */
+    for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_vk); ++i) {
+        const GloamPfnRange_t *r = &kExtPfnRanges_vk[i];
+        if (context->extArray[r->extension])
             gloam_load_pfn_range_vk(context, instance, device, r->start, r->count);
     }
 
