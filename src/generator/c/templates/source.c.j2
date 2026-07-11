@@ -1,4 +1,14 @@
 {% import "utils.j2" as u with context -%}
+{#- Names of the generated per-spec tables, e.g. kFnNameData_GL. (These must
+    not collide with the Rust-provided context variables, e.g. the
+    fn_name_offsets integer array — hence the C-style spelling.) -#}
+{%- set kFnNameData    = "kFnNameData_"    ~ (fs.spec_name | spec_display) -%}
+{%- set kFnNameOffsets = "kFnNameOffsets_" ~ (fs.spec_name | spec_display) -%}
+{%- set kFnCount       = "kFnCount_"       ~ (fs.spec_name | spec_display) -%}
+{%- set kCommandScopes = "kCommandScopes_" ~ (fs.spec_name | spec_display) -%}
+{%- set kExtHashes     = "kExtHashes_"     ~ (fs.spec_name | spec_display) -%}
+{%- set kFeatPfnRanges = "kFeatPfnRanges_" ~ (fs.spec_name | spec_display) -%}
+{%- set kAliases       = "kAliases_"       ~ (fs.spec_name | spec_display) -%}
 {{ preamble }}
 {% if fs.spec_name == "wgl" %}
 #include <gloam/gl.h>
@@ -85,26 +95,26 @@ static const char * const gloam_vk_lib_names[] = {
  * plus one relocation entry (~24 bytes in PIC builds) per command compared to
  * the traditional const char * const [] approach.
  */
-static const uint32_t kFnCount_{{ fs.spec_name | spec_display }} = {{ fs.commands | length }};
+static const uint32_t {{ kFnCount }} = {{ fs.commands | length }};
 
-static const char kFnNameData_{{ fs.spec_name | spec_display }}[] =
+static const char {{ kFnNameData }}[] =
 {%- for cmd in fs.commands %}
     /* {{ fn_name_offsets[cmd.index] | rjust(5) }} */ "{{ cmd.name }}\0"
 {%- endfor %}
 ;
-static const {{ fn_name_offset_type }} kFnNameOffsets_{{ fs.spec_name | spec_display }}[] = {
+static const {{ fn_name_offset_type }} {{ kFnNameOffsets }}[] = {
 {%- for cmd in fs.commands %}
     /* {{ cmd.index | rjust(4) }} */ {{ fn_name_offsets[cmd.index] | rjust(5) }}{% if not loop.last %},{% endif %} /* {{ cmd.name }} */
 {%- endfor %}
 };
 {% if fs.is_vulkan -%}
 /* ---- Command scope table -------------------------------------------------
- * Indexed in lockstep with kFnNameOffsets_{{ fs.spec_name | spec_display }}[].
+ * Indexed in lockstep with {{ kFnNameOffsets }}[].
  * Each entry is the GloamCommandScope value for that slot — stored as uint8_t so
  * the whole table is one byte per command (compares well against the
  * alternatives: a parallel pointer array or a switch inside the loop).
  */
-static const uint8_t kCommandScopes_{{ fs.spec_name | spec_display }}[] = {
+static const uint8_t {{ kCommandScopes }}[] = {
 {%- for cmd in fs.commands %}
     /* {{ cmd.index | rjust(4) }} */ {{ cmd.scope | ljust(25) }}, /* {{ cmd.name }} */
 {%- endfor %}
@@ -115,7 +125,7 @@ static const uint8_t kCommandScopes_{{ fs.spec_name | spec_display }}[] = {
 /* ---- Extension hash table ------------------------------------------------
    One XXH3-64 hash per extension, in extArray index order.
    Pre-baked at generator time with the same algorithm used at load time. */
-static const uint64_t kExtHashes_{{ fs.spec_name | spec_display }}[] = {
+static const uint64_t {{ kExtHashes }}[] = {
 {%- for ext in fs.extensions %}
     /* {{ ext.index | rjust(4) }} */ {{ ext.hash }}ULL{% if not loop.last %},{% else %} {% endif %} /* {{ ext.name }} */
 {%- endfor %}
@@ -127,7 +137,7 @@ static const uint64_t kExtHashes_{{ fs.spec_name | spec_display }}[] = {
  * pfnArray slots. The loader iterates this table and bulk-loads the run
  * when featArray[entry.extension] is set.
  */
-static const GloamPfnRange_t kFeatPfnRanges_{{ fs.spec_name | spec_display }}[] = {
+static const GloamPfnRange_t {{ kFeatPfnRanges }}[] = {
 {%- for r in fs.feature_pfn_ranges %}
     { {{ r.extension | rjust(4) }}, {{ r.start | rjust(4) }}, {{ r.count | rjust(4) }} }, /* {{ fs.features[r.extension].full_name }} */
 {%- endfor %}
@@ -142,7 +152,7 @@ static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}GloamLo
 {
     uint16_t i;
     for (i = start; i < (uint16_t)(start + count); ++i) {
-        const char *pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]];
+        const char *pfnName = &{{ kFnNameData }}[{{ kFnNameOffsets }}[i]];
         context->pfnArray[i] = (void *)getProcAddr(pfnName);
     }
 }
@@ -161,8 +171,8 @@ static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}VkInsta
     PFN_vkGetDeviceProcAddr gdpa = context->GetDeviceProcAddr;
     uint16_t i;
     for (i = start; i < (uint16_t)(start + count); ++i) {
-        const char *pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]];
-        const GloamCommandScope cmdScope = (GloamCommandScope)kCommandScopes_{{ fs.spec_name | spec_display }}[i];
+        const char *pfnName = &{{ kFnNameData }}[{{ kFnNameOffsets }}[i]];
+        const GloamCommandScope cmdScope = (GloamCommandScope){{ kCommandScopes }}[i];
         GloamAPIProc pfn = NULL;
         switch (cmdScope) {
         case GloamCommandScopeGlobal:
@@ -189,7 +199,7 @@ static void gloam_load_pfn_range_{{ fs.spec_name }}({{ u.ctx_arg(', ') }}VkInsta
  * Pairs are sorted by canonical index so same-canonical entries are
  * consecutive; the resolver processes them in a single forward pass.
  */
-static const GloamAliasPair_t kAliases_{{ fs.spec_name | spec_display }}[] = {
+static const GloamAliasPair_t {{ kAliases }}[] = {
 {%- for p in fs.alias_pairs %}
     { {{ p.canonical | rjust(4) }}, {{ p.secondary | rjust(4) }} }, /* {{ fs.commands[p.canonical].name }} and {{ fs.commands[p.secondary].name }} */
 {%- endfor %}
@@ -198,9 +208,9 @@ static const GloamAliasPair_t kAliases_{{ fs.spec_name | spec_display }}[] = {
 GLOAM_NO_INLINE static void gloam_resolve_aliases_{{ fs.spec_name }}({{ u.ctx_arg() }})
 {
     uint32_t i;
-    for (i = 0; i < GLOAM_ARRAYSIZE(kAliases_{{ fs.spec_name | spec_display }}); ++i) {
-        uint16_t ci = kAliases_{{ fs.spec_name | spec_display }}[i].first;
-        uint16_t si = kAliases_{{ fs.spec_name | spec_display }}[i].second;
+    for (i = 0; i < GLOAM_ARRAYSIZE({{ kAliases }}); ++i) {
+        uint16_t ci = {{ kAliases }}[i].first;
+        uint16_t si = {{ kAliases }}[i].second;
         if (!context->pfnArray[ci] && context->pfnArray[si])
             context->pfnArray[ci] = context->pfnArray[si];
         else if (context->pfnArray[ci] && !context->pfnArray[si])
@@ -233,9 +243,9 @@ static void gloam_vk_apply_version({{ u.ctx_arg(', ') }}uint32_t api_version)
 static void gloam_vk_load_global_pfns({{ u.ctx_arg(', ') }}PFN_vkGetInstanceProcAddr gipa)
 {
     uint32_t i;
-    for (i = 0; i < kFnCount_{{ fs.spec_name | spec_display }}; ++i) {
-        if ((GloamCommandScope)kCommandScopes_{{ fs.spec_name | spec_display }}[i] == GloamCommandScopeGlobal) {
-            const char *pfnName = &kFnNameData_{{ fs.spec_name | spec_display }}[kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]];
+    for (i = 0; i < {{ kFnCount }}; ++i) {
+        if ((GloamCommandScope){{ kCommandScopes }}[i] == GloamCommandScopeGlobal) {
+            const char *pfnName = &{{ kFnNameData }}[{{ kFnNameOffsets }}[i]];
             context->pfnArray[i] = (void *)gipa(NULL, pfnName);
         }
     }
@@ -253,8 +263,9 @@ static void gloam_vk_load_global_pfns({{ u.ctx_arg(', ') }}PFN_vkGetInstanceProc
  */
 {%- set subset   = fs.ext_subset_indices[api] | default([]) %}
 {% set extranges = fs.ext_pfn_ranges[api] | default([]) %}
+{%- set has_exts = fs.extensions | length > 0 and subset | length > 0 %}
 
-{%- if fs.extensions | length > 0 and subset | length > 0 %}
+{%- if has_exts %}
 /* Extension index subset for {{ api }}: extArray indices this API supports. */
 static const uint16_t kExtIdx_{{ api }}[] = {
 {%- for idx in subset %}
@@ -273,7 +284,7 @@ static const GloamPfnRange_t kExtPfnRanges_{{ api }}[] = {
 };
 {% endif -%}
 {#- ---- Extension enumeration and detection --------------------------------- -#}
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
 {%- if api == "gles1" %}
 /* GLES 1.x: only glGetString(GL_EXTENSIONS), space-separated. */
 static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint64_t **out_exts, uint32_t *out_num_exts)
@@ -474,7 +485,7 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
     return 1;
 }
 {% endif %}
-/* Search pre-baked kExtHashes_{{ fs.spec_name | spec_display }} against the sorted driver hash list and set
+/* Search pre-baked {{ kExtHashes }} against the sorted driver hash list and set
  * extArray flags for every matching extension.
  */
 {%- if fs.spec_name == "vk" %}
@@ -495,7 +506,7 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg(', ')
        when this call adds device extensions. */
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_{{ api }}); ++i) {
         const uint16_t extIdx = kExtIdx_{{ api }}[i];
-        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
+        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, {{ kExtHashes }}[extIdx]);
     }
 
     free(exts);
@@ -512,7 +523,7 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg() }}{
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_{{ api }}); ++i) {
         const uint16_t extIdx = kExtIdx_{{ api }}[i];
-        context->extArray[extIdx] = (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
+        context->extArray[extIdx] = (unsigned char)gloam_hash_search(exts, num_exts, {{ kExtHashes }}[extIdx]);
     }
 
     free(exts);
@@ -679,7 +690,7 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc g
 {
     int version;
     uint32_t i;
-    GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
+    GLOAM_UNUSED({{ kFnCount }});
 
     memset(context, 0, sizeof(*context));
 
@@ -694,7 +705,7 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc g
         return 0;
 
 {{ u.load_feature_ranges("getProcAddr", "Load PFNs for each enabled feature via the range table.") }}
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
     if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context{{ u.extra_load_args(fs.spec_name) }}))
         return 0;
 
@@ -713,7 +724,7 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_par
 {
     int version;
     uint32_t i;
-    GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
+    GLOAM_UNUSED({{ kFnCount }});
 
     memset(context, 0, sizeof(*context));
 
@@ -726,7 +737,7 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_par
         return 0;
 
 {{ u.load_feature_ranges("getProcAddr", "Load PFNs for each enabled feature via the range table.") }}
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
     if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context{{ u.extra_load_args(fs.spec_name) }}))
         return 0;
 
@@ -754,19 +765,19 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_par
         return 0;
 
     /* Load all PFNs upfront. */
-    for (i = 0; i < kFnCount_{{ fs.spec_name | spec_display }}; ++i)
-        context->pfnArray[i] = (void *)getProcAddr((kFnNameData_{{ fs.spec_name | spec_display }} + kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]));
+    for (i = 0; i < {{ kFnCount }}; ++i)
+        context->pfnArray[i] = (void *)getProcAddr(({{ kFnNameData }} + {{ kFnNameOffsets }}[i]));
 
     /* Mark features based on PFN availability. */
-    for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_{{ fs.spec_name | spec_display }}); ++i) {
-        const GloamPfnRange_t *r = &kFeatPfnRanges_{{ fs.spec_name | spec_display }}[i];
+    for (i = 0; i < GLOAM_ARRAYSIZE({{ kFeatPfnRanges }}); ++i) {
+        const GloamPfnRange_t *r = &{{ kFeatPfnRanges }}[i];
         uint16_t j; int ok = 1;
         for (j = r->start; j < (uint16_t)(r->start + r->count); ++j)
             ok &= (context->pfnArray[j] != NULL);
         if (ok)
             context->featArray[r->extension] = 1;
     }
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
     if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context{{ u.extra_load_args(fs.spec_name) }}))
         return 0;
 
@@ -785,7 +796,7 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_par
 {
     int version;
     uint32_t i;
-    GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
+    GLOAM_UNUSED({{ kFnCount }});
 
     memset(context, 0, sizeof(*context));
 
@@ -801,12 +812,12 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_par
         return 0;
 
     /* Load all PFNs upfront. */
-    for (i = 0; i < kFnCount_{{ fs.spec_name | spec_display }}; ++i)
-        context->pfnArray[i] = (void *)getProcAddr((kFnNameData_{{ fs.spec_name | spec_display }} + kFnNameOffsets_{{ fs.spec_name | spec_display }}[i]));
+    for (i = 0; i < {{ kFnCount }}; ++i)
+        context->pfnArray[i] = (void *)getProcAddr(({{ kFnNameData }} + {{ kFnNameOffsets }}[i]));
 
     /* Mark features based on PFN availability. */
-    for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_{{ fs.spec_name | spec_display }}); ++i) {
-        const GloamPfnRange_t *r = &kFeatPfnRanges_{{ fs.spec_name | spec_display }}[i];
+    for (i = 0; i < GLOAM_ARRAYSIZE({{ kFeatPfnRanges }}); ++i) {
+        const GloamPfnRange_t *r = &{{ kFeatPfnRanges }}[i];
         uint16_t j; int ok = 1;
         for (j = r->start; j < (uint16_t)(r->start + r->count); ++j)
             ok &= (context->pfnArray[j] != NULL);
@@ -814,7 +825,7 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_par
             context->featArray[r->extension] = 1;
     }
 
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
     if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context{{ u.extra_load_args(fs.spec_name) }}))
         return 0;
 
@@ -829,7 +840,7 @@ int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr)
     return gloamLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context{{ u.extra_load_args(fs.spec_name) }}, getProcAddr);
 }
 {% elif fs.spec_name == "vk" %}
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
 /* Hash user-provided extension name arrays, search against kExtHashes, and
  * set the corresponding extArray bits. Uses |= so bits from a previous
  * call (e.g. instance extensions) are preserved when device extensions are
@@ -853,7 +864,7 @@ static int gloam_vk_apply_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint32_t num
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_{{ api }}); ++i) {
         const uint16_t extIdx = kExtIdx_{{ api }}[i];
-        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_{{ fs.spec_name | spec_display }}[extIdx]);
+        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, {{ kExtHashes }}[extIdx]);
     }
 
     free(exts);
@@ -882,7 +893,7 @@ static int gloamVulkanDiscoverContext({{ u.ctx_arg(', ') }}VkInstance instance, 
 {
     int version;
     uint32_t i;
-    GLOAM_UNUSED(kFnCount_{{ fs.spec_name | spec_display }});
+    GLOAM_UNUSED({{ kFnCount }});
     GLOAM_UNUSED(gloam_hash_ext_string);
 
     if (!context->GetInstanceProcAddr)
@@ -908,7 +919,7 @@ static int gloamVulkanDiscoverContext({{ u.ctx_arg(', ') }}VkInstance instance, 
         return 0;
 
 {{ u.load_feature_ranges("instance, device", "Load PFNs for every enabled feature via the range table.") }}
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
     if (!gloam_{{ fs.spec_name }}_find_extensions_{{ api }}(context, physical_device))
         return 0;
 
@@ -1000,13 +1011,13 @@ int gloamVulkanLoadInstanceContext({{ u.ctx_arg(', ') }}VkInstance instance, uin
         return 0;
 
     gloam_vk_apply_version(context, api_version);
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
     if (!gloam_vk_apply_extensions_{{ api }}(context,
             num_instance_extensions, instance_extensions))
         return 0;
 {% endif %}
 {{ u.load_feature_ranges("instance, NULL", "Load PFNs for every enabled feature (instance + global scope).") }}
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
 {{ u.load_extension_ranges(api, "instance, NULL", comment="Load PFNs for every enabled extension (instance + global scope).") }}
 {% endif -%}
 {{ u.resolve_aliases() }}
@@ -1038,7 +1049,7 @@ int gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version, uint32_t 
  */
 void gloamVulkanLoadPhysicalDeviceExtensionsContext({{ u.ctx_arg(', ') }} uint32_t num_device_extensions, const char *const *device_extensions)
 {
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
     VkInstance instance = context->vk_loaded_instance;
     uint32_t j;
 
@@ -1051,7 +1062,7 @@ void gloamVulkanLoadPhysicalDeviceExtensionsContext({{ u.ctx_arg(', ') }} uint32
         uint32_t i;
         for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_{{ api }}); ++i) {
             const GloamPfnRange_t *r = &kExtPfnRanges_{{ api }}[i];
-            if (kExtHashes_{{ fs.spec_name | spec_display }}[r->extension] == hash)
+            if ({{ kExtHashes }}[r->extension] == hash)
                 gloam_load_pfn_range_{{ fs.spec_name }}(context, instance, NULL,
                     r->start, r->count);
         }
@@ -1107,13 +1118,13 @@ int gloamVulkanLoadDeviceContext({{ u.ctx_arg(', ') }}VkDevice device, VkPhysica
 
     context->GetPhysicalDeviceProperties(physical_device, &props);
     gloam_vk_apply_version(context, props.apiVersion);
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
     if (!gloam_vk_apply_extensions_{{ api }}(context,
             num_device_extensions, device_extensions))
         return 0;
 {% endif %}
 {{ u.load_feature_ranges("instance, device", "Reload PFNs for enabled features — Device-scope gets the fast path.") }}
-{% if fs.extensions | length > 0 and subset | length > 0 %}
+{% if has_exts %}
 {{ u.load_extension_ranges(api, "instance, device", comment="Load PFNs for every enabled extension (all scopes).") }}
 {% endif -%}
 {{ u.resolve_aliases() }}
