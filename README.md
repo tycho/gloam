@@ -106,7 +106,7 @@ Options:
   --api <SPEC>          API specifiers (required for generation; not used by
                         `gloam lock`). Comma-separated list of
                         name[:profile][=major.minor] tokens. Profile is
-                        required for GL (core|compat). Version is optional
+                        required for GL (core|compatibility). Version is optional
                         (latest if omitted). Examples:
                           gl:core=3.3
                           gles2=3.0

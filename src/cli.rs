@@ -34,7 +34,7 @@ pub struct Cli {
     pub predecessors: bool,
 
     /// API specifiers: comma-separated name[:profile]=version pairs.  Profile
-    /// is required for GL (core|compat). Version is optional (latest if
+    /// is required for GL (core|compatibility). Version is optional (latest if
     /// omitted).  Example: gl:core=3.3,gles2=3.0
     /// Required for generation; ignored by `gloam lock`.
     #[arg(long)]
@@ -250,7 +250,11 @@ impl ExtensionFilter {
 #[derive(Debug, Clone)]
 pub struct ApiRequest {
     pub api: Api,
-    /// Only meaningful for desktop GL: "core", "compat", or "compatibility".
+    /// Only meaningful for desktop GL: "core" or "compatibility".  These are
+    /// the exact profile tokens the Khronos XML uses in `profile=` attributes;
+    /// no aliases are accepted, because profile matching is by exact string
+    /// and a non-canonical spelling would silently miss profile-conditional
+    /// requires/removes.
     pub profile: Option<String>,
     /// Maximum version to include. None means "latest available".
     pub version: Option<Version>,
@@ -279,10 +283,13 @@ impl ApiRequest {
             // without one: XML requires/removes are profile-conditional, so
             // no profile silently yields a core/compat hybrid.
             (Api::Gl, None) => {
-                bail!("API 'gl' requires a profile: use gl:core or gl:compat (e.g. gl:core=3.3)")
+                bail!(
+                    "API 'gl' requires a profile: use gl:core or gl:compatibility \
+                     (e.g. gl:core=3.3)"
+                )
             }
-            (Api::Gl, Some(p)) if !matches!(p, "core" | "compat" | "compatibility") => {
-                bail!("unknown GL profile '{p}' (expected core, compat, or compatibility)")
+            (Api::Gl, Some(p)) if !matches!(p, "core" | "compatibility") => {
+                bail!("unknown GL profile '{p}' (expected core or compatibility)")
             }
             (Api::Gl, Some(_)) | (_, None) => {}
             (_, Some(p)) => bail!("API '{api}' does not take a profile (got ':{p}')"),
@@ -325,11 +332,20 @@ mod tests {
     }
 
     #[test]
-    fn parse_gl_compat_no_version() {
-        let r = ApiRequest::parse("gl:compat").unwrap();
+    fn parse_gl_compatibility_no_version() {
+        let r = ApiRequest::parse("gl:compatibility").unwrap();
         assert_eq!(r.api, Api::Gl);
-        assert_eq!(r.profile.as_deref(), Some("compat"));
+        assert_eq!(r.profile.as_deref(), Some("compatibility"));
         assert!(r.version.is_none());
+    }
+
+    #[test]
+    fn parse_gl_compat_shortcut_is_rejected() {
+        // "compat" is not a Khronos profile token; profile matching is by
+        // exact string, so accepting it would silently miss
+        // profile="compatibility" requires/removes.
+        let err = ApiRequest::parse("gl:compat=3.3").unwrap_err().to_string();
+        assert!(err.contains("unknown GL profile 'compat'"), "{err}");
     }
 
     #[test]

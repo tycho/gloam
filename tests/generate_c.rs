@@ -55,8 +55,8 @@ fn gles2_generates_and_compiles() {
 }
 
 #[test]
-fn gl_compat_profile_generates() {
-    let dir = generate(&["--api", "gl:compat=3.3"], &[]);
+fn gl_compatibility_profile_generates() {
+    let dir = generate(&["--api", "gl:compatibility=3.3"], &[]);
     assert_c_output_exists(dir.path(), "gl");
 }
 
