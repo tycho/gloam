@@ -56,15 +56,18 @@ impl RequirementCollector {
         requests: &[ApiRequest],
     ) {
         for feat in features {
-            let req_for_api = requests.iter().find(|r| r.name == feat.api);
+            let req_for_api = requests.iter().find(|r| r.api == feat.api);
             let profile = req_for_api.and_then(|r| r.profile.as_deref());
-            let api_cmds = self.per_api_core_cmds.entry(feat.api.clone()).or_default();
+            let api_cmds = self
+                .per_api_core_cmds
+                .entry(feat.api.as_str().to_string())
+                .or_default();
 
             for require in &feat.raw.requires {
                 if !api_profile_matches(
                     require.api.as_deref(),
                     require.profile.as_deref(),
-                    &feat.api,
+                    feat.api.as_str(),
                     profile,
                 ) {
                     continue;

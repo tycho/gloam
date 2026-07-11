@@ -6,10 +6,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::cli::{ApiRequest, ExtensionFilter, canonical_api_name};
+use crate::cli::{ApiRequest, ExtensionFilter};
+use crate::identity::{Api, canonical_api_name};
 use crate::ir::RawSpec;
 
-use super::spec_info::{ResolveConfig, api_order, build_api_set};
+use super::spec_info::{ResolveConfig, build_api_set};
 use super::types::SelectionReason;
 
 // ---------------------------------------------------------------------------
@@ -17,7 +18,7 @@ use super::types::SelectionReason;
 // ---------------------------------------------------------------------------
 
 pub(super) struct SelectedFeature<'a> {
-    pub api: String,
+    pub api: Api,
     pub raw: &'a crate::ir::RawFeature,
 }
 
@@ -47,7 +48,7 @@ pub(super) fn select_features<'a>(
     for req in requests {
         let max_ver = req.version.clone();
         for feat in &raw.features {
-            if canonical_api_name(&feat.api) != canonical_api_name(&req.name) {
+            if canonical_api_name(&feat.api) != req.api.as_str() {
                 continue;
             }
             if let Some(ref mv) = max_ver
@@ -56,15 +57,16 @@ pub(super) fn select_features<'a>(
                 continue;
             }
             selected.push(SelectedFeature {
-                api: req.name.clone(),
+                api: req.api,
                 raw: feat,
             });
         }
     }
     // Sort: GL versions first, then GLES, matching the spec's ordering rule.
     selected.sort_by(|a, b| {
-        api_order(&a.api)
-            .cmp(&api_order(&b.api))
+        a.api
+            .sort_order()
+            .cmp(&b.api.sort_order())
             .then_with(|| a.raw.version.cmp(&b.raw.version))
     });
     selected
@@ -424,17 +426,17 @@ fn compute_baseline_excludes(
     let mut baseline_core_cmds: HashMap<String, HashSet<String>> = HashMap::new();
 
     for feat in &baseline_features {
-        let req_for_api = baseline
-            .iter()
-            .find(|r| canonical_api_name(&r.name) == canonical_api_name(&feat.api));
+        let req_for_api = baseline.iter().find(|r| r.api == feat.api);
         let profile = req_for_api.and_then(|r| r.profile.as_deref());
-        let api_cmds = baseline_core_cmds.entry(feat.api.clone()).or_default();
+        let api_cmds = baseline_core_cmds
+            .entry(feat.api.as_str().to_string())
+            .or_default();
 
         for require in &feat.raw.requires {
             if !api_profile_matches(
                 require.api.as_deref(),
                 require.profile.as_deref(),
-                &feat.api,
+                feat.api.as_str(),
                 profile,
             ) {
                 continue;
@@ -465,7 +467,7 @@ fn compute_baseline_excludes(
         m
     };
 
-    let request_api_set: HashSet<&str> = requests.iter().map(|r| r.name.as_str()).collect();
+    let request_api_set: HashSet<&str> = requests.iter().map(|r| r.api.as_str()).collect();
     let mut excludes: HashSet<String> = HashSet::new();
 
     for ext in &raw.extensions {

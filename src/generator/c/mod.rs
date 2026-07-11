@@ -361,32 +361,26 @@ fn filter_ull(value: Value) -> String {
     }
 }
 
-/// Used to build public function names like `gloamLoadGLES2Context`.
+/// Spec-family display name, used to build public function names like
+/// `gloamLoadGLContext`.  Accepts either canonical or XML API names and
+/// passes unknown strings through unchanged.
 fn filter_spec_display(value: Value) -> String {
-    match value.as_str().unwrap_or("") {
-        "gles1" | "gles2" | "gl" | "glcore" => "GL",
-        "egl" => "EGL",
-        "glx" => "GLX",
-        "wgl" => "WGL",
-        "vk" | "vulkan" => "Vulkan",
-        other => return other.to_string(),
+    let s = value.as_str().unwrap_or("");
+    match crate::identity::Api::from_cli(s) {
+        Ok(api) => api.spec().display().to_string(),
+        Err(_) => s.to_string(),
     }
-    .to_string()
 }
 
-/// Used to build public function names like `gloamLoadGLES2Context`.
+/// Per-API display name, used to build public function names like
+/// `gloamLoadGLES2Context`.  Accepts either canonical or XML API names and
+/// passes unknown strings through unchanged.
 fn filter_api_display(value: Value) -> String {
-    match value.as_str().unwrap_or("") {
-        "gl" | "glcore" => "GL",
-        "gles1" => "GLES1",
-        "gles2" => "GLES2",
-        "egl" => "EGL",
-        "glx" => "GLX",
-        "wgl" => "WGL",
-        "vk" | "vulkan" => "Vulkan",
-        other => return other.to_string(),
+    let s = value.as_str().unwrap_or("");
+    match crate::identity::Api::from_cli(s) {
+        Ok(api) => api.display().to_string(),
+        Err(_) => s.to_string(),
     }
-    .to_string()
 }
 
 /// Convert a CamelCase Vulkan type name to its SCREAMING_SNAKE_CASE MAX_ENUM

@@ -142,14 +142,14 @@ pub(super) fn optimize_command_order(
     for (fi, feat) in selected_features.iter().enumerate() {
         let profile = requests
             .iter()
-            .find(|r| r.name == feat.api)
+            .find(|r| r.api == feat.api)
             .and_then(|r| r.profile.as_deref());
 
         for require in &feat.raw.requires {
             if !api_profile_matches(
                 require.api.as_deref(),
                 require.profile.as_deref(),
-                &feat.api,
+                feat.api.as_str(),
                 profile,
             ) {
                 continue;

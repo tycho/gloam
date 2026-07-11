@@ -1,8 +1,8 @@
 //! Spec-level constants and naming helpers.
 //!
 //! `SpecInfo` precomputes per-spec constants (display name, boolean flags,
-//! prefix strings) from the spec name alone, replacing duplicated
-//! `match spec_name { ... }` blocks that appeared in multiple places.
+//! prefix strings) from the [`Spec`] identity; the tables themselves live on
+//! the `Api`/`Spec` enums in `crate::identity`.
 //!
 //! `ResolveConfig` bundles the configuration parameters that were previously
 //! passed as 6+ separate arguments through `resolve_feature_set`.
@@ -10,12 +10,13 @@
 use std::collections::HashSet;
 
 use crate::cli::{ApiRequest, ExtensionFilter};
+use crate::identity::{Api, Spec};
 
 // ---------------------------------------------------------------------------
 // SpecInfo
 // ---------------------------------------------------------------------------
 
-/// Precomputed spec-level constants derived from the spec name alone.
+/// Precomputed spec-level constants derived from the spec identity.
 pub(super) struct SpecInfo {
     pub display_name: &'static str,
     pub is_vulkan: bool,
@@ -26,14 +27,14 @@ pub(super) struct SpecInfo {
 }
 
 impl SpecInfo {
-    pub fn new(spec_name: &str) -> Self {
+    pub fn new(spec: Spec) -> Self {
         Self {
-            display_name: spec_display_name(spec_name),
-            is_vulkan: spec_name == "vk",
-            is_gl_family: matches!(spec_name, "gl" | "egl" | "glx" | "wgl"),
-            pfn_prefix: api_pfn_prefix(spec_name),
-            name_prefix: api_name_prefix(spec_name),
-            context_name: build_context_name(spec_name),
+            display_name: spec.display(),
+            is_vulkan: spec.is_vulkan(),
+            is_gl_family: !spec.is_vulkan(),
+            pfn_prefix: spec.pfn_prefix(),
+            name_prefix: spec.name_prefix(),
+            context_name: spec.context_name(),
         }
     }
 }
@@ -57,47 +58,6 @@ pub(super) struct ResolveConfig<'a> {
 // Naming helpers
 // ---------------------------------------------------------------------------
 
-/// Human-readable display name for a spec family.
-fn spec_display_name(spec: &str) -> &'static str {
-    match spec {
-        "gl" => "GL",
-        "egl" => "EGL",
-        "glx" => "GLX",
-        "wgl" => "WGL",
-        "vk" => "Vulkan",
-        _ => "Unknown",
-    }
-}
-
-/// C context struct name, e.g. "GloamGLContext", "GloamVulkanContext".
-fn build_context_name(spec: &str) -> String {
-    format!("Gloam{}Context", spec_display_name(spec))
-}
-
-/// Prefix for PFN type names.
-pub(super) fn api_pfn_prefix(spec: &str) -> &'static str {
-    match spec {
-        "vk" => "PFN_",
-        "gl" | "gles1" | "gles2" | "glcore" => "PFNGL",
-        "egl" => "PFNEGL",
-        "glx" => "PFNGLX",
-        "wgl" => "PFNWGL",
-        _ => "PFN",
-    }
-}
-
-/// Prefix stripped from command names to get the short (struct member) name.
-pub(super) fn api_name_prefix(spec: &str) -> &'static str {
-    match spec {
-        "gl" | "gles1" | "gles2" | "glcore" => "gl",
-        "egl" => "egl",
-        "glx" => "glX",
-        "wgl" => "wgl",
-        "vk" | "vulkan" => "vk",
-        _ => "",
-    }
-}
-
 /// Strip API prefix from extension name: "GL_ARB_sync" → "ARB_sync".
 pub(super) fn ext_short_name(name: &str) -> String {
     for prefix in &["GL_", "EGL_", "GLX_", "WGL_", "VK_"] {
@@ -109,31 +69,10 @@ pub(super) fn ext_short_name(name: &str) -> String {
 }
 
 /// Strip version prefix: "GL_VERSION_3_3" → "VERSION_3_3".
-pub(super) fn version_short_name(name: &str, api: &str) -> String {
-    let prefix = match api {
-        "gl" | "glcore" => "GL_",
-        "gles1" | "gles2" => "GL_",
-        "egl" => "EGL_",
-        "glx" => "GLX_",
-        "wgl" => "WGL_",
-        "vk" | "vulkan" => "VK_",
-        _ => "",
-    };
-    name.strip_prefix(prefix).unwrap_or(name).to_string()
-}
-
-/// Sorting key for API ordering in merged builds: GL first, then GLES, etc.
-pub(super) fn api_order(api: &str) -> u8 {
-    match api {
-        "gl" | "glcore" => 0,
-        "gles1" => 1,
-        "gles2" => 2,
-        "egl" => 3,
-        "glx" => 4,
-        "wgl" => 5,
-        "vk" | "vulkan" => 6,
-        _ => 7,
-    }
+pub(super) fn version_short_name(name: &str, api: Api) -> String {
+    name.strip_prefix(api.version_prefix())
+        .unwrap_or(name)
+        .to_string()
 }
 
 /// Build the set of API names in XML-canonical form for the given requests.
@@ -142,21 +81,18 @@ pub(super) fn api_order(api: &str) -> u8 {
 /// generated C symbol suffixes (kExtIdx_vulkan, etc.) and IndexMap keys used
 /// by the templates.
 pub(super) fn xml_api_names(requests: &[ApiRequest]) -> Vec<String> {
-    requests
-        .iter()
-        .map(|r| crate::cli::xml_api_name(&r.name).to_string())
-        .collect()
+    requests.iter().map(|r| r.api.xml_name().to_string()).collect()
 }
 
-/// Build the set of canonical API name strings for fast membership testing
-/// in extension selection.
-pub(super) fn build_api_set(requests: &[ApiRequest]) -> HashSet<&str> {
-    let mut api_set: HashSet<&str> = requests.iter().map(|r| r.name.as_str()).collect();
-    // The Khronos XML uses "vulkan" in supported= attributes, but our
-    // canonical name is "vk".  Insert the XML form so contains() lookups
-    // against XML-sourced strings succeed.
-    if api_set.contains("vk") {
-        api_set.insert("vulkan");
+/// Build the set of API name strings for fast membership testing against
+/// XML-sourced tokens in extension selection.  Contains each request's
+/// canonical name plus its XML form (they differ only for Vulkan, so
+/// `contains()` succeeds for both spellings).
+pub(super) fn build_api_set(requests: &[ApiRequest]) -> HashSet<&'static str> {
+    let mut api_set: HashSet<&'static str> = HashSet::new();
+    for r in requests {
+        api_set.insert(r.api.as_str());
+        api_set.insert(r.api.xml_name());
     }
     api_set
 }
@@ -168,33 +104,6 @@ pub(super) fn build_api_set(requests: &[ApiRequest]) -> HashSet<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ---- api_pfn_prefix / api_name_prefix ----
-
-    #[test]
-    fn pfn_prefix_gl_family() {
-        for api in &["gl", "gles1", "gles2", "glcore"] {
-            assert_eq!(api_pfn_prefix(api), "PFNGL", "failed for '{api}'");
-        }
-    }
-
-    #[test]
-    fn pfn_prefix_vulkan() {
-        assert_eq!(api_pfn_prefix("vk"), "PFN_");
-    }
-
-    #[test]
-    fn name_prefix_gl_family() {
-        assert_eq!(api_name_prefix("gl"), "gl");
-        assert_eq!(api_name_prefix("gles1"), "gl");
-        assert_eq!(api_name_prefix("gles2"), "gl");
-    }
-
-    #[test]
-    fn name_prefix_glx_is_case_sensitive() {
-        // glX — capital X matters for generated member names.
-        assert_eq!(api_name_prefix("glx"), "glX");
-    }
 
     // ---- ext_short_name / version_short_name ----
 
@@ -223,28 +132,40 @@ mod tests {
 
     #[test]
     fn version_short_name_gl() {
-        assert_eq!(version_short_name("GL_VERSION_3_3", "gl"), "VERSION_3_3");
+        assert_eq!(version_short_name("GL_VERSION_3_3", Api::Gl), "VERSION_3_3");
     }
 
     #[test]
     fn version_short_name_gles2() {
         // GLES uses "GL_" prefix in the XML feature name.
         assert_eq!(
-            version_short_name("GL_ES_VERSION_3_0", "gles2"),
+            version_short_name("GL_ES_VERSION_3_0", Api::Gles2),
             "ES_VERSION_3_0"
         );
     }
 
     #[test]
     fn version_short_name_vk() {
-        assert_eq!(version_short_name("VK_VERSION_1_3", "vk"), "VERSION_1_3");
+        assert_eq!(version_short_name("VK_VERSION_1_3", Api::Vk), "VERSION_1_3");
+    }
+
+    // ---- SpecInfo ----
+
+    #[test]
+    fn spec_info_vulkan() {
+        let s = SpecInfo::new(Spec::Vk);
+        assert!(s.is_vulkan);
+        assert!(!s.is_gl_family);
+        assert_eq!(s.context_name, "GloamVulkanContext");
+        assert_eq!(s.pfn_prefix, "PFN_");
     }
 
     #[test]
-    fn version_short_name_unknown_api_no_strip() {
-        assert_eq!(
-            version_short_name("CUSTOM_VERSION_1_0", "custom"),
-            "CUSTOM_VERSION_1_0"
-        );
+    fn spec_info_gl() {
+        let s = SpecInfo::new(Spec::Gl);
+        assert!(!s.is_vulkan);
+        assert!(s.is_gl_family);
+        assert_eq!(s.display_name, "GL");
+        assert_eq!(s.name_prefix, "gl");
     }
 }

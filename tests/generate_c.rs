@@ -107,21 +107,27 @@ fn invalid_version_format_fails() {
 }
 
 #[test]
-fn gl_without_profile_currently_generates_hybrid_output() {
-    // "gl" without a profile is ambiguous, and today it silently succeeds
-    // with hybrid semantics: compat-only enums survive (GL_QUADS present)
-    // while compat-only commands do not (glVertex3f absent).  This test pins
-    // the current behaviour so a change to it is deliberate.
-    //
-    // TODO(refactor phase 3): CLI validation should reject a GL request with
-    // no profile instead; flip this test to assert failure with a clear
-    // message when that lands.
-    let dir = generate(&["--api", "gl=3.3"], &[]);
-    let header = read_header(dir.path(), "gl");
-    assert!(header.contains("GL_QUADS "), "compat enums currently leak in");
+fn gl_without_profile_is_rejected() {
+    // "gl" without a profile is ambiguous — XML requires/removes are
+    // profile-conditional, so no profile silently produced a core/compat
+    // hybrid (compat enums present, compat commands removed).  It is now a
+    // parse-time error with a clear message.
+    let dir = TempDir::new().unwrap();
+    let output = gloam()
+        .args([
+            "--api",
+            "gl=3.3",
+            "--out-path",
+            dir.path().to_str().unwrap(),
+            "c",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "gl without profile must fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        !header.contains(" glVertex3f "),
-        "compat commands are currently removed"
+        stderr.contains("requires a profile"),
+        "error should explain the fix, got: {stderr}"
     );
 }
 

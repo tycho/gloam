@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::cli::canonical_api_name;
+use crate::identity::canonical_api_name;
 
 use super::selection::{SelectedExt, SelectedFeature, api_profile_matches};
 use super::types::{Command, Feature, PfnRange};

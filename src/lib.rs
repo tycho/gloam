@@ -10,6 +10,7 @@ mod bundled;
 mod cli;
 mod fetch;
 mod generator;
+mod identity;
 mod ir;
 mod parse;
 mod preamble;

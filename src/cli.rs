@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 
+use crate::identity::{Api, Spec};
 use crate::ir::Version;
 
 // ---------------------------------------------------------------------------
@@ -245,45 +246,18 @@ impl ExtensionFilter {
 // ApiRequest
 // ---------------------------------------------------------------------------
 
-/// Normalize an API name to its canonical short form.
-///
-/// The Khronos XML uses `"vulkan"` in feature and extension `api=` / `supported=`
-/// attributes, but the CLI convention (and GLAD's convention) is `"vk"`.  This
-/// function maps the long form to the short form so the rest of the codebase
-/// can use a single canonical name.  All other API names pass through unchanged.
-pub fn canonical_api_name(name: &str) -> &str {
-    match name {
-        "vulkan" => "vk",
-        other => other,
-    }
-}
-
-/// Map a canonical short API name back to the XML-canonical form.
-///
-/// Used when the name will appear in generated symbol names (e.g.
-/// `kExtIdx_vulkan`, `gloam_vk_find_extensions_vulkan`), where the XML
-/// convention is the appropriate one.  `spec_name` ("vk") controls file
-/// stems; this controls symbol suffixes.
-pub fn xml_api_name(name: &str) -> &str {
-    match name {
-        "vk" => "vulkan",
-        other => other,
-    }
-}
-
 /// One parsed entry from the `--api` argument.
 #[derive(Debug, Clone)]
 pub struct ApiRequest {
-    /// Canonical API name: "gl", "gles1", "gles2", "egl", "glx", "wgl", "vk".
-    pub name: String,
-    /// Only meaningful for GL: "core" or "compat".
+    pub api: Api,
+    /// Only meaningful for desktop GL: "core", "compat", or "compatibility".
     pub profile: Option<String>,
     /// Maximum version to include. None means "latest available".
     pub version: Option<Version>,
 }
 
 impl ApiRequest {
-    /// Parse a single `name[:profile][=major.minor]` token.
+    /// Parse and validate a single `name[:profile][=major.minor]` token.
     pub fn parse(s: &str) -> Result<Self> {
         let (name_profile, ver_str) = match s.find('=') {
             Some(i) => (&s[..i], Some(&s[i + 1..])),
@@ -298,6 +272,21 @@ impl ApiRequest {
         if name.is_empty() {
             bail!("empty API name in --api argument");
         }
+        let api = Api::from_cli(name)?;
+
+        match (api, profile) {
+            // Desktop GL is the only profiled API, and it is ambiguous
+            // without one: XML requires/removes are profile-conditional, so
+            // no profile silently yields a core/compat hybrid.
+            (Api::Gl, None) => {
+                bail!("API 'gl' requires a profile: use gl:core or gl:compat (e.g. gl:core=3.3)")
+            }
+            (Api::Gl, Some(p)) if !matches!(p, "core" | "compat" | "compatibility") => {
+                bail!("unknown GL profile '{p}' (expected core, compat, or compatibility)")
+            }
+            (Api::Gl, Some(_)) | (_, None) => {}
+            (_, Some(p)) => bail!("API '{api}' does not take a profile (got ':{p}')"),
+        }
 
         let version = ver_str
             .map(|v| {
@@ -309,28 +298,15 @@ impl ApiRequest {
             .transpose()?;
 
         Ok(Self {
-            name: canonical_api_name(name).to_string(),
+            api,
             profile: profile.map(str::to_string),
             version,
         })
     }
 
-    /// Maps the API name to its spec family: "gl", "egl", "glx", "wgl", "vk".
-    pub fn spec_name(&self) -> &str {
-        match self.name.as_str() {
-            "gl" | "gles1" | "gles2" | "glcore" => "gl",
-            "egl" => "egl",
-            "glx" => "glx",
-            "wgl" => "wgl",
-            "vk" | "vulkan" => "vk",
-            other => other,
-        }
-    }
-
-    /// True if this request targets GL (desktop or ES).
-    #[allow(dead_code)]
-    pub fn is_gl_family(&self) -> bool {
-        matches!(self.name.as_str(), "gl" | "gles1" | "gles2" | "glcore")
+    /// The spec family this request's definitions live in.
+    pub fn spec(&self) -> Spec {
+        self.api.spec()
     }
 }
 
@@ -343,7 +319,7 @@ mod tests {
     #[test]
     fn parse_gl_core_versioned() {
         let r = ApiRequest::parse("gl:core=3.3").unwrap();
-        assert_eq!(r.name, "gl");
+        assert_eq!(r.api, Api::Gl);
         assert_eq!(r.profile.as_deref(), Some("core"));
         assert_eq!(r.version, Some(Version::new(3, 3)));
     }
@@ -351,7 +327,7 @@ mod tests {
     #[test]
     fn parse_gl_compat_no_version() {
         let r = ApiRequest::parse("gl:compat").unwrap();
-        assert_eq!(r.name, "gl");
+        assert_eq!(r.api, Api::Gl);
         assert_eq!(r.profile.as_deref(), Some("compat"));
         assert!(r.version.is_none());
     }
@@ -359,7 +335,7 @@ mod tests {
     #[test]
     fn parse_gles2_versioned() {
         let r = ApiRequest::parse("gles2=3.0").unwrap();
-        assert_eq!(r.name, "gles2");
+        assert_eq!(r.api, Api::Gles2);
         assert!(r.profile.is_none());
         assert_eq!(r.version, Some(Version::new(3, 0)));
     }
@@ -367,7 +343,7 @@ mod tests {
     #[test]
     fn parse_vk_versioned() {
         let r = ApiRequest::parse("vk=1.3").unwrap();
-        assert_eq!(r.name, "vk");
+        assert_eq!(r.api, Api::Vk);
         assert_eq!(r.version, Some(Version::new(1, 3)));
     }
 
@@ -376,21 +352,14 @@ mod tests {
         // "vulkan" is the XML-canonical name; "vk" is the CLI-canonical name.
         // Both must produce the same ApiRequest.
         let r = ApiRequest::parse("vulkan=1.3").unwrap();
-        assert_eq!(r.name, "vk", "vulkan should normalize to vk");
+        assert_eq!(r.api, Api::Vk, "vulkan should normalize to vk");
         assert_eq!(r.version, Some(Version::new(1, 3)));
-    }
-
-    #[test]
-    fn parse_vulkan_bare_normalizes_to_vk() {
-        let r = ApiRequest::parse("vulkan").unwrap();
-        assert_eq!(r.name, "vk");
-        assert!(r.version.is_none());
     }
 
     #[test]
     fn parse_bare_name_no_version() {
         let r = ApiRequest::parse("egl").unwrap();
-        assert_eq!(r.name, "egl");
+        assert_eq!(r.api, Api::Egl);
         assert!(r.profile.is_none());
         assert!(r.version.is_none());
     }
@@ -398,6 +367,30 @@ mod tests {
     #[test]
     fn parse_empty_name_errors() {
         assert!(ApiRequest::parse("=1.0").is_err());
+    }
+
+    #[test]
+    fn parse_unknown_api_errors_at_parse_time() {
+        let err = ApiRequest::parse("dx12").unwrap_err().to_string();
+        assert!(err.contains("unknown API 'dx12'"), "{err}");
+    }
+
+    #[test]
+    fn parse_gl_without_profile_errors() {
+        let err = ApiRequest::parse("gl=3.3").unwrap_err().to_string();
+        assert!(err.contains("requires a profile"), "{err}");
+    }
+
+    #[test]
+    fn parse_gl_bad_profile_errors() {
+        let err = ApiRequest::parse("gl:corr=3.3").unwrap_err().to_string();
+        assert!(err.contains("unknown GL profile 'corr'"), "{err}");
+    }
+
+    #[test]
+    fn parse_profile_on_non_gl_errors() {
+        let err = ApiRequest::parse("vk:core=1.3").unwrap_err().to_string();
+        assert!(err.contains("does not take a profile"), "{err}");
     }
 
     #[test]
@@ -410,28 +403,26 @@ mod tests {
         assert!(ApiRequest::parse("gl:core=three.three").is_err());
     }
 
-    // ---- spec_name() mapping ----
+    // ---- spec() mapping ----
 
     #[test]
-    fn spec_name_gl_family_maps_to_gl() {
-        for name in &["gl", "gles1", "gles2", "glcore"] {
+    fn spec_gl_family_maps_to_gl() {
+        for name in &["gl:core", "gles1", "gles2", "glcore"] {
             let r = ApiRequest::parse(name).unwrap();
-            assert_eq!(r.spec_name(), "gl", "failed for api name '{name}'");
+            assert_eq!(r.spec(), Spec::Gl, "failed for api request '{name}'");
         }
     }
 
     #[test]
-    fn spec_name_passthrough() {
-        for name in &["egl", "glx", "wgl"] {
-            let r = ApiRequest::parse(name).unwrap();
-            assert_eq!(r.spec_name(), *name);
-        }
+    fn spec_passthrough() {
+        assert_eq!(ApiRequest::parse("egl").unwrap().spec(), Spec::Egl);
+        assert_eq!(ApiRequest::parse("glx").unwrap().spec(), Spec::Glx);
+        assert_eq!(ApiRequest::parse("wgl").unwrap().spec(), Spec::Wgl);
     }
 
     #[test]
-    fn spec_name_vulkan_alias() {
-        // Both "vk" and "vulkan" should map to "vk".
-        assert_eq!(ApiRequest::parse("vk").unwrap().spec_name(), "vk");
-        assert_eq!(ApiRequest::parse("vulkan").unwrap().spec_name(), "vk");
+    fn spec_vulkan_alias() {
+        assert_eq!(ApiRequest::parse("vk").unwrap().spec(), Spec::Vk);
+        assert_eq!(ApiRequest::parse("vulkan").unwrap().spec(), Spec::Vk);
     }
 }

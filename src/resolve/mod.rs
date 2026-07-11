@@ -32,6 +32,7 @@ use indexmap::IndexMap;
 
 use crate::cli::{ApiRequest, Cli};
 use crate::fetch;
+use crate::identity::Spec;
 use crate::ir::RawSpec;
 use crate::parse;
 use crate::parse::commands::infer_vulkan_scope;
@@ -69,17 +70,14 @@ pub fn build_feature_sets(
     let mut feature_sets = Vec::new();
 
     if cli.merge {
-        let mut by_spec: IndexMap<String, Vec<ApiRequest>> = IndexMap::new();
+        let mut by_spec: IndexMap<Spec, Vec<ApiRequest>> = IndexMap::new();
         for req in requests {
-            by_spec
-                .entry(req.spec_name().to_string())
-                .or_default()
-                .push(req);
+            by_spec.entry(req.spec()).or_default().push(req);
         }
-        for (spec_name, reqs) in &by_spec {
-            let apis: Vec<&str> = reqs.iter().map(|r| r.name.as_str()).collect();
-            let sources = fetch::load_spec(spec_name, &apis, ctx)?;
-            let raw = parse::parse(&sources, spec_name)?;
+        for (spec, reqs) in &by_spec {
+            let apis: Vec<&str> = reqs.iter().map(|r| r.api.as_str()).collect();
+            let sources = fetch::load_spec(spec.as_str(), &apis, ctx)?;
+            let raw = parse::parse(&sources, spec.as_str())?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,
                 baseline: &baseline,
@@ -93,10 +91,10 @@ pub fn build_feature_sets(
         }
     } else {
         for req in &requests {
-            let spec_name = req.spec_name();
-            let apis = [req.name.as_str()];
-            let sources = fetch::load_spec(spec_name, &apis, ctx)?;
-            let raw = parse::parse(&sources, spec_name)?;
+            let spec = req.spec();
+            let apis = [req.api.as_str()];
+            let sources = fetch::load_spec(spec.as_str(), &apis, ctx)?;
+            let raw = parse::parse(&sources, spec.as_str())?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,
                 baseline: &baseline,
@@ -129,7 +127,9 @@ fn resolve_feature_set(
     xml_source_keys: &[String],
 ) -> Result<FeatureSet> {
     let spec_name = &raw.spec_name;
-    let spec = SpecInfo::new(spec_name);
+    let spec_kind = Spec::from_name(spec_name)
+        .ok_or_else(|| anyhow::anyhow!("unknown spec family '{spec_name}'"))?;
+    let spec = SpecInfo::new(spec_kind);
     let api_names = xml_api_names(requests);
 
     // ==================================================================
@@ -214,7 +214,7 @@ fn resolve_feature_set(
         .enumerate()
         .map(|(i, sf)| {
             let ver = &sf.raw.version;
-            let short = version_short_name(&sf.raw.name, &sf.api);
+            let short = version_short_name(&sf.raw.name, sf.api);
             Feature {
                 index: i as u16,
                 full_name: sf.raw.name.clone(),
@@ -224,7 +224,7 @@ fn resolve_feature_set(
                     minor: ver.minor,
                 },
                 packed: ver.packed(),
-                api: sf.api.clone(),
+                api: sf.api.as_str().to_string(),
             }
         })
         .collect();
