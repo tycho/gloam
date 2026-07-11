@@ -199,13 +199,14 @@ fn parse_param(param: roxmltree::Node<'_, '_>) -> RawParam {
 
 /// Extract the base type name from a raw C type string.
 /// e.g. "const GLubyte *" → "GLubyte", "VkInstance" → "VkInstance"
+///
+/// Token-based via `ident_words`, so qualifier keywords are skipped as whole
+/// tokens only — an identifier that merely *contains* one as a substring is
+/// never corrupted.  This feeds Vulkan scope inference, where a mangled type
+/// name would silently misclassify a command's dispatch scope.
 fn extract_base_type(raw: &str) -> String {
-    raw.replace("const", "")
-        .replace("unsigned", "")
-        .replace("struct", "")
-        .replace('*', "")
-        .split_whitespace()
-        .next()
+    super::types::ident_words(raw)
+        .find(|w| !matches!(*w, "const" | "unsigned" | "signed" | "struct"))
         .unwrap_or("")
         .to_string()
 }
@@ -284,5 +285,33 @@ fn infer_scope(cmd: &RawCommand) -> CommandScope {
         CommandScope::Instance
     } else {
         CommandScope::Global
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_type_strips_qualifiers_and_pointers() {
+        assert_eq!(extract_base_type("const GLubyte *"), "GLubyte");
+        assert_eq!(extract_base_type("VkInstance"), "VkInstance");
+        assert_eq!(extract_base_type("unsigned int"), "int");
+        assert_eq!(extract_base_type("struct AHardwareBuffer*"), "AHardwareBuffer");
+        assert_eq!(extract_base_type("const GLchar *const*"), "GLchar");
+    }
+
+    #[test]
+    fn base_type_does_not_corrupt_substring_matches() {
+        // Qualifier keywords must be skipped as whole tokens only; the old
+        // substring replace() turned "Dconstraint" into "Draint".
+        assert_eq!(extract_base_type("Dconstraint *"), "Dconstraint");
+        assert_eq!(extract_base_type("unsignedFoo"), "unsignedFoo");
+    }
+
+    #[test]
+    fn base_type_empty_input() {
+        assert_eq!(extract_base_type(""), "");
+        assert_eq!(extract_base_type(" * "), "");
     }
 }

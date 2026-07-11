@@ -179,13 +179,36 @@ fn extract_raw_c_inner(node: roxmltree::Node<'_, '_>) -> String {
 }
 
 /// Rewrite C++ `// comment` style to `/* comment */` (spec gotcha #6).
+///
+/// Two guards keep this from corrupting valid C:
+///   - text inside an existing `/* ... */` block passes through untouched
+///     (a URL like `https://...` in a block comment would otherwise gain an
+///     injected `*/` and leave the original terminator dangling);
+///   - `//` immediately preceded by `:` is treated as part of a URL, not a
+///     comment.
 pub fn rewrite_line_comments(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
+    let mut prev: Option<char> = None;
     while let Some(c) = chars.next() {
-        if c == '/' && chars.peek() == Some(&'/') {
+        // Copy an existing block comment verbatim.
+        if c == '/' && chars.peek() == Some(&'*') {
+            out.push(c);
+            out.push(chars.next().unwrap()); // '*'
+            let mut star = false;
+            for c2 in chars.by_ref() {
+                out.push(c2);
+                if star && c2 == '/' {
+                    break;
+                }
+                star = c2 == '*';
+            }
+            prev = Some('/');
+            continue;
+        }
+
+        if c == '/' && chars.peek() == Some(&'/') && prev != Some(':') {
             chars.next(); // consume second '/'
-            out.push_str("/*");
             let mut comment = String::new();
             for c2 in chars.by_ref() {
                 if c2 == '\n' {
@@ -193,13 +216,15 @@ pub fn rewrite_line_comments(s: &str) -> String {
                 }
                 comment.push(c2);
             }
-            let trimmed = comment.trim();
-            out.push(' ');
-            out.push_str(trimmed);
+            out.push_str("/* ");
+            out.push_str(comment.trim());
             out.push_str(" */\n");
-        } else {
-            out.push(c);
+            prev = Some('\n');
+            continue;
         }
+
+        out.push(c);
+        prev = Some(c);
     }
     out
 }
@@ -218,4 +243,70 @@ pub fn parse_version(s: &str) -> Result<Version> {
 pub fn compute_ext_enum_value(extnumber: u32, offset: u32, dir: Option<&str>) -> i64 {
     let base: i64 = 1_000_000_000 + 1_000 * (extnumber as i64 - 1) + offset as i64;
     if dir == Some("-") { -base } else { base }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- rewrite_line_comments ----
+
+    #[test]
+    fn line_comment_becomes_block_comment() {
+        assert_eq!(
+            rewrite_line_comments("int x; // hello\nint y;"),
+            "int x; /* hello */\nint y;"
+        );
+    }
+
+    #[test]
+    fn line_comment_at_eof_without_newline() {
+        assert_eq!(rewrite_line_comments("// end"), "/* end */\n");
+    }
+
+    #[test]
+    fn url_in_block_comment_is_untouched() {
+        let s = "/* see https://registry.khronos.org for details */\nint x;";
+        assert_eq!(rewrite_line_comments(s), s);
+    }
+
+    #[test]
+    fn double_slash_in_block_comment_is_untouched() {
+        let s = "/* a // b */\nint x;";
+        assert_eq!(rewrite_line_comments(s), s);
+    }
+
+    #[test]
+    fn url_in_plain_text_is_untouched() {
+        let s = "#define SPEC_URL \"https://example.com/path\"";
+        assert_eq!(rewrite_line_comments(s), s);
+    }
+
+    #[test]
+    fn text_without_comments_is_identity() {
+        let s = "typedef unsigned int GLenum;\n";
+        assert_eq!(rewrite_line_comments(s), s);
+    }
+
+    // ---- parse_version ----
+
+    #[test]
+    fn parse_version_accepts_major_minor() {
+        assert_eq!(parse_version("3.3").unwrap(), Version::new(3, 3));
+    }
+
+    #[test]
+    fn parse_version_rejects_missing_minor() {
+        assert!(parse_version("3").is_err());
+    }
+
+    // ---- compute_ext_enum_value ----
+
+    #[test]
+    fn ext_enum_offset_formula() {
+        // 1_000_000_000 + 1_000 * (extnumber - 1) + offset
+        assert_eq!(compute_ext_enum_value(1, 0, None), 1_000_000_000);
+        assert_eq!(compute_ext_enum_value(2, 3, None), 1_000_001_003);
+        assert_eq!(compute_ext_enum_value(2, 3, Some("-")), -1_000_001_003);
+    }
 }
