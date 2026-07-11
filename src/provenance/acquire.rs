@@ -141,9 +141,14 @@ impl Github {
         let base = &self.base;
         let short = &head[..head.len().min(7)];
 
-        // Tagged-commit SHA -> tag name.
+        // Tagged-commit SHA -> tag name.  Network errors propagate: silently
+        // degrading to a bare short commit would change the describe string —
+        // which lands in every generated preamble and the manifest — in a way
+        // that is indistinguishable from a real upstream change.
         let tags_url = format!("{base}/repos/{repo}/tags");
-        let tags = self.get_paged(&tags_url, MAX_TAG_PAGES).unwrap_or_default();
+        let tags = self
+            .get_paged(&tags_url, MAX_TAG_PAGES)
+            .with_context(|| format!("listing tags of {repo}"))?;
         let mut tag_by_commit: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         for t in &tags {
@@ -158,11 +163,18 @@ impl Github {
             return Ok(short.to_string());
         }
 
-        // Walk commits from HEAD; first tagged commit wins.
+        // Walk commits from HEAD; first tagged commit wins.  A truncated walk
+        // (error mid-pagination) would produce a wrong `-N-` offset, so
+        // errors propagate here too.
+        //
+        // Note: the commits list is reverse-chronological, not topological,
+        // so N can differ from real `git describe` on merge-heavy repos.
+        // Accepted — it's stable for a given commit, which is what the
+        // churn-avoidance machinery needs.
         let commits_url = format!("{base}/repos/{repo}/commits?sha={head}");
         let commits = self
             .get_paged(&commits_url, MAX_COMMIT_PAGES)
-            .unwrap_or_default();
+            .with_context(|| format!("walking commits of {repo} from {short}"))?;
         for (i, c) in commits.iter().enumerate() {
             let Some(sha) = c["sha"].as_str() else {
                 continue;
