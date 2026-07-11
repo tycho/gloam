@@ -29,6 +29,26 @@
 {%- endmacro -%}
 
 {#-
+  Platform-protection #if block for a protection-coalesced group of
+  types/enums/PFNs. Note the AND semantics, in contrast to the OR form
+  above: an extension is enabled when ANY of its listed platform macros
+  is defined, whereas a protection-grouped run was coalesced under the
+  full macro set, so ALL of its macros must hold for the run to apply.
+  Emits nothing when the list is empty.
+-#}
+{%- macro group_protect_begin(protects) -%}
+{%- if protects | length > 0 -%}
+#if defined({{ protects | join(") && defined(") }})
+{% endif -%}
+{%- endmacro -%}
+
+{%- macro group_protect_end(protects) -%}
+{%- if protects | length > 0 -%}
+#endif
+{% endif -%}
+{%- endmacro -%}
+
+{#-
   Extra load-function parameters specific to each spec, placed before
   the final GloamLoadFunc argument. For GL/Vulkan these are empty.
   Starts with a leading ", " when non-empty so it can sit directly after

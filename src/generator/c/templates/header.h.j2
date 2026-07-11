@@ -300,17 +300,11 @@ struct _cl_event;
 {%- if fs.flat_enums | length > 0 -%}
 /* ---- Constants ----------------------------------------------------------- */
 {% for group in fs.flat_enum_groups -%}
-{% if group.protect | length > 0 -%}
-#if defined({{ group.protect | join(") && defined(") }})
+{{ u.group_protect_begin(group.protect) -}}
 {% for enum in group.items -%}
 #define {{ enum.name }} {{ enum.value }}{% if enum.comment %} /* {{ enum.comment }} */{% endif %}
 {% endfor -%}
-#endif
-{% else -%}
-{% for enum in group.items -%}
-#define {{ enum.name }} {{ enum.value }}{% if enum.comment %} /* {{ enum.comment }} */{% endif %}
-{% endfor -%}
-{% endif -%}
+{{ u.group_protect_end(group.protect) -}}
 {% endfor -%}
 {% endif -%}
 {%- if fs.enum_groups | length > 0 %}
@@ -346,17 +340,13 @@ typedef enum {{ group.name }} {
  * same platform guard are coalesced into a single #ifdef/#endif block.
  */
 {% for group in fs.type_groups -%}
-{% if group.protect | length > 0 -%}
-#if defined({{ group.protect | join(") && defined(") }})
-{% endif -%}
+{{ u.group_protect_begin(group.protect) -}}
 {% for type in group.items -%}
 {{ type.raw_c }}
 {% if not loop.last %}
 {% endif -%}
 {% endfor -%}
-{% if group.protect | length > 0 -%}
-#endif
-{% endif -%}
+{{ u.group_protect_end(group.protect) -}}
 {% if not loop.last %}
 {% endif -%}
 {% endfor %}
@@ -487,43 +477,31 @@ extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
    context struct. Unlike #define macros, these don't pollute the preprocessor
    namespace (avoids collisions with VMA, etc.). #}
 {% for group in fs.cmd_pfn_groups -%}
-{% if group.protect | length > 0 -%}
-#if defined({{ group.protect | join(") && defined(") }})
-{% endif -%}
+{{ u.group_protect_begin(group.protect) -}}
 {% for cmd in group.items -%}
 GLOAM_FORCE_INLINE {{ cmd.return_type }} {{ cmd.name }}({{ cmd.params_str }}) {
     {% if cmd.return_type != "void" %}return {% endif %}gloam_{{ fs.spec_name }}_context.{{ cmd.short_name }}({{ cmd.params | map(attribute="name") | join(", ") }});
 }
 {% endfor -%}
-{% if group.protect | length > 0 -%}
-#endif
-{% endif -%}
+{{ u.group_protect_end(group.protect) -}}
 {% endfor -%}
 {% else -%}
 {# GL/EGL/GLX/WGL: macro dispatch with IntelliSense prototypes for IDE support. #}
 #ifdef __INTELLISENSE__
 {% for group in fs.cmd_pfn_groups -%}
-{% if group.protect | length > 0 -%}
-#if defined({{ group.protect | join(") && defined(") }})
-{% endif -%}
+{{ u.group_protect_begin(group.protect) -}}
 {% for cmd in group.items -%}
 {{ cmd.return_type }} {{ cmd.name }}({{ cmd.params_str }});
 {% endfor -%}
-{% if group.protect | length > 0 -%}
-#endif
-{% endif -%}
+{{ u.group_protect_end(group.protect) -}}
 {% endfor -%}
 #else
 {% for group in fs.cmd_pfn_groups -%}
-{% if group.protect | length > 0 -%}
-#if defined({{ group.protect | join(") && defined(") }})
-{% endif -%}
+{{ u.group_protect_begin(group.protect) -}}
 {% for cmd in group.items -%}
 #define {{ cmd.name }} (gloam_{{ fs.spec_name }}_context.{{ cmd.short_name }})
 {% endfor -%}
-{% if group.protect | length > 0 -%}
-#endif
-{% endif -%}
+{{ u.group_protect_end(group.protect) -}}
 {% endfor -%}
 #endif /* __INTELLISENSE__ */
 {% endif -%}
