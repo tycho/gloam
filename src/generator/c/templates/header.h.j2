@@ -519,18 +519,17 @@ typedef void (*GloamAPIProc)(void);
 typedef GloamAPIProc (*GloamLoadFunc)(const char *name);
 #endif
 {% for api in fs.apis -%}
+{%- if fs.spec_name != "vk" %}
+int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_params(fs.spec_name) }}, GloamLoadFunc getProcAddr);
 {%- if fs.spec_name == "gl" %}
-int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr);
 int gloamLoad{{ api | api_display }}(GloamLoadFunc getProcAddr);
 {%- elif fs.spec_name == "egl" %}
-int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display, GloamLoadFunc getProcAddr);
 int gloamLoad{{ api | api_display }}(EGLDisplay display, GloamLoadFunc getProcAddr);
 {%- elif fs.spec_name == "glx" %}
-int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *display, int screen, GloamLoadFunc getProcAddr);
 int gloamLoad{{ api | api_display }}(Display *display, int screen, GloamLoadFunc getProcAddr);
 {%- elif fs.spec_name == "wgl" %}
-int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc, GloamLoadFunc getProcAddr);
 int gloamLoad{{ api | api_display }}(HDC hdc, GloamLoadFunc getProcAddr);
+{%- endif %}
 {%- elif fs.spec_name == "vk" %}
 /* ---- Vulkan enabled API (Volk-like) ----------------------------------------
  * Phased loading: Initialize → LoadInstance → LoadDevice.
@@ -592,42 +591,25 @@ void gloamVulkanFinalize(void);
  * Each Load function may be called multiple times (additive).
  */
 {%- for api in fs.apis %}
-{%- if fs.spec_name == "gl" %}
-int  gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }});
-int  gloamLoaderLoad{{ api | api_display }}(void);
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }});
-void gloamLoaderUnload{{ api | api_display }}(void);
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }});
-void gloamLoaderReset{{ api | api_display }}(void);
-{%- elif fs.spec_name == "egl" %}
-int  gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display);
-int  gloamLoaderLoad{{ api | api_display }}(EGLDisplay display);
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }});
-void gloamLoaderUnload{{ api | api_display }}(void);
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }});
-void gloamLoaderReset{{ api | api_display }}(void);
-{%- elif fs.spec_name == "glx" %}
-int  gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *display, int screen);
-int  gloamLoaderLoad{{ api | api_display }}(Display *display, int screen);
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }});
-void gloamLoaderUnload{{ api | api_display }}(void);
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }});
-void gloamLoaderReset{{ api | api_display }}(void);
-{%- elif fs.spec_name == "wgl" %}
-int  gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc);
-int  gloamLoaderLoad{{ api | api_display }}(HDC hdc);
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }});
-void gloamLoaderUnload{{ api | api_display }}(void);
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }});
-void gloamLoaderReset{{ api | api_display }}(void);
-{%- elif fs.spec_name == "vk" %}
+{%- if fs.spec_name == "vk" %}
 int  gloamLoaderLoadVulkanContext({{ u.ctx_arg(', ') }}VkInstance instance, VkPhysicalDevice physical_device, VkDevice device);
 int  gloamLoaderLoadVulkan(VkInstance instance, VkPhysicalDevice physical_device, VkDevice device);
-void gloamLoaderUnloadVulkanContext({{ u.ctx_arg() }});
-void gloamLoaderUnloadVulkan(void);
-void gloamLoaderResetVulkanContext({{ u.ctx_arg() }});
-void gloamLoaderResetVulkan(void);
+{%- else %}
+int  gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_params(fs.spec_name) }});
+{%- if fs.spec_name == "gl" %}
+int  gloamLoaderLoad{{ api | api_display }}(void);
+{%- elif fs.spec_name == "egl" %}
+int  gloamLoaderLoad{{ api | api_display }}(EGLDisplay display);
+{%- elif fs.spec_name == "glx" %}
+int  gloamLoaderLoad{{ api | api_display }}(Display *display, int screen);
+{%- elif fs.spec_name == "wgl" %}
+int  gloamLoaderLoad{{ api | api_display }}(HDC hdc);
 {%- endif %}
+{%- endif %}
+void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }});
+void gloamLoaderUnload{{ api | api_display }}(void);
+void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }});
+void gloamLoaderReset{{ api | api_display }}(void);
 {% endfor -%}
 {% endif %}
 #ifdef __cplusplus

@@ -187,7 +187,7 @@ static GloamAPIProc gloam_egl_get_proc(const char *name)
 }
 
 {% for api in fs.apis %}
-int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDisplay display)
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_params(fs.spec_name) }})
 {
     int did_open = 0;
     int version;
@@ -213,7 +213,7 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDispla
         return 0;
     }
 
-    version = gloamLoad{{ api | api_display }}Context(context, display, gloam_egl_get_proc);
+    version = gloamLoad{{ api | api_display }}Context(context{{ u.extra_load_args(fs.spec_name) }}, gloam_egl_get_proc);
     gloam_egl_load_state.handle = NULL;
 
     if (!version && did_open) {
@@ -229,7 +229,7 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}EGLDispla
 
 int gloamLoaderLoad{{ api | api_display }}(EGLDisplay display)
 {
-    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, display);
+    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context{{ u.extra_load_args(fs.spec_name) }});
 }
 
 void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
@@ -287,7 +287,7 @@ static GloamAPIProc gloam_glx_get_proc(const char *name)
 
 {%- for api in fs.apis %}
 
-int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *display, int screen)
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_params(fs.spec_name) }})
 {
     int did_open = 0, version;
     void *handle;
@@ -311,7 +311,7 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *
         return 0;
     }
 
-    version = gloamLoad{{ api | api_display }}Context(context, display, screen, gloam_glx_get_proc);
+    version = gloamLoad{{ api | api_display }}Context(context{{ u.extra_load_args(fs.spec_name) }}, gloam_glx_get_proc);
     gloam_glx_load_state.handle = NULL;
 
     if (!version && did_open) {
@@ -327,7 +327,7 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}Display *
 
 int gloamLoaderLoad{{ api | api_display }}(Display *display, int screen)
 {
-    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, display, screen);
+    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context{{ u.extra_load_args(fs.spec_name) }});
 }
 
 void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
@@ -379,7 +379,7 @@ static GloamAPIProc gloam_wgl_get_proc(const char *name)
 }
 
 {%- for api in fs.apis %}
-int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc)
+int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_params(fs.spec_name) }})
 {
     int did_open = 0;
     int version;
@@ -405,7 +405,7 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc)
         return 0;
     }
 
-    version = gloamLoad{{ api | api_display }}Context(context, hdc, gloam_wgl_get_proc);
+    version = gloamLoad{{ api | api_display }}Context(context{{ u.extra_load_args(fs.spec_name) }}, gloam_wgl_get_proc);
     gloam_wgl_load_state.handle = NULL;
 
     if (!version && did_open) {
@@ -421,7 +421,7 @@ int gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}HDC hdc)
 
 int gloamLoaderLoad{{ api | api_display }}(HDC hdc)
 {
-    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context, hdc);
+    return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context{{ u.extra_load_args(fs.spec_name) }});
 }
 
 void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
