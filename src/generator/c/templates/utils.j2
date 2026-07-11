@@ -68,6 +68,41 @@
 {%- endmacro -%}
 
 {#-
+  Loop that bulk-loads the pfnArray run of every enabled feature via the
+  feature PFN range table. `loader_args` is the per-call-site argument
+  list forwarded to gloam_load_pfn_range_* between the context and the
+  range bounds (e.g. "getProcAddr" or "instance, device").
+-#}
+{%- macro load_feature_ranges(loader_args, comment) %}    /* {{ comment }} */
+    for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_{{ fs.spec_name | spec_display }}); ++i) {
+        const GloamPfnRange_t *r = &kFeatPfnRanges_{{ fs.spec_name | spec_display }}[i];
+        if (context->featArray[r->extension])
+            gloam_load_pfn_range_{{ fs.spec_name }}(context, {{ loader_args }}, r->start, r->count);
+    }
+{%- endmacro -%}
+
+{#- Same as load_feature_ranges, for the per-API extension range table. -#}
+{%- macro load_extension_ranges(api, loader_args, comment="") -%}
+{%- if comment %}    /* {{ comment }} */
+{% endif %}    for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_{{ api }}); ++i) {
+        const GloamPfnRange_t *r = &kExtPfnRanges_{{ api }}[i];
+        if (context->extArray[r->extension])
+            gloam_load_pfn_range_{{ fs.spec_name }}(context, {{ loader_args }}, r->start, r->count);
+    }
+{%- endmacro -%}
+
+{#-
+  Alias-resolution call, emitted only when --alias produced a pair table.
+  Emits a surrounding blank line on each side (matching the historical
+  inline form); emits nothing at all when aliasing is disabled.
+-#}
+{%- macro resolve_aliases() -%}
+{%- if alias and fs.alias_pairs | length > 0 %}
+    gloam_resolve_aliases_{{ fs.spec_name }}(context);
+{% endif -%}
+{%- endmacro -%}
+
+{#-
   Emit a single system-header conflict guard: if the given macro is already
   defined, issue a hard error; otherwise define it to 1.
   Usage: {{ u.header_error("__gl_h_", "OpenGL (gl.h)", "gl") }}
