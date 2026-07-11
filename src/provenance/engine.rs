@@ -14,12 +14,12 @@
 
 use std::collections::BTreeMap;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use indexmap::IndexMap;
 
 use super::acquire::Github;
 use super::cache::{self, Cache};
-use super::manifest::{BundledProvenance, ProvenancePin};
+use super::manifest::{BundledProvenance, ProvenancePin, git_blob_sha1};
 use super::{Cluster, find};
 
 /// A resolved file: its provenance pin plus content bytes.
@@ -102,7 +102,7 @@ impl Engine {
                 let spec = cluster.files.iter().find(|f| f.key == key).unwrap();
                 // blob SHA + content, cache-first.
                 let (blob, content) = match self.cache.blob_for_path(&commit, spec.path_in_repo)? {
-                    Some(b) => match self.cache.blob(&b, now)? {
+                    Some(b) => match self.verified_cached_blob(&b, now)? {
                         Some(content) => (b, content),
                         None => self.fetch_and_cache(cluster, spec.path_in_repo, &commit, now)?,
                     },
@@ -138,13 +138,24 @@ impl Engine {
                 .get(key)
                 .ok_or_else(|| anyhow!("manifest has no provenance for required file '{key}'"))?;
 
-            let content = match self.cache.blob(&pin.blob, now)? {
+            let content = match self.verified_cached_blob(&pin.blob, now)? {
                 Some(c) => c,
                 None => {
                     let c = self
                         .gh
                         .blob_content(&pin.repo, &pin.blob)
                         .with_context(|| format!("fetching pinned blob for '{key}'"))?;
+                    // Never launder wrong content into "verified" provenance:
+                    // the fetched bytes must hash to the pinned blob SHA.
+                    let got = git_blob_sha1(&c);
+                    if got != pin.blob {
+                        bail!(
+                            "pinned blob for '{key}' from {} hashes to {got}, \
+                             expected {} — refusing corrupt or mismatched content",
+                            pin.repo,
+                            pin.blob
+                        );
+                    }
                     self.cache.put_blob(&pin.blob, &c, now)?;
                     c
                 }
@@ -178,9 +189,29 @@ impl Engine {
             .gh
             .file_at_commit(cluster.repo, path, commit)
             .with_context(|| format!("fetching {} from {}", path, cluster.repo))?;
+        let got = git_blob_sha1(&content);
+        if got != blob {
+            bail!(
+                "content of {} from {} hashes to {got}, but the API reported \
+                 blob {blob} — refusing corrupt or mismatched content",
+                path,
+                cluster.repo
+            );
+        }
         self.cache.put_tree_entry(commit, path, &blob)?;
         self.cache.put_blob(&blob, &content, now)?;
         Ok((blob, content))
+    }
+
+    /// Return cached content for `blob_sha` only if it still hashes to that
+    /// SHA.  A mismatch (cache corruption) is treated as a miss; the caller
+    /// refetches and `put_blob` overwrites the bad row.  Content correctness
+    /// therefore never depends on the storage engine being bug-free.
+    fn verified_cached_blob(&self, blob_sha: &str, now: i64) -> Result<Option<Vec<u8>>> {
+        Ok(self
+            .cache
+            .blob(blob_sha, now)?
+            .filter(|content| git_blob_sha1(content) == blob_sha))
     }
 }
 
@@ -224,6 +255,8 @@ mod tests {
         Engine::from_parts(Github::new().unwrap(), cache)
     }
 
+    const SAMPLE_CONTENT: &[u8] = b"/* xxHash */";
+
     fn sample_bundle() -> BundledProvenance {
         let mut provenance = IndexMap::new();
         provenance.insert(
@@ -234,7 +267,8 @@ mod tests {
                 path_in_repo: "xxhash.h".to_string(),
                 commit: "c0ffee00".to_string(),
                 describe: "v0.8.2".to_string(),
-                blob: "blobxxh".to_string(),
+                // Must be the real hash: the engine re-verifies cached blobs.
+                blob: git_blob_sha1(SAMPLE_CONTENT),
             },
         );
         BundledProvenance {
@@ -249,7 +283,7 @@ mod tests {
         let bundle = sample_bundle();
         engine
             .seed_from_bundle(&bundle, |key| {
-                (key == "xxhash.h").then(|| b"/* xxHash */".to_vec())
+                (key == "xxhash.h").then(|| SAMPLE_CONTENT.to_vec())
             })
             .unwrap();
 
@@ -258,9 +292,34 @@ mod tests {
             .resolve_pinned(&bundle.provenance, &["xxhash.h"])
             .unwrap();
         let r = &resolved["xxhash.h"];
-        assert_eq!(r.content, b"/* xxHash */");
-        assert_eq!(r.pin.blob, "blobxxh");
+        assert_eq!(r.content, SAMPLE_CONTENT);
+        assert_eq!(r.pin.blob, git_blob_sha1(SAMPLE_CONTENT));
         assert_eq!(r.pin.describe, "v0.8.2");
+    }
+
+    #[test]
+    fn corrupted_cached_blob_is_not_served() {
+        // Seed the cache with content that does NOT hash to the pin's blob
+        // SHA (simulating cache corruption).  Resolution must treat it as a
+        // miss and attempt a refetch — which fails here because the client
+        // points at an unroutable address — rather than silently serving the
+        // corrupt bytes.
+        let cache = Cache::from_connection(Connection::open_in_memory().unwrap()).unwrap();
+        let gh = Github::with_base_url("http://127.0.0.1:1").unwrap();
+        let engine = Engine::from_parts(gh, cache);
+
+        let bundle = sample_bundle();
+        engine
+            .seed_from_bundle(&bundle, |key| {
+                (key == "xxhash.h").then(|| b"CORRUPTED".to_vec())
+            })
+            .unwrap();
+
+        let err = engine.resolve_pinned(&bundle.provenance, &["xxhash.h"]);
+        assert!(
+            err.is_err(),
+            "corrupted cache content must not be served as verified"
+        );
     }
 
     #[test]
