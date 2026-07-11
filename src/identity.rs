@@ -162,18 +162,11 @@ pub enum Spec {
 }
 
 impl Spec {
-    pub fn from_name(name: &str) -> Option<Spec> {
-        Some(match name {
-            "gl" => Spec::Gl,
-            "egl" => Spec::Egl,
-            "glx" => Spec::Glx,
-            "wgl" => Spec::Wgl,
-            "vk" => Spec::Vk,
-            _ => return None,
-        })
-    }
+    // A Spec is only ever derived from a typed Api (Api::spec) or carried on
+    // RawSpec — there is deliberately no from-string constructor; spec names
+    // never arrive as untyped input.
 
-    /// Canonical spec name: file stems, registry lookups, `RawSpec.spec_name`.
+    /// Canonical spec name: file stems and registry lookups.
     pub fn as_str(self) -> &'static str {
         match self {
             Spec::Gl => "gl",
@@ -306,15 +299,6 @@ mod tests {
         assert_eq!(Spec::Glx.name_prefix(), "glX", "capital X matters");
         assert_eq!(Spec::Vk.pfn_prefix(), "PFN_");
         assert_eq!(Spec::Gl.pfn_prefix(), "PFNGL");
-    }
-
-    #[test]
-    fn spec_from_name_covers_all_and_rejects_unknown() {
-        for spec in [Spec::Gl, Spec::Egl, Spec::Glx, Spec::Wgl, Spec::Vk] {
-            assert_eq!(Spec::from_name(spec.as_str()), Some(spec));
-        }
-        assert_eq!(Spec::from_name("gles2"), None, "api name is not a spec");
-        assert_eq!(Spec::from_name("vulkan"), None, "xml name is not a spec");
     }
 
     #[test]
