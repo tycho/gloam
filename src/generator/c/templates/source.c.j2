@@ -274,7 +274,22 @@ static const GloamPfnRange_t kExtPfnRanges_{{ api }}[] = {
 {% endif -%}
 {#- ---- Extension enumeration and detection --------------------------------- -#}
 {% if fs.extensions | length > 0 and subset | length > 0 %}
-{%- if fs.spec_name in ["gl", "gles2", "glcore"] %}
+{%- if api == "gles1" %}
+/* GLES 1.x: only glGetString(GL_EXTENSIONS), space-separated. */
+static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint64_t **out_exts, uint32_t *out_num_exts)
+{
+    const char *ext_str;
+
+    if (!context->GetString)
+        return 0;
+
+    ext_str = (const char *)context->GetString(GL_EXTENSIONS);
+    if (!ext_str)
+        return 0;
+
+    return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
+}
+{% elif fs.spec_name == "gl" %}
 /* Query driver-reported extension names, hash them, and fill *out_exts.
  * Returns 1 on success, 0 on failure. Caller must free(*out_exts).
  */
@@ -317,21 +332,6 @@ static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') 
             return 0;
         return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
     }
-}
-{% elif fs.spec_name == "gles1" %}
-/* GLES 1.x: only glGetString(GL_EXTENSIONS), space-separated. */
-static int gloam_{{ fs.spec_name }}_get_extensions_{{ api }}({{ u.ctx_arg(', ') }}uint64_t **out_exts, uint32_t *out_num_exts)
-{
-    const char *ext_str;
-
-    if (!context->GetString)
-        return 0;
-
-    ext_str = (const char *)context->GetString(GL_EXTENSIONS);
-    if (!ext_str)
-        return 0;
-
-    return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
 }
 {% elif fs.spec_name == "egl" %}
 /* EGL: concatenate client extensions (EGL_NO_DISPLAY) and display

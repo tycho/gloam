@@ -155,6 +155,17 @@ fn golden_gl_core_full() {
 }
 
 #[test]
+fn golden_gles1() {
+    // GLES1 exercises the legacy-only (glGetString) extension-query branch.
+    check(
+        "gles1",
+        &["--api", "gles1", "--extensions", ""],
+        &["--loader"],
+        "gles1",
+    );
+}
+
+#[test]
 fn golden_merged_gl_gles2() {
     // The flagship production configuration: merged GL+GLES2 with all flags.
     check(
