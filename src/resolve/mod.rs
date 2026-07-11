@@ -177,13 +177,17 @@ fn resolve_feature_set(
 
     let mut commands: Vec<Command> = Vec::with_capacity(all_cmd_names.len());
     for (idx, &cmd_name) in all_cmd_names.iter().enumerate() {
-        let raw_cmd = match raw.commands.get(cmd_name) {
-            Some(c) => c,
-            None => {
-                eprintln!("warning: command '{}' required but not in spec", cmd_name);
-                continue;
-            }
-        };
+        // A required command missing from the spec is a hard error, not a
+        // warning: `Command.index` must equal its position in `commands`
+        // (pfnArray, the name blob, and the PFN range tables are all indexed
+        // in lockstep), so skipping an entry would silently desync every
+        // later command and corrupt the generated loader.
+        let raw_cmd = raw.commands.get(cmd_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "command '{cmd_name}' is required by the selected feature set \
+                 but is not defined in the spec"
+            )
+        })?;
         let scope = if spec.is_vulkan {
             infer_vulkan_scope(raw_cmd).c_name().to_string()
         } else {
@@ -199,6 +203,10 @@ fn resolve_feature_set(
             spec.name_prefix,
         ));
     }
+    debug_assert!(
+        commands.iter().enumerate().all(|(i, c)| c.index as usize == i),
+        "Command.index must equal its position in the commands vec"
+    );
 
     // -- Features -------------------------------------------------------
     let features: Vec<Feature> = selected_features
