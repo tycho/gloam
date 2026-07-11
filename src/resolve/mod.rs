@@ -33,7 +33,7 @@ use indexmap::IndexMap;
 use crate::cli::{ApiRequest, Cli};
 use crate::fetch;
 use crate::identity::Spec;
-use crate::ir::RawSpec;
+use crate::ir::{RawSpec, TypeCategory};
 use crate::parse;
 use crate::parse::commands::infer_vulkan_scope;
 
@@ -257,13 +257,7 @@ fn resolve_feature_set(
     }
 
     // -- Types ----------------------------------------------------------
-    let types = build_type_list(
-        raw,
-        &reqs.req_types,
-        spec_name,
-        spec.is_vulkan,
-        &selected_exts,
-    );
+    let types = build_type_list(raw, &reqs.req_types, spec_kind, &selected_exts);
 
     // -- Enums ----------------------------------------------------------
     let flat_enums = build_flat_enums(raw, &reqs.req_enums, spec.is_vulkan);
@@ -276,7 +270,7 @@ fn resolve_feature_set(
         Vec::new()
     };
 
-    let required_headers = collect_required_headers(raw, &reqs.req_types, spec_name);
+    let required_headers = collect_required_headers(raw, &reqs.req_types, spec_kind);
 
     // Contributing source provenance: the merged XML sources, plus the
     // auxiliary headers emitted into the output tree and xxhash.h (always used
@@ -296,7 +290,7 @@ fn resolve_feature_set(
     let include_type_groups = group_by_protection(
         types
             .iter()
-            .filter(|t| t.category == "include" && !t.raw_c.is_empty())
+            .filter(|t| t.category == TypeCategory::Include && !t.raw_c.is_empty())
             .cloned(),
         |t| t.protect.clone(),
     );
@@ -304,7 +298,7 @@ fn resolve_feature_set(
     let type_groups = group_by_protection(
         types
             .iter()
-            .filter(|t| t.category != "include" && !t.raw_c.is_empty())
+            .filter(|t| t.category != TypeCategory::Include && !t.raw_c.is_empty())
             .cloned(),
         |t| t.protect.clone(),
     );

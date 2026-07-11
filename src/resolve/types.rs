@@ -170,7 +170,8 @@ pub struct TypeDef {
     /// The canonical type name as declared in the spec.
     pub name: String,
     pub raw_c: String,
-    pub category: String,
+    /// Serialized as the XML category string (`"include"`, `"struct"`, ...).
+    pub category: crate::ir::TypeCategory,
     /// Platform protection macros.  Empty = unconditional.
     pub protect: Vec<String>,
 }

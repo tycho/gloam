@@ -163,11 +163,7 @@ impl RequirementCollector {
                 if t.raw_c.is_empty() {
                     continue;
                 }
-                let auto = matches!(
-                    t.category.as_str(),
-                    "define" | "basetype" | "bitmask" | "funcpointer" | "enum" | "handle"
-                );
-                if !auto && !self.req_types.contains(&t.name) {
+                if !t.category.is_vulkan_auto() && !self.req_types.contains(&t.name) {
                     continue;
                 }
                 for word in ident_words(&t.raw_c) {

@@ -46,6 +46,92 @@ impl std::fmt::Display for Version {
 // Types
 // ---------------------------------------------------------------------------
 
+/// Category of a `<type>` element.  The Khronos XML uses a closed set of
+/// category strings; a missing or unrecognized `category=` attribute maps to
+/// `None` (plain typedef text), which is treated identically everywhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeCategory {
+    Basetype,
+    Bitmask,
+    Define,
+    Enum,
+    Funcpointer,
+    Group,
+    Handle,
+    Include,
+    Struct,
+    Union,
+    None,
+}
+
+impl TypeCategory {
+    pub fn from_attr(attr: Option<&str>) -> TypeCategory {
+        match attr.unwrap_or("") {
+            "basetype" => TypeCategory::Basetype,
+            "bitmask" => TypeCategory::Bitmask,
+            "define" => TypeCategory::Define,
+            "enum" => TypeCategory::Enum,
+            "funcpointer" => TypeCategory::Funcpointer,
+            "group" => TypeCategory::Group,
+            "handle" => TypeCategory::Handle,
+            "include" => TypeCategory::Include,
+            "struct" => TypeCategory::Struct,
+            "union" => TypeCategory::Union,
+            // Absent or unrecognized: plain typedef text.  Unrecognized
+            // strings previously just never matched any comparison, which is
+            // exactly how `None` behaves.
+            _ => TypeCategory::None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TypeCategory::Basetype => "basetype",
+            TypeCategory::Bitmask => "bitmask",
+            TypeCategory::Define => "define",
+            TypeCategory::Enum => "enum",
+            TypeCategory::Funcpointer => "funcpointer",
+            TypeCategory::Group => "group",
+            TypeCategory::Handle => "handle",
+            TypeCategory::Include => "include",
+            TypeCategory::Struct => "struct",
+            TypeCategory::Union => "union",
+            TypeCategory::None => "",
+        }
+    }
+
+    /// Vulkan categories that are auto-included for the matching API even
+    /// when no `<require><type>` block lists them (VK_DEFINE_HANDLE, VkFlags,
+    /// VkBool32, funcpointers, ...).
+    pub fn is_vulkan_auto(self) -> bool {
+        matches!(
+            self,
+            TypeCategory::Define
+                | TypeCategory::Basetype
+                | TypeCategory::Bitmask
+                | TypeCategory::Funcpointer
+                | TypeCategory::Enum
+                | TypeCategory::Handle
+        )
+    }
+
+    /// Categories whose raw_c bodies are scanned for type-ordering
+    /// dependencies.  Other categories don't reference types in
+    /// ordering-relevant ways, and scanning them can create false cycle edges.
+    pub fn scans_for_deps(self) -> bool {
+        matches!(
+            self,
+            TypeCategory::Struct | TypeCategory::Union | TypeCategory::Funcpointer
+        )
+    }
+}
+
+impl serde::Serialize for TypeCategory {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
 /// A single `<type>` element from the XML, before any deduplication.
 /// Multiple variants of the same name (differing by `api=`) are kept as
 /// separate entries; the resolver picks the right one later.
@@ -53,9 +139,7 @@ impl std::fmt::Display for Version {
 pub struct RawType {
     pub name: String,
     pub api: Option<String>,
-    /// "basetype", "bitmask", "define", "enum", "funcpointer",
-    /// "group", "handle", "include", "struct", "union", or empty.
-    pub category: String,
+    pub category: TypeCategory,
     /// Name of another type this one depends on (from `requires=` attr).
     pub requires: Option<String>,
     /// If present, this type is an alias of another.

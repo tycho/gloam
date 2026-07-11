@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use anyhow::Result;
 
 use super::{SpecDocs, extract_raw_c};
-use crate::ir::RawType;
+use crate::ir::{RawType, TypeCategory};
 
 // GL pointer types that need the macOS ptrdiff_t guard (spec gotcha #7).
 const MACOS_PTRDIFF_TYPES: &[&str] = &["GLsizeiptr", "GLintptr", "GLsizeiptrARB", "GLintptrARB"];
@@ -55,7 +55,7 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawT
         }
 
         let api = node.attribute("api").map(str::to_string);
-        let category = node.attribute("category").unwrap_or("").to_string();
+        let category = TypeCategory::from_attr(node.attribute("category"));
         let requires = node.attribute("requires").map(str::to_string);
         let alias = node.attribute("alias").map(str::to_string);
         let protect = node.attribute("protect").map(str::to_string);
@@ -68,7 +68,7 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawT
         // For enum-category types, we emit nothing from this node directly —
         // the actual enum group is built in enums.rs.  We still record the
         // entry so the alias chain and bitwidth propagation can work.
-        let raw_c = if category == "include" {
+        let raw_c = if category == TypeCategory::Include {
             // Emit as a verbatim #include directive — roxmltree decodes XML
             // entities so &lt;X11/Xlib.h&gt; arrives as <X11/Xlib.h>.
             let text = extract_raw_c(*node).trim().to_string();
@@ -85,7 +85,7 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawT
             } else {
                 text
             }
-        } else if category == "enum" {
+        } else if category == TypeCategory::Enum {
             // Enum aliases (e.g. VkComponentTypeNV = VkComponentTypeKHR) need
             // a typedef emission.  Plain enum types have no direct C emission
             // — their values are handled by enum groups in enums.rs.
@@ -105,7 +105,7 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawT
             } else {
                 String::new()
             }
-        } else if category == "struct" || category == "union" {
+        } else if matches!(category, TypeCategory::Struct | TypeCategory::Union) {
             if alias.is_some() {
                 // Alias: `typedef AliasedName NewName` (semicolon added by
                 // normalize_raw_c in the resolver).
@@ -114,9 +114,9 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawT
                 // Build a proper `typedef struct Name { ... } Name` from the
                 // <member> children.  extract_raw_c_inner would concatenate all
                 // member text as a flat blob, producing incorrect output.
-                extract_struct_c(*node, &name, &category)
+                extract_struct_c(*node, &name, category)
             }
-        } else if category == "funcpointer" {
+        } else if category == TypeCategory::Funcpointer {
             // Vulkan funcpointers come in two XML formats:
             //
             // Old (inline text): `typedef void* (VKAPI_PTR *NAME)(params...);`
@@ -225,8 +225,8 @@ fn propagate_bitwidth(types: &mut [RawType]) {
 /// `extract_raw_c_inner` is not usable here because it would concatenate
 /// all `<member>` sub-element text into a single flat string with no
 /// separators, losing the per-member line boundaries.
-fn extract_struct_c(node: roxmltree::Node<'_, '_>, name: &str, category: &str) -> String {
-    let kw = if category == "union" {
+fn extract_struct_c(node: roxmltree::Node<'_, '_>, name: &str, category: TypeCategory) -> String {
+    let kw = if category == TypeCategory::Union {
         "union"
     } else {
         "struct"

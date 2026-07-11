@@ -8,7 +8,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use indexmap::IndexMap;
 
-use crate::ir::RawSpec;
+use crate::identity::Spec;
+use crate::ir::{RawSpec, TypeCategory};
 use crate::parse::types::ident_words;
 
 use super::protect::{Protection, is_gl_auto_excluded};
@@ -22,8 +23,7 @@ use super::types::TypeDef;
 pub(super) fn build_type_list(
     raw: &RawSpec,
     req_types: &HashSet<String>,
-    spec_name: &str,
-    is_vulkan: bool,
+    spec: Spec,
     selected_exts: &[SelectedExt<'_>],
 ) -> Vec<TypeDef> {
     // Always infer include protections — Vulkan needs it for WSI headers,
@@ -37,22 +37,18 @@ pub(super) fn build_type_list(
         .types
         .iter()
         .filter(|t| {
-            // Empty raw_c → nothing to emit.
+            // Empty raw_c → nothing to emit.  This also drops plain
+            // enum-category types (their values are emitted via enum groups);
+            // alias-only enum types (e.g. VkComponentTypeNV =
+            // VkComponentTypeKHR) carry a typedef in raw_c and pass through.
             if t.raw_c.is_empty() {
-                return false;
-            }
-            // Enum-category types: plain enums have no direct C emission
-            // (their values are emitted via enum groups).  Alias-only enum
-            // types (e.g. VkComponentTypeNV = VkComponentTypeKHR) DO need a
-            // typedef emission and must pass through the filter.
-            if t.category == "enum" && t.raw_c.is_empty() {
                 return false;
             }
             // Include-category types: emit only for system/WSI headers where
             // infer_include_protections decided they're needed.  Bundled headers
             // (vk_platform, vk_video/*, etc.) are already emitted by the
             // required_headers template loop and must not appear here too.
-            if t.category == "include" {
+            if t.category == TypeCategory::Include {
                 if is_bundled_include_type(&t.name) {
                     return false;
                 }
@@ -61,12 +57,8 @@ pub(super) fn build_type_list(
             // `define` and `basetype` types (VK_DEFINE_HANDLE, VkFlags,
             // VkBool32, etc.) are not listed in any <require> block but must
             // always be emitted for the matching API, like GL auto-includes.
-            if is_vulkan {
-                let auto = matches!(
-                    t.category.as_str(),
-                    "define" | "basetype" | "bitmask" | "funcpointer" | "enum" | "handle"
-                );
-                if auto {
+            if spec.is_vulkan() {
+                if t.category.is_vulkan_auto() {
                     return t
                         .api
                         .as_deref()
@@ -79,12 +71,12 @@ pub(super) fn build_type_list(
             if is_gl_auto_excluded(&t.name) {
                 return false;
             }
-            req_types.contains(&t.name) || t.api.as_deref().is_none_or(|a| a == spec_name)
+            req_types.contains(&t.name) || t.api.as_deref().is_none_or(|a| a == spec.as_str())
         })
         .map(|t| {
             // For include-category types, use the inferred protection list.
             // For all others, use the type's own protect attribute.
-            let protect = if t.category == "include" {
+            let protect = if t.category == TypeCategory::Include {
                 include_protections
                     .get(&t.name)
                     .cloned()
@@ -101,7 +93,7 @@ pub(super) fn build_type_list(
             TypeDef {
                 name: t.name.clone(),
                 raw_c: normalize_raw_c(&t.raw_c),
-                category: t.category.clone(),
+                category: t.category,
                 protect,
             }
         })
@@ -134,14 +126,12 @@ fn topo_sort_typedefs(types: Vec<TypeDef>) -> Vec<TypeDef> {
         name_to_idx.insert(t.name.as_str(), i);
     }
 
-    let scan_cats: &[&str] = &["struct", "union", "funcpointer"];
-
     let deps: Vec<Vec<usize>> = types
         .iter()
         .enumerate()
         .map(|(i, t)| {
             let mut d: Vec<usize> = Vec::new();
-            if scan_cats.contains(&t.category.as_str()) {
+            if t.category.scans_for_deps() {
                 for word in ident_words(&t.raw_c) {
                     if word == t.name.as_str() {
                         continue;
@@ -299,13 +289,13 @@ fn infer_include_protections(
     let include_names: HashSet<&str> = raw
         .types
         .iter()
-        .filter(|t| t.category == "include")
+        .filter(|t| t.category == TypeCategory::Include)
         .map(|t| t.name.as_str())
         .collect();
 
     let mut include_to_deps: HashMap<&str, HashSet<&str>> = HashMap::new();
     for t in &raw.types {
-        if t.category == "include" {
+        if t.category == TypeCategory::Include {
             continue;
         }
         if let Some(ref req) = t.requires
@@ -355,7 +345,7 @@ fn infer_include_protections(
     // Source (b): scan raw_c of every type that has a known protection.
     let mut type_own_protect: HashMap<&str, Protection> = HashMap::new();
     for t in &raw.types {
-        if t.category == "include" || t.raw_c.is_empty() {
+        if t.category == TypeCategory::Include || t.raw_c.is_empty() {
             continue;
         }
         if let Some(ref p) = t.protect {
@@ -381,7 +371,7 @@ fn infer_include_protections(
     }
 
     for t in &raw.types {
-        if t.raw_c.is_empty() || t.category == "include" {
+        if t.raw_c.is_empty() || t.category == TypeCategory::Include {
             continue;
         }
         let struct_protect = match type_own_protect.get(t.name.as_str()) {
@@ -439,16 +429,17 @@ fn infer_include_protections(
 pub(super) fn collect_required_headers(
     raw: &RawSpec,
     req_types: &HashSet<String>,
-    spec_name: &str,
+    spec: Spec,
 ) -> Vec<String> {
     let mut headers: IndexMap<String, ()> = IndexMap::new();
 
     for t in &raw.types {
-        let selected = if spec_name == "vk" {
+        let selected = if spec.is_vulkan() {
             req_types.contains(&t.name)
         } else {
             !is_gl_auto_excluded(&t.name)
-                && (req_types.contains(&t.name) || t.api.as_deref().is_none_or(|a| a == spec_name))
+                && (req_types.contains(&t.name)
+                    || t.api.as_deref().is_none_or(|a| a == spec.as_str()))
         };
         if !selected {
             continue;
@@ -461,30 +452,25 @@ pub(super) fn collect_required_headers(
         }
     }
 
-    if spec_name == "vk" {
+    if spec.is_vulkan() {
         headers.insert("vulkan/vk_platform.h".to_string(), ());
 
         let vk_video_includes: HashSet<&str> = raw
             .types
             .iter()
-            .filter(|t| t.category == "include" && t.name.starts_with("vk_video/"))
+            .filter(|t| t.category == TypeCategory::Include && t.name.starts_with("vk_video/"))
             .map(|t| t.name.as_str())
             .collect();
 
         for t in &raw.types {
-            if t.category == "include" {
+            if t.category == TypeCategory::Include {
                 continue;
             }
             if let Some(ref req) = t.requires
                 && vk_video_includes.contains(req.as_str())
+                && (t.category.is_vulkan_auto() || req_types.contains(&t.name))
             {
-                let auto = matches!(
-                    t.category.as_str(),
-                    "define" | "basetype" | "bitmask" | "funcpointer" | "enum" | "handle"
-                );
-                if auto || req_types.contains(&t.name) {
-                    headers.insert(req.clone(), ());
-                }
+                headers.insert(req.clone(), ());
             }
         }
     }
@@ -530,13 +516,13 @@ mod tests {
             TypeDef {
                 name: "B".to_string(),
                 raw_c: "typedef struct { A member; } B;".to_string(),
-                category: "struct".to_string(),
+                category: TypeCategory::Struct,
                 protect: vec![],
             },
             TypeDef {
                 name: "A".to_string(),
                 raw_c: "typedef struct { int x; } A;".to_string(),
-                category: "struct".to_string(),
+                category: TypeCategory::Struct,
                 protect: vec![],
             },
         ];
@@ -552,13 +538,13 @@ mod tests {
             TypeDef {
                 name: "A".to_string(),
                 raw_c: "typedef struct { B* ptr; } A;".to_string(),
-                category: "struct".to_string(),
+                category: TypeCategory::Struct,
                 protect: vec![],
             },
             TypeDef {
                 name: "B".to_string(),
                 raw_c: "typedef struct { A* ptr; } B;".to_string(),
-                category: "struct".to_string(),
+                category: TypeCategory::Struct,
                 protect: vec![],
             },
         ];
@@ -574,13 +560,13 @@ mod tests {
             TypeDef {
                 name: "D".to_string(),
                 raw_c: "#define D C".to_string(),
-                category: "define".to_string(),
+                category: TypeCategory::Define,
                 protect: vec![],
             },
             TypeDef {
                 name: "C".to_string(),
                 raw_c: "typedef int C;".to_string(),
-                category: "basetype".to_string(),
+                category: TypeCategory::Basetype,
                 protect: vec![],
             },
         ];
