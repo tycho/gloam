@@ -1,6 +1,6 @@
 # Provenance & manifest — producer internals
 
-> **Status:** design spec, not yet implemented. This is the maintainer-facing
+> **Status:** implemented. This is the maintainer-facing
 > companion to [manifest.md](manifest.md) (the consumer guide). It records the
 > design decisions and invariants for *producing* provenance, the cache, the
 > embedded bundle, and the generated headers.

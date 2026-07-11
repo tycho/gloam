@@ -65,12 +65,24 @@ fn run() -> Result<()> {
     };
 
     // A --lock manifest pins upstream sources to recorded provenance.  Only its
-    // `provenance` section is used; everything else is regenerated.
+    // `provenance` section is used; everything else is regenerated.  Unlike the
+    // best-effort implicit baseline (`read_snapshot`), --lock is a contract, so
+    // an unknown schema version is refused rather than reinterpreted.
     let lock_pins: Option<IndexMap<String, ProvenancePin>> = match &cli.lock {
         Some(path) => {
             let text = std::fs::read_to_string(path)
                 .with_context(|| format!("reading --lock manifest {}", path.display()))?;
-            Some(Manifest::from_json(&text)?.provenance)
+            let m = Manifest::from_json(&text)?;
+            if m.schema_version != SCHEMA_VERSION {
+                anyhow::bail!(
+                    "--lock manifest {} has schema_version {}, but this gloam \
+                     understands {}",
+                    path.display(),
+                    m.schema_version,
+                    SCHEMA_VERSION
+                );
+            }
+            Some(m.provenance)
         }
         None => None,
     };

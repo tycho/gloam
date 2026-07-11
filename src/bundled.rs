@@ -69,9 +69,22 @@ pub const VK_VIDEO_VP9STD_DECODE_H: &str =
 /// from.  Populated by `cargo xtask bundle`.
 pub const PROVENANCE_JSON: &str = include_str!("../bundled/provenance.json");
 
-/// Parse the embedded `bundled/provenance.json`.
+/// Parse the embedded `bundled/provenance.json`, rejecting a schema version
+/// this gloam build does not understand (an internal invariant: the bundler
+/// and the binary are built from the same tree, so a mismatch means the
+/// checked-in manifest was written by an incompatible tool).
 pub fn bundled_provenance() -> Result<BundledProvenance> {
-    BundledProvenance::from_json(PROVENANCE_JSON).context("parsing bundled/provenance.json")
+    let p = BundledProvenance::from_json(PROVENANCE_JSON)
+        .context("parsing bundled/provenance.json")?;
+    if p.schema_version != crate::provenance::manifest::SCHEMA_VERSION {
+        anyhow::bail!(
+            "bundled/provenance.json has schema_version {}, but this gloam build \
+             understands {} — re-run `cargo xtask bundle`",
+            p.schema_version,
+            crate::provenance::manifest::SCHEMA_VERSION
+        );
+    }
+    Ok(p)
 }
 
 /// Map a provenance registry key to its embedded file content, or `None` when

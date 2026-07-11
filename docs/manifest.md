@@ -1,7 +1,7 @@
 # gloam manifest & provenance — consumer guide
 
-> **Status:** design spec, not yet implemented. This document describes the
-> intended format and behavior. See [provenance-internals.md](provenance-internals.md)
+> **Status:** implemented. This document describes the manifest format and
+> behavior. See [provenance-internals.md](provenance-internals.md)
 > for the producer-side design.
 
 Every time gloam generates a loader it records exactly what went into the
