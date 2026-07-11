@@ -302,8 +302,8 @@ pub struct RawExtension {
 /// before any feature-set resolution or indexing.
 #[derive(Debug)]
 pub struct RawSpec {
-    /// The canonical spec name: "gl", "egl", "glx", "wgl", "vk".
-    pub spec_name: String,
+    /// The spec family this was parsed from.
+    pub spec: crate::identity::Spec,
 
     /// Vulkan platform registry: platform name → protect macro.
     /// e.g. "xlib" → "VK_USE_PLATFORM_XLIB_KHR".

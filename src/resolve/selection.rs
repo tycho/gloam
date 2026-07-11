@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::cli::{ApiRequest, ExtensionFilter};
-use crate::identity::{Api, canonical_api_name};
+use crate::identity::{Api, Spec, canonical_api_name};
 use crate::ir::RawSpec;
 
 use super::spec_info::{ResolveConfig, build_api_set};
@@ -80,7 +80,7 @@ pub(super) fn select_extensions<'a>(
     raw: &'a RawSpec,
     requests: &[ApiRequest],
     config: &ResolveConfig<'_>,
-    spec_name: &str,
+    spec: Spec,
     per_api_core_cmds: &HashMap<String, HashSet<String>>,
 ) -> ExtensionSelection<'a> {
     let filter = config.ext_filter;
@@ -91,7 +91,7 @@ pub(super) fn select_extensions<'a>(
     let api_set = build_api_set(requests);
 
     // WGL mandatory extensions (spec gotcha #9).
-    let wgl_mandatory: HashSet<&str> = if spec_name == "wgl" {
+    let wgl_mandatory: HashSet<&str> = if spec == Spec::Wgl {
         ["WGL_ARB_extensions_string", "WGL_EXT_extensions_string"]
             .iter()
             .copied()

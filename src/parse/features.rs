@@ -1,9 +1,11 @@
 //! Parsing of `<feature>` and `<extension>` elements.
 
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow};
 use indexmap::IndexMap;
 
 use super::SpecDocs;
+use crate::diag::Diag;
+use crate::identity::Spec;
 use crate::ir::{RawExtension, RawFeature, Remove, Require};
 
 // GLX extensions with unresolvable type dependencies (spec gotcha #8).
@@ -19,11 +21,12 @@ const WGL_MANDATORY_EXTENSIONS: &[&str] =
 
 pub fn parse_features_extensions(
     docs: &SpecDocs<'_, '_>,
-    spec_name: &str,
+    spec: Spec,
     platforms: &IndexMap<String, String>,
+    diag: Diag,
 ) -> Result<(Vec<RawFeature>, Vec<RawExtension>)> {
-    let features = parse_features(docs, spec_name)?;
-    let extensions = parse_extensions(docs, spec_name, platforms)?;
+    let features = parse_features(docs)?;
+    let extensions = parse_extensions(docs, spec, platforms, diag)?;
     Ok((features, extensions))
 }
 
@@ -31,7 +34,32 @@ pub fn parse_features_extensions(
 // Features
 // ---------------------------------------------------------------------------
 
-fn parse_features(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawFeature>> {
+/// Extract the identifying attributes of a `<feature>` element, erroring on
+/// structural damage.  Features are the API-level skeleton of the spec:
+/// silently dropping one (as a `continue` here used to) yields a loader that
+/// quietly lacks an entire API version — the worst possible failure mode —
+/// so a malformed feature is a hard error, not a skip.
+fn feature_identity(node: roxmltree::Node<'_, '_>) -> Result<(String, String, crate::ir::Version)> {
+    let name = node
+        .attribute("name")
+        .map(str::to_string)
+        .unwrap_or_else(|| "<unnamed>".to_string());
+    let api_raw = node
+        .attribute("api")
+        .ok_or_else(|| anyhow!("<feature> '{name}' has no api attribute"))?
+        .to_string();
+    let version_str = node
+        .attribute("number")
+        .ok_or_else(|| anyhow!("<feature> '{name}' has no number attribute"))?;
+    let version = super::parse_version(version_str)
+        .with_context(|| format!("<feature> '{name}' has a malformed number attribute"))?;
+    if name == "<unnamed>" {
+        anyhow::bail!("<feature> (api={api_raw}, number={version_str}) has no name attribute");
+    }
+    Ok((name, api_raw, version))
+}
+
+fn parse_features(docs: &SpecDocs<'_, '_>) -> Result<Vec<RawFeature>> {
     let mut features: Vec<RawFeature> = Vec::new();
 
     // --- Pass 1: collect all public (non-internal) features ---
@@ -42,22 +70,7 @@ fn parse_features(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawFe
             continue;
         }
 
-        let name = match node.attribute("name") {
-            Some(n) => n.to_string(),
-            None => continue,
-        };
-        let api_raw = match node.attribute("api") {
-            Some(a) => a,
-            None => continue,
-        };
-        let version_str = match node.attribute("number") {
-            Some(v) => v,
-            None => continue,
-        };
-        let version = match super::parse_version(version_str) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
+        let (name, api_raw, version) = feature_identity(node)?;
 
         let requires = node
             .children()
@@ -98,18 +111,7 @@ fn parse_features(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawFe
             continue;
         }
 
-        let api_raw = match node.attribute("api") {
-            Some(a) => a,
-            None => continue,
-        };
-        let version_str = match node.attribute("number") {
-            Some(v) => v,
-            None => continue,
-        };
-        let version = match super::parse_version(version_str) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
+        let (_name, api_raw, version) = feature_identity(node)?;
 
         let extra_requires: Vec<_> = node
             .children()
@@ -141,8 +143,9 @@ fn parse_features(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawFe
 
 fn parse_extensions(
     docs: &SpecDocs<'_, '_>,
-    spec_name: &str,
+    spec: Spec,
     platforms: &IndexMap<String, String>,
+    diag: Diag,
 ) -> Result<Vec<RawExtension>> {
     let mut extensions: Vec<RawExtension> = Vec::new();
     let mut seen_names = std::collections::HashSet::new();
@@ -152,14 +155,14 @@ fn parse_extensions(
             continue;
         }
 
-        let name = match node.attribute("name") {
-            Some(n) => n.to_string(),
-            None => continue,
+        let Some(name) = node.attribute("name").map(str::to_string) else {
+            diag.warn("<extension> with no name attribute, skipping");
+            continue;
         };
 
-        // Spec gotcha #8: silently drop broken GLX extensions.
-        if spec_name == "glx" && BROKEN_GLX_EXTENSIONS.contains(&name.as_str()) {
-            eprintln!("warning: dropping broken GLX extension '{}'", name);
+        // Spec gotcha #8: silently drop broken GLX extensions (they have
+        // unresolvable type dependencies and are known-dead upstream).
+        if spec == Spec::Glx && BROKEN_GLX_EXTENSIONS.contains(&name.as_str()) {
             continue;
         }
 
@@ -226,13 +229,12 @@ fn parse_extensions(
     }
 
     // Spec gotcha #9: WGL mandatory extensions.
-    if spec_name == "wgl" {
+    if spec == Spec::Wgl {
         for &mandatory in WGL_MANDATORY_EXTENSIONS {
             if !extensions.iter().any(|e| e.name == mandatory) {
-                eprintln!(
-                    "warning: WGL mandatory extension '{}'  not found in spec",
-                    mandatory
-                );
+                diag.warn(format!(
+                    "WGL mandatory extension '{mandatory}' not found in spec"
+                ));
             }
         }
     }

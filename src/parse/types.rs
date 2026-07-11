@@ -3,15 +3,34 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use anyhow::Result;
-
 use super::{SpecDocs, extract_raw_c};
+use crate::diag::Diag;
 use crate::ir::{RawType, TypeCategory};
 
 // GL pointer types that need the macOS ptrdiff_t guard (spec gotcha #7).
 const MACOS_PTRDIFF_TYPES: &[&str] = &["GLsizeiptr", "GLintptr", "GLsizeiptrARB", "GLintptrARB"];
 
-pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawType>> {
+/// Determine a `<type>` element's name: prefer the `name=` attribute, then a
+/// direct `<name>` child, then `<proto><name>` for the structured funcpointer
+/// format where the name lives inside `<proto>` rather than at top level.
+fn type_name(node: roxmltree::Node<'_, '_>) -> Option<String> {
+    if let Some(n) = node.attribute("name") {
+        return Some(n.to_string());
+    }
+    if let Some(name_elem) = node
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "name")
+    {
+        return Some(name_elem.text().unwrap_or("").to_string());
+    }
+    node.children()
+        .find(|n| n.is_element() && n.tag_name().name() == "proto")?
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "name")
+        .map(|n| n.text().unwrap_or("").to_string())
+}
+
+pub fn parse_types(docs: &SpecDocs<'_, '_>, diag: Diag) -> Vec<RawType> {
     let type_nodes = docs.section_children("types");
 
     // Collect all RawType entries.  Multiple entries can share a name (api variants).
@@ -22,37 +41,13 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawT
             continue;
         }
 
-        // Determine the name: prefer `name=` attribute, then direct <n>
-        // child, then <proto><n> for the structured funcpointer format
-        // where the name lives inside <proto> rather than at top level.
-        let name = if let Some(n) = node.attribute("name") {
-            n.to_string()
-        } else if let Some(name_elem) = node
-            .children()
-            .find(|n| n.is_element() && n.tag_name().name() == "name")
-        {
-            name_elem.text().unwrap_or("").to_string()
-        } else if let Some(proto) = node
-            .children()
-            .find(|n| n.is_element() && n.tag_name().name() == "proto")
-        {
-            if let Some(name_elem) = proto
-                .children()
-                .find(|n| n.is_element() && n.tag_name().name() == "name")
-            {
-                name_elem.text().unwrap_or("").to_string()
-            } else {
-                eprintln!("warning: <type> with no discernible name, skipping");
-                continue;
-            }
-        } else {
-            eprintln!("warning: <type> with no discernible name, skipping");
+        // An unnameable <type> is warn-and-skip, not an error: it may belong
+        // to content the build never selects, and if something selected does
+        // depend on it, resolution fails loudly on the missing type.
+        let Some(name) = type_name(*node).filter(|n| !n.is_empty()) else {
+            diag.warn("<type> with no discernible name, skipping");
             continue;
         };
-
-        if name.is_empty() {
-            continue;
-        }
 
         let api = node.attribute("api").map(str::to_string);
         let category = TypeCategory::from_attr(node.attribute("category"));
@@ -172,9 +167,7 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, _spec_name: &str) -> Result<Vec<RawT
     propagate_bitwidth(&mut raw);
 
     // Topological sort by dependency order (spec gotcha #2).
-    let sorted = topological_sort(raw);
-
-    Ok(sorted)
+    topological_sort(raw)
 }
 
 // ---------------------------------------------------------------------------

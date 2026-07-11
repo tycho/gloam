@@ -8,6 +8,7 @@
 mod build_info;
 mod bundled;
 mod cli;
+mod diag;
 mod fetch;
 mod generator;
 mod identity;
@@ -92,16 +93,16 @@ fn run() -> Result<()> {
         lock: lock_pins.as_ref(),
     };
 
+    let diag = diag::Diag::new(cli.quiet);
+
     // `gloam lock`: write a provenance-only snapshot, no loader generation.
     if let Generator::Lock(lock_args) = &cli.generator {
-        return write_lock_snapshot(&ctx, &command_line, lock_args, cli.quiet);
+        return write_lock_snapshot(&ctx, &command_line, lock_args, diag);
     }
 
-    if !cli.quiet {
-        eprintln!("gloam: resolving feature sets...");
-    }
+    diag.info("resolving feature sets...");
 
-    let feature_sets = resolve::build_feature_sets(&cli, &ctx)?;
+    let feature_sets = resolve::build_feature_sets(&cli, &ctx, diag)?;
 
     let out = std::path::Path::new(&cli.out_path);
     std::fs::create_dir_all(out)?;
@@ -120,7 +121,7 @@ fn run() -> Result<()> {
             c_args.external_headers,
             out,
             &ctx,
-            cli.quiet,
+            diag,
         )?),
         _ => None,
     };
@@ -136,9 +137,7 @@ fn run() -> Result<()> {
 
     match &cli.generator {
         Generator::C(c_args) => {
-            if !cli.quiet {
-                eprintln!("gloam: generating C loader...");
-            }
+            diag.info("generating C loader...");
             for fs in &feature_sets {
                 let tree = generator::c::generate(fs, c_args, out, &gen_ctx, &command_line)?;
                 pins.extend(tree.pins);
@@ -152,9 +151,7 @@ fn run() -> Result<()> {
 
     write_manifest(out, &command_line, pins, files)?;
 
-    if !cli.quiet {
-        eprintln!("gloam: done.");
-    }
+    diag.info("done.");
 
     Ok(())
 }
@@ -175,11 +172,9 @@ fn write_lock_snapshot(
     ctx: &provenance::load::LoadCtx,
     command_line: &str,
     args: &cli::LockArgs,
-    quiet: bool,
+    diag: diag::Diag,
 ) -> Result<()> {
-    if !quiet {
-        eprintln!("gloam: snapshotting provenance...");
-    }
+    diag.info("snapshotting provenance...");
     let keys = provenance::all_keys();
     let mut pins: IndexMap<String, ProvenancePin> = provenance::load::resolve(&keys, ctx)?
         .into_iter()
@@ -195,11 +190,8 @@ fn write_lock_snapshot(
     // regenerated from it — byte-identical.  Deleting the file forces a full
     // re-snapshot.
     if let Some(prev) = read_snapshot(path) {
-        let kept = provenance::manifest::preserve_unchanged_repos(&mut pins, &prev.provenance);
-        if !quiet {
-            for repo in &kept {
-                eprintln!("gloam: {repo}: pinned content unchanged, keeping previous commit");
-            }
+        for repo in provenance::manifest::preserve_unchanged_repos(&mut pins, &prev.provenance) {
+            diag.info(format!("{repo}: pinned content unchanged, keeping previous commit"));
         }
     }
 
@@ -214,9 +206,7 @@ fn write_lock_snapshot(
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, manifest.to_json_pretty() + "\n")?;
-    if !quiet {
-        eprintln!("gloam: wrote {}", path.display());
-    }
+    diag.info(format!("wrote {}", path.display()));
     Ok(())
 }
 
@@ -232,7 +222,7 @@ fn implicit_lock_pins(
     external_headers: bool,
     out: &std::path::Path,
     ctx: &provenance::load::LoadCtx,
-    quiet: bool,
+    diag: diag::Diag,
 ) -> Result<IndexMap<String, ProvenancePin>> {
     let mut keys: Vec<String> = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -252,11 +242,8 @@ fn implicit_lock_pins(
         .collect();
 
     if let Some(prev) = read_snapshot(&out.join(".gloam").join("manifest.json")) {
-        let kept = provenance::manifest::preserve_unchanged_repos(&mut pins, &prev.provenance);
-        if !quiet {
-            for repo in &kept {
-                eprintln!("gloam: {repo}: pinned content unchanged, keeping previous commit");
-            }
+        for repo in provenance::manifest::preserve_unchanged_repos(&mut pins, &prev.provenance) {
+            diag.info(format!("{repo}: pinned content unchanged, keeping previous commit"));
         }
     }
     Ok(pins)

@@ -5,6 +5,7 @@ use anyhow::Result;
 use indexmap::IndexMap;
 
 use super::{SpecDocs, compute_ext_enum_value};
+use crate::identity::Spec;
 use crate::ir::{RawEnum, RawEnumGroup};
 
 // ---------------------------------------------------------------------------
@@ -13,9 +14,9 @@ use crate::ir::{RawEnum, RawEnumGroup};
 
 pub fn parse_enums(
     docs: &SpecDocs<'_, '_>,
-    spec_name: &str,
+    spec: Spec,
 ) -> Result<(Vec<RawEnumGroup>, IndexMap<String, RawEnum>)> {
-    let is_vulkan = spec_name == "vk";
+    let is_vulkan = spec.is_vulkan();
 
     let mut enum_groups: Vec<RawEnumGroup> = Vec::new();
     let mut flat_enums: IndexMap<String, RawEnum> = IndexMap::new();

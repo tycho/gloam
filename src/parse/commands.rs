@@ -2,10 +2,10 @@
 //! alias-chain prototype fixup (spec gotcha #1) and Vulkan scope inference
 //! (spec gotcha #12).
 
-use anyhow::Result;
 use indexmap::IndexMap;
 
 use super::SpecDocs;
+use crate::diag::Diag;
 use crate::ir::{CommandScope, RawCommand, RawParam};
 
 // Vulkan dispatchable handle types for scope inference.
@@ -16,10 +16,7 @@ const DEVICE_HANDLES: &[&str] = &["VkDevice", "VkQueue", "VkCommandBuffer"];
 // Public entry point
 // ---------------------------------------------------------------------------
 
-pub fn parse_commands(
-    docs: &SpecDocs<'_, '_>,
-    _spec_name: &str,
-) -> Result<IndexMap<String, RawCommand>> {
+pub fn parse_commands(docs: &SpecDocs<'_, '_>, diag: Diag) -> IndexMap<String, RawCommand> {
     // First pass: parse all command elements, keeping unresolved aliases.
     // We store (name → RawCommand) but alias commands may still be missing
     // proto/params.
@@ -29,15 +26,15 @@ pub fn parse_commands(
         if node.tag_name().name() != "command" {
             continue;
         }
-        parse_command_node(node, &mut commands)?;
+        parse_command_node(node, &mut commands, diag);
     }
 
     // Second pass: fix up alias prototype chains (spec gotcha #1).
     // Walk chains until we find a command with a populated return_type, then
     // deep-copy that prototype/params onto the alias command.
-    alias_fixup(&mut commands);
+    alias_fixup(&mut commands, diag);
 
-    Ok(commands)
+    commands
 }
 
 // ---------------------------------------------------------------------------
@@ -47,7 +44,8 @@ pub fn parse_commands(
 fn parse_command_node(
     node: roxmltree::Node<'_, '_>,
     commands: &mut IndexMap<String, RawCommand>,
-) -> Result<()> {
+    diag: Diag,
+) {
     // Command-level alias: either an `alias=` attribute (Vulkan form) or a
     // child `<alias name="..."/>` element (GL form).  Check both.
     let cmd_alias = node.attribute("alias").map(str::to_string).or_else(|| {
@@ -86,10 +84,12 @@ fn parse_command_node(
         };
         commands.entry(name).or_insert(cmd);
     } else {
-        // Alias-only command: get name from `name=` attribute.
-        let name = match node.attribute("name") {
-            Some(n) => n.to_string(),
-            None => return Ok(()), // malformed, skip
+        // Alias-only command: get name from `name=` attribute.  Warn-and-skip
+        // on a missing name (see the malformed-input policy in `crate::diag`):
+        // if the command mattered, resolution errors on it by name.
+        let Some(name) = node.attribute("name").map(str::to_string) else {
+            diag.warn("<command> with no prototype and no name attribute, skipping");
+            return;
         };
         let cmd = RawCommand {
             name: name.clone(),
@@ -100,8 +100,6 @@ fn parse_command_node(
         };
         commands.entry(name).or_insert(cmd);
     }
-
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +213,7 @@ fn extract_base_type(raw: &str) -> String {
 // Alias fixup (spec gotcha #1)
 // ---------------------------------------------------------------------------
 
-fn alias_fixup(commands: &mut IndexMap<String, RawCommand>) {
+fn alias_fixup(commands: &mut IndexMap<String, RawCommand>, diag: Diag) {
     // Collect the names of commands that need fixup.
     let aliases_needing_fixup: Vec<String> = commands
         .values()
@@ -231,10 +229,12 @@ fn alias_fixup(commands: &mut IndexMap<String, RawCommand>) {
                 cmd.params = params;
             }
         } else {
-            eprintln!(
-                "warning: could not resolve alias chain for command '{}'",
-                name
-            );
+            // Leave the command prototype-less; if a build selects it, the
+            // resolver rejects it there.  It may belong to content this
+            // build never touches.
+            diag.warn(format!(
+                "could not resolve alias chain for command '{name}'"
+            ));
         }
     }
 }

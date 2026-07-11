@@ -55,6 +55,7 @@ use typedefs::{build_type_list, collect_required_headers};
 pub fn build_feature_sets(
     cli: &Cli,
     ctx: &crate::provenance::load::LoadCtx,
+    diag: crate::diag::Diag,
 ) -> Result<Vec<FeatureSet>> {
     let requests = cli.api_requests()?;
     let ext_filter = cli.extension_filter()?;
@@ -77,7 +78,7 @@ pub fn build_feature_sets(
         for (spec, reqs) in &by_spec {
             let apis: Vec<&str> = reqs.iter().map(|r| r.api.as_str()).collect();
             let sources = fetch::load_spec(spec.as_str(), &apis, ctx)?;
-            let raw = parse::parse(&sources, spec.as_str())?;
+            let raw = parse::parse(&sources, *spec, diag)?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,
                 baseline: &baseline,
@@ -94,7 +95,7 @@ pub fn build_feature_sets(
             let spec = req.spec();
             let apis = [req.api.as_str()];
             let sources = fetch::load_spec(spec.as_str(), &apis, ctx)?;
-            let raw = parse::parse(&sources, spec.as_str())?;
+            let raw = parse::parse(&sources, spec, diag)?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,
                 baseline: &baseline,
@@ -126,9 +127,7 @@ fn resolve_feature_set(
     config: &ResolveConfig<'_>,
     xml_source_keys: &[String],
 ) -> Result<FeatureSet> {
-    let spec_name = &raw.spec_name;
-    let spec_kind = Spec::from_name(spec_name)
-        .ok_or_else(|| anyhow::anyhow!("unknown spec family '{spec_name}'"))?;
+    let spec_kind = raw.spec;
     let spec = SpecInfo::new(spec_kind);
     let api_names = request_api_names(requests);
 
@@ -140,7 +139,7 @@ fn resolve_feature_set(
     let mut reqs = RequirementCollector::new();
     reqs.collect_from_features(&selected_features, requests);
 
-    let ext_sel = select_extensions(raw, requests, config, spec_name, &reqs.per_api_core_cmds);
+    let ext_sel = select_extensions(raw, requests, config, spec_kind, &reqs.per_api_core_cmds);
     let ExtensionSelection {
         selected: selected_exts,
         excluded_explicit,
@@ -336,7 +335,7 @@ fn resolve_feature_set(
     let flat_enum_groups = group_by_protection(flat_enums.iter().cloned(), |e| e.protect.clone());
 
     Ok(FeatureSet {
-        spec_name: spec_name.clone(),
+        spec_name: spec_kind.as_str().to_string(),
         display_name: spec.display_name.to_string(),
         apis: api_names,
         is_merged: config.is_merged,

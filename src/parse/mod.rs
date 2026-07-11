@@ -14,19 +14,21 @@ pub mod types;
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
 
+use crate::diag::Diag;
 use crate::fetch::SpecSources;
+use crate::identity::Spec;
 use crate::ir::{RawSpec, Version};
 
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
 
-pub fn parse(sources: &SpecSources, spec_name: &str) -> Result<RawSpec> {
+pub fn parse(sources: &SpecSources, spec: Spec, diag: Diag) -> Result<RawSpec> {
     // Parse all documents up-front.  Lifetimes: each Document<'src> borrows
     // from its source String.  We keep (source, doc) pairs together so the
     // borrow is valid for the whole function body.
     let primary_doc = roxmltree::Document::parse(&sources.primary)
-        .with_context(|| format!("parsing primary {} XML", spec_name))?;
+        .with_context(|| format!("parsing primary {} XML", spec))?;
 
     let supp_docs: Vec<roxmltree::Document<'_>> = sources
         .supplementals
@@ -34,7 +36,7 @@ pub fn parse(sources: &SpecSources, spec_name: &str) -> Result<RawSpec> {
         .enumerate()
         .map(|(i, s)| {
             roxmltree::Document::parse(s)
-                .with_context(|| format!("parsing supplemental {} XML #{}", spec_name, i))
+                .with_context(|| format!("parsing supplemental {} XML #{}", spec, i))
         })
         .collect::<Result<_>>()?;
 
@@ -44,13 +46,13 @@ pub fn parse(sources: &SpecSources, spec_name: &str) -> Result<RawSpec> {
     };
 
     let platforms = parse_platforms(&docs);
-    let raw_types = types::parse_types(&docs, spec_name)?;
-    let (enum_groups, flat_enums) = enums::parse_enums(&docs, spec_name)?;
-    let commands = commands::parse_commands(&docs, spec_name)?;
-    let (features, extensions) = features::parse_features_extensions(&docs, spec_name, &platforms)?;
+    let raw_types = types::parse_types(&docs, diag);
+    let (enum_groups, flat_enums) = enums::parse_enums(&docs, spec)?;
+    let commands = commands::parse_commands(&docs, diag);
+    let (features, extensions) = features::parse_features_extensions(&docs, spec, &platforms, diag)?;
 
     Ok(RawSpec {
-        spec_name: spec_name.to_string(),
+        spec,
         platforms,
         types: raw_types,
         enum_groups,
