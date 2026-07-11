@@ -8,7 +8,7 @@
    this gloam header, which would cause duplicate declarations. Using
    reserved identifiers (double-underscore prefixed) requires suppressing the
    clang warning for that specific pragma block. #}
-{%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
+{%- if fs.spec_name == "gl" %}
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wreserved-id-macro"
@@ -265,7 +265,7 @@ extern "C" {
 #  define GLAPIENTRY GLOAM_API_PTR
 #endif
 {%- endif %}
-{%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
+{%- if fs.spec_name == "gl" %}
 
 /* Forward declarations for OpenCL interop types. */
 struct _cl_context;
@@ -541,7 +541,7 @@ typedef void (*GloamAPIProc)(void);
 typedef GloamAPIProc (*GloamLoadFunc)(const char *name);
 #endif
 {% for api in fs.apis -%}
-{%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
+{%- if fs.spec_name == "gl" %}
 int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr);
 int gloamLoad{{ api | api_display }}(GloamLoadFunc getProcAddr);
 {%- elif fs.spec_name == "egl" %}
@@ -614,7 +614,7 @@ void gloamVulkanFinalize(void);
  * Each Load function may be called multiple times (additive).
  */
 {%- for api in fs.apis %}
-{%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
+{%- if fs.spec_name == "gl" %}
 int  gloamLoaderLoad{{ api | api_display }}Context({{ u.ctx_arg() }});
 int  gloamLoaderLoad{{ api | api_display }}(void);
 void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }});

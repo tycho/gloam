@@ -29,25 +29,10 @@
 {%- endmacro -%}
 
 {#-
-  Platform-protection guards for a single command (Option<String> protect field).
--#}
-{%- macro cmd_protect_begin(cmd) -%}
-{%- if cmd.protect %}
-#ifdef {{ cmd.protect }}
-{% endif -%}
-{%- endmacro -%}
-
-{%- macro cmd_protect_end(cmd) -%}
-{%- if cmd.protect %}
-#endif /* {{ cmd.protect }} */
-{% endif -%}
-{%- endmacro -%}
-
-{#-
   Extra load-function parameters specific to each spec, placed before
   the final GloamLoadFunc argument. For GL/Vulkan these are empty.
-  Always ends with ", " when non-empty so it can sit between ctx_arg and
-  the getProcAddr param without producing a double-comma.
+  Starts with a leading ", " when non-empty so it can sit directly after
+  a preceding parameter without producing a double-comma.
 -#}
 {%- macro extra_load_params(spec) -%}
 {%- if spec == "egl" %}, EGLDisplay display{%- endif -%}
@@ -60,27 +45,6 @@
 {%- if spec == "egl" %}, display{%- endif -%}
 {%- if spec == "glx" %}, display, screen{%- endif -%}
 {%- if spec == "wgl" %}, hdc{%- endif -%}
-{%- endmacro -%}
-
-{#-
-  Vulkan getProcAddr parameter type. For non-Vulkan specs this is a plain
-  GloamLoadFunc. Placed last in the parameter list.
--#}
-{%- macro get_proc_param(spec) -%}
-{%- if spec == "vk" -%}
-PFN_vkGetInstanceProcAddr getProcAddr
-{%- else -%}
-GloamLoadFunc getProcAddr
-{%- endif -%}
-{%- endmacro -%}
-
-{#- Extra Vulkan instance/device arguments. -#}
-{%- macro vk_load_params() -%}
-{%- if fs.spec_name == "vk" %}VkInstance instance, VkPhysicalDevice physical_device, VkDevice device, {% endif -%}
-{%- endmacro -%}
-
-{%- macro vk_load_args() -%}
-{%- if fs.spec_name == "vk" %}instance, physical_device, device, {% endif -%}
 {%- endmacro -%}
 
 {#-

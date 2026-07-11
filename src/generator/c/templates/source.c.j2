@@ -507,7 +507,7 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg() }}{
     uint64_t *exts = NULL;
     uint32_t  num_exts = 0, i;
 
-    if (!gloam_{{ fs.spec_name }}_get_extensions_{{ api }}(context{% if fs.spec_name not in ["gl", "gles1", "gles2", "glcore", "vk"] %}{{ u.extra_load_args(fs.spec_name) }}{% endif %}, &exts, &num_exts))
+    if (!gloam_{{ fs.spec_name }}_get_extensions_{{ api }}(context{{ u.extra_load_args(fs.spec_name) }}, &exts, &num_exts))
         return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_{{ api }}); ++i) {
@@ -521,7 +521,7 @@ static int gloam_{{ fs.spec_name }}_find_extensions_{{ api }}({{ u.ctx_arg() }}{
 {% endif %}
 {% endif %}
 {#- ---- find_core_* (GL / GLES only) --------------------------------------- -#}
-{%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] -%}
+{%- if fs.spec_name == "gl" -%}
 /* Parse the GL_VERSION string and set featArray entries for this API. */
 static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg() }})
 {
@@ -673,7 +673,7 @@ static int gloam_{{ fs.spec_name }}_find_core_{{ api }}({{ u.ctx_arg(', ') }}EGL
 }
 {% endif -%}
 {# ---- Load function ------------------------------------------------------- #}
-{%- if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
+{%- if fs.spec_name == "gl" %}
 
 int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc getProcAddr)
 {

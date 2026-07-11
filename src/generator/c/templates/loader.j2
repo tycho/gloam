@@ -1,7 +1,7 @@
 {% import "utils.j2" as u with context %}
 {#- Built-in platform loader. Only included when --loader is passed. -#}
 {% include "library.j2" %}
-{% if fs.spec_name in ["gl", "gles1", "gles2", "glcore"] %}
+{% if fs.spec_name == "gl" %}
 /* ---- GL / GLES built-in loader ----------------------------------------- */
 
 /* Transient userptr: set for the duration of a gloamLoaderLoad*Context call.
