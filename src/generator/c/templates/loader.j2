@@ -1,5 +1,39 @@
 {% import "utils.j2" as u with context %}
 {#- Built-in platform loader. Only included when --loader is passed. -#}
+{#-
+  gloamLoader...Unload / UnloadContext / Reset / ResetContext are identical
+  for every spec; only the API display name in the function identifiers
+  changes. The Vulkan section passes doc comments for the two *Context
+  functions; the other specs emit none.
+-#}
+{%- macro unload_reset_quad(name, unload_comment="", reset_comment="") -%}
+{%- if unload_comment %}/* {{ unload_comment }} */
+{% endif -%}
+void gloamLoaderUnload{{ name }}Context({{ u.ctx_arg() }})
+{
+    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
+        gloam_dlclose(context->gloam_loader_handle);
+    }
+    gloamLoaderReset{{ name }}Context(context);
+}
+
+void gloamLoaderUnload{{ name }}(void)
+{
+    gloamLoaderUnload{{ name }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+
+{% if reset_comment %}/* {{ reset_comment }} */
+{% endif -%}
+void gloamLoaderReset{{ name }}Context({{ u.ctx_arg() }})
+{
+    memset(context, 0, sizeof(*context));
+}
+
+void gloamLoaderReset{{ name }}(void)
+{
+    gloamLoaderReset{{ name }}Context(&gloam_{{ fs.spec_name }}_context);
+}
+{%- endmacro -%}
 {% include "library.j2" %}
 {% if fs.spec_name == "gl" %}
 /* ---- GL / GLES built-in loader ----------------------------------------- */
@@ -131,28 +165,7 @@ int gloamLoaderLoad{{ api | api_display }}(void)
     return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
 }
 
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
-{
-    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
-        gloam_dlclose(context->gloam_loader_handle);
-    }
-    gloamLoaderReset{{ api | api_display }}Context(context);
-}
-
-void gloamLoaderUnload{{ api | api_display }}(void)
-{
-    gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
-}
-
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }})
-{
-    memset(context, 0, sizeof(*context));
-}
-
-void gloamLoaderReset{{ api | api_display }}(void)
-{
-    gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
-}
+{{ unload_reset_quad(api | api_display) }}
 {%- endfor %}
 {% elif fs.spec_name == "egl" %}
 /* ---- EGL built-in loader ------------------------------------------------ */
@@ -232,28 +245,7 @@ int gloamLoaderLoad{{ api | api_display }}(EGLDisplay display)
     return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context{{ u.extra_load_args(fs.spec_name) }});
 }
 
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
-{
-    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
-        gloam_dlclose(context->gloam_loader_handle);
-    }
-    gloamLoaderReset{{ api | api_display }}Context(context);
-}
-
-void gloamLoaderUnload{{ api | api_display }}(void)
-{
-    gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
-}
-
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }})
-{
-    memset(context, 0, sizeof(*context));
-}
-
-void gloamLoaderReset{{ api | api_display }}(void)
-{
-    gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
-}
+{{ unload_reset_quad(api | api_display) }}
 {%- endfor %}
 {%- elif fs.spec_name == "glx" %}
 /* ---- GLX built-in loader ------------------------------------------------ */
@@ -330,28 +322,7 @@ int gloamLoaderLoad{{ api | api_display }}(Display *display, int screen)
     return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context{{ u.extra_load_args(fs.spec_name) }});
 }
 
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
-{
-    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
-        gloam_dlclose(context->gloam_loader_handle);
-    }
-    gloamLoaderReset{{ api | api_display }}Context(context);
-}
-
-void gloamLoaderUnload{{ api | api_display }}(void)
-{
-    gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
-}
-
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }})
-{
-    memset(context, 0, sizeof(*context));
-}
-
-void gloamLoaderReset{{ api | api_display }}(void)
-{
-    gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
-}
+{{ unload_reset_quad(api | api_display) }}
 {%- endfor %}
 {% elif fs.spec_name == "wgl" %}
 /* ---- WGL built-in loader ------------------------------------------------ */
@@ -424,28 +395,7 @@ int gloamLoaderLoad{{ api | api_display }}(HDC hdc)
     return gloamLoaderLoad{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context{{ u.extra_load_args(fs.spec_name) }});
 }
 
-void gloamLoaderUnload{{ api | api_display }}Context({{ u.ctx_arg() }})
-{
-    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
-        gloam_dlclose(context->gloam_loader_handle);
-    }
-    gloamLoaderReset{{ api | api_display }}Context(context);
-}
-
-void gloamLoaderUnload{{ api | api_display }}(void)
-{
-    gloamLoaderUnload{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
-}
-
-void gloamLoaderReset{{ api | api_display }}Context({{ u.ctx_arg() }})
-{
-    memset(context, 0, sizeof(*context));
-}
-
-void gloamLoaderReset{{ api | api_display }}(void)
-{
-    gloamLoaderReset{{ api | api_display }}Context(&gloam_{{ fs.spec_name }}_context);
-}
+{{ unload_reset_quad(api | api_display) }}
 {%- endfor %}
 {% elif fs.spec_name == "vk" %}
 /* ---- Vulkan built-in discovery loader ----------------------------------- */
@@ -503,28 +453,7 @@ int gloamLoaderLoadVulkan(VkInstance instance, VkPhysicalDevice physical_device,
                                         physical_device, device);
 }
 
-/* Close the library handle (if set) then zero all context state. */
-void gloamLoaderUnloadVulkanContext({{ u.ctx_arg() }})
-{
-    if (context->gloam_loader_handle && context->gloam_loader_owns_handle) {
-        gloam_dlclose(context->gloam_loader_handle);
-    }
-    gloamLoaderResetVulkanContext(context);
-}
-
-void gloamLoaderUnloadVulkan(void)
-{
-    gloamLoaderUnloadVulkanContext(&gloam_vk_context);
-}
-
-/* Zero all context state without touching the library handle. */
-void gloamLoaderResetVulkanContext({{ u.ctx_arg() }})
-{
-    memset(context, 0, sizeof(*context));
-}
-
-void gloamLoaderResetVulkan(void)
-{
-    gloamLoaderResetVulkanContext(&gloam_vk_context);
-}
+{{ unload_reset_quad("Vulkan",
+       unload_comment="Close the library handle (if set) then zero all context state.",
+       reset_comment="Zero all context state without touching the library handle.") }}
 {% endif %}
