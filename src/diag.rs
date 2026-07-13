@@ -25,6 +25,11 @@
 //!   extensions of spec gotcha #8), which are handled exactly as their
 //!   gotcha comment describes.
 
+/// Process-level mirror of the `--quiet` flag, recorded by [`Diag::new`] so
+/// that code without a `Diag` handle (the engine's endpoint-failover path)
+/// can still honor it via the free [`warn`].
+static QUIET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Debug, Clone, Copy)]
 pub struct Diag {
     quiet: bool,
@@ -32,6 +37,7 @@ pub struct Diag {
 
 impl Diag {
     pub fn new(quiet: bool) -> Self {
+        QUIET.store(quiet, std::sync::atomic::Ordering::Relaxed);
         Self { quiet }
     }
 
@@ -52,13 +58,15 @@ impl Diag {
 }
 
 /// Warning from provenance/fetch code that doesn't carry a [`Diag`] handle
-/// (the engine's endpoint-failover path).  Unlike [`Diag::warn`] this is
-/// unconditional: a transport falling over to a mirror is rare, and a run
-/// that silently used a fallback endpoint would be harder to debug than one
-/// line of stderr is worth.
+/// (the engine's endpoint-failover path).  Honors `--quiet` via the
+/// process-level flag recorded by [`Diag::new`] — per CONTRIBUTING.md, only
+/// errors print unconditionally.  A suppressed failover is still visible in
+/// the `GLOAM_DEBUG` HTTP trace (the failed request is logged there).
 #[cfg(feature = "fetch")]
 pub fn warn(msg: impl std::fmt::Display) {
-    eprintln!("gloam: warning: {msg}");
+    if !QUIET.load(std::sync::atomic::Ordering::Relaxed) {
+        eprintln!("gloam: warning: {msg}");
+    }
 }
 
 /// True when the `GLOAM_DEBUG` environment variable is set (non-empty).
