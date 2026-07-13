@@ -93,7 +93,11 @@ fn regen(args: &[String]) -> Result<()> {
         // the tree's own provenance.  --lock must precede the subcommand, so
         // it goes first.  The path is root-relative because the child runs
         // with the tree root as its cwd (recorded --out-path values are too).
-        let mut argv: Vec<String> = recorded.split_whitespace().skip(1).map(String::from).collect();
+        let mut argv: Vec<String> = recorded
+            .split_whitespace()
+            .skip(1)
+            .map(String::from)
+            .collect();
         if !fresh {
             argv.splice(0..0, ["--lock".to_string(), rel.display().to_string()]);
         }

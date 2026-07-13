@@ -297,7 +297,10 @@ mod tests {
         assert_eq!(extract_base_type("const GLubyte *"), "GLubyte");
         assert_eq!(extract_base_type("VkInstance"), "VkInstance");
         assert_eq!(extract_base_type("unsigned int"), "int");
-        assert_eq!(extract_base_type("struct AHardwareBuffer*"), "AHardwareBuffer");
+        assert_eq!(
+            extract_base_type("struct AHardwareBuffer*"),
+            "AHardwareBuffer"
+        );
         assert_eq!(extract_base_type("const GLchar *const*"), "GLchar");
     }
 

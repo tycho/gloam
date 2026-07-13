@@ -71,7 +71,12 @@ pub enum HeadRef {
 /// callers add operation context.  The warning is skipped when there is no
 /// next endpoint to fall over to (single-endpoint clusters fail exactly as
 /// they did before endpoints existed).
-pub(crate) fn try_endpoints<'e, T, I, F>(repo: &str, what: &str, endpoints: I, mut op: F) -> Result<T>
+pub(crate) fn try_endpoints<'e, T, I, F>(
+    repo: &str,
+    what: &str,
+    endpoints: I,
+    mut op: F,
+) -> Result<T>
 where
     I: IntoIterator<Item = &'e Endpoint>,
     F: FnMut(&'e Endpoint) -> Result<T>,
@@ -258,7 +263,9 @@ impl Github {
                 let commit = v["log"][0]["commit"]
                     .as_str()
                     .map(str::to_string)
-                    .ok_or_else(|| anyhow!("no log[0].commit in Gitiles log response from {url}"))?;
+                    .ok_or_else(|| {
+                        anyhow!("no log[0].commit in Gitiles log response from {url}")
+                    })?;
                 Ok(HeadRef::Resolved { commit, etag: None })
             }
         }
@@ -499,13 +506,11 @@ impl Github {
                     cluster.repo
                 )
             })?;
-            let content = try_endpoints(
-                cluster.repo,
-                "fetching content",
-                cluster.endpoints,
-                |ep| self.content_at(ep, &commit, spec.path_in_repo),
-            )
-            .with_context(|| format!("fetching {} from {}", spec.path_in_repo, cluster.repo))?;
+            let content =
+                try_endpoints(cluster.repo, "fetching content", cluster.endpoints, |ep| {
+                    self.content_at(ep, &commit, spec.path_in_repo)
+                })
+                .with_context(|| format!("fetching {} from {}", spec.path_in_repo, cluster.repo))?;
             let got = git_blob_sha1(&content);
             if got != blob {
                 bail!(

@@ -49,7 +49,8 @@ pub fn parse(sources: &SpecSources, spec: Spec, diag: Diag) -> Result<RawSpec> {
     let raw_types = types::parse_types(&docs, diag);
     let (enum_groups, flat_enums) = enums::parse_enums(&docs, spec)?;
     let commands = commands::parse_commands(&docs, diag);
-    let (features, extensions) = features::parse_features_extensions(&docs, spec, &platforms, diag)?;
+    let (features, extensions) =
+        features::parse_features_extensions(&docs, spec, &platforms, diag)?;
 
     Ok(RawSpec {
         spec,

@@ -391,7 +391,10 @@ fn vulkan_12_has_12_but_not_13() {
 
 #[test]
 fn merged_gl_gles2_with_loader() {
-    let dir = generate(&["--api", "gl:core=3.3,gles2=3.0", "--merge"], &["--loader"]);
+    let dir = generate(
+        &["--api", "gl:core=3.3,gles2=3.0", "--merge"],
+        &["--loader"],
+    );
     assert_c_output_exists(dir.path(), "gl");
     try_compile_c(dir.path());
 }

@@ -192,7 +192,9 @@ fn write_lock_snapshot(
     // re-snapshot.
     if let Some(prev) = read_snapshot(path) {
         for repo in provenance::manifest::preserve_unchanged_repos(&mut pins, &prev.provenance) {
-            diag.info(format!("{repo}: pinned content unchanged, keeping previous commit"));
+            diag.info(format!(
+                "{repo}: pinned content unchanged, keeping previous commit"
+            ));
         }
     }
 
@@ -250,7 +252,9 @@ fn implicit_lock_pins(
 
     if let Some(prev) = read_snapshot(&out.join(".gloam").join("manifest.json")) {
         for repo in provenance::manifest::preserve_unchanged_repos(&mut pins, &prev.provenance) {
-            diag.info(format!("{repo}: pinned content unchanged, keeping previous commit"));
+            diag.info(format!(
+                "{repo}: pinned content unchanged, keeping previous commit"
+            ));
         }
     }
     Ok(pins)

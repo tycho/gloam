@@ -148,7 +148,12 @@ fn golden_gl_core_full() {
     // resolver, the loader layer, and extension machinery for desktop GL.
     check(
         "gl_core_full",
-        &["--api", "gl:core=3.3", "--extensions", "GL_KHR_debug,GL_ARB_sync"],
+        &[
+            "--api",
+            "gl:core=3.3",
+            "--extensions",
+            "GL_KHR_debug,GL_ARB_sync",
+        ],
         &["--alias", "--loader"],
         "gl",
     );

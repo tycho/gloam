@@ -45,7 +45,9 @@ use pfn::{build_ext_pfn_ranges, build_feature_pfn_ranges};
 use protect::{group_by_protection, group_by_protection_pairs};
 use requirements::RequirementCollector;
 use selection::{ExtensionSelection, SelectedExt, select_extensions, select_features};
-use spec_info::{ResolveConfig, SpecInfo, api_names as request_api_names, ext_short_name, version_short_name};
+use spec_info::{
+    ResolveConfig, SpecInfo, api_names as request_api_names, ext_short_name, version_short_name,
+};
 use typedefs::{build_type_list, collect_required_headers};
 
 // ---------------------------------------------------------------------------
@@ -203,7 +205,10 @@ fn resolve_feature_set(
         ));
     }
     debug_assert!(
-        commands.iter().enumerate().all(|(i, c)| c.index as usize == i),
+        commands
+            .iter()
+            .enumerate()
+            .all(|(i, c)| c.index as usize == i),
         "Command.index must equal its position in the commands vec"
     );
 

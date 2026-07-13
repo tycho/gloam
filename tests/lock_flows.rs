@@ -91,7 +91,11 @@ fn locked_regeneration_reproduces_byte_identical_tree() {
         .assert()
         .success();
 
-    let manifest_a = dir_a.path().join("out").join(".gloam").join("manifest.json");
+    let manifest_a = dir_a
+        .path()
+        .join("out")
+        .join(".gloam")
+        .join("manifest.json");
     gloam()
         .current_dir(dir_b.path())
         .args(["--lock", manifest_a.to_str().unwrap()])

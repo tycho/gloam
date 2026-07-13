@@ -177,10 +177,10 @@ impl SourceStore {
             let pin = pins.get(key).unwrap().clone();
             let content = self.content_for_blob(&pin.blob, || {
                 // Bundled content satisfies the lock only if its blob matches.
-                if let Some(text) = bundled::content_by_key(key) {
-                    if git_blob_sha1(text.as_bytes()) == pin.blob {
-                        return Ok(text.as_bytes().to_vec());
-                    }
+                if let Some(text) = bundled::content_by_key(key)
+                    && git_blob_sha1(text.as_bytes()) == pin.blob
+                {
+                    return Ok(text.as_bytes().to_vec());
                 }
                 #[cfg(feature = "fetch")]
                 if self.use_fetch {
@@ -214,7 +214,9 @@ impl SourceStore {
         let mut out = IndexMap::new();
         for &key in keys {
             let pin = bundle.provenance.get(key).cloned().ok_or_else(|| {
-                anyhow!("bundled/provenance.json has no entry for '{key}' — run `cargo xtask bundle`")
+                anyhow!(
+                    "bundled/provenance.json has no entry for '{key}' — run `cargo xtask bundle`"
+                )
             })?;
             let content = self.content_for_blob(&pin.blob, || {
                 Ok(bundled::content_by_key(key)

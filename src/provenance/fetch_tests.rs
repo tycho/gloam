@@ -327,8 +327,7 @@ fn route(
                     body: Vec::new(),
                 });
             }
-            let mut resp =
-                MockResponse::json(serde_json::json!({ "object": { "sha": rd.head } }));
+            let mut resp = MockResponse::json(serde_json::json!({ "object": { "sha": rd.head } }));
             resp.headers.push(("ETag".to_string(), etag));
             return Some(resp);
         }
@@ -352,9 +351,7 @@ fn route(
                 .files
                 .iter()
                 .filter(|(p, _)| parent_dir(p) == dir)
-                .map(|(p, (sha, _))| {
-                    serde_json::json!({ "path": p, "sha": sha, "type": "file" })
-                })
+                .map(|(p, (sha, _))| serde_json::json!({ "path": p, "sha": sha, "type": "file" }))
                 .collect();
             if entries.is_empty() {
                 return None;
@@ -451,11 +448,7 @@ fn gitiles_fixture() -> HashMap<String, RepoData> {
     ])
 }
 
-fn engine_for_clusters(
-    server: &MockGitHub,
-    cache: Cache,
-    clusters: &'static [Cluster],
-) -> Engine {
+fn engine_for_clusters(server: &MockGitHub, cache: Cache, clusters: &'static [Cluster]) -> Engine {
     let gh = Github::with_base_urls(&server.base_url, format!("{}/raw", server.base_url)).unwrap();
     Engine::with_clusters(gh, cache, clusters)
 }
@@ -619,7 +612,10 @@ fn advanced_commit_with_unchanged_blobs_needs_only_a_listing() {
     let out = engine.resolve_head(&["gl.xml", "glx.xml"]).unwrap();
     assert_eq!(out["gl.xml"].content, fixture_content(&fix, "gl.xml"));
     assert_eq!(out["glx.xml"].content, fixture_content(&fix, "glx.xml"));
-    assert_eq!(out["gl.xml"].pin.commit, rd.head, "pin moves to the new commit");
+    assert_eq!(
+        out["gl.xml"].pin.commit, rd.head,
+        "pin moves to the new commit"
+    );
 
     let reqs = server.requests();
     assert!(
@@ -817,7 +813,8 @@ fn lock_falls_back_to_blobs_api_when_raw_unavailable() {
 
     let reqs = server.requests();
     assert!(
-        reqs.iter().any(|p| p.contains("/raw/") && p.contains("[404]")),
+        reqs.iter()
+            .any(|p| p.contains("/raw/") && p.contains("[404]")),
         "the raw host is tried first: {reqs:?}"
     );
     assert!(
@@ -867,8 +864,11 @@ fn canonical_endpoint_down_falls_back_with_an_identical_pin() {
     let fix = gitiles_fixture();
 
     let happy = MockGitHub::start(fix.clone());
-    let engine =
-        engine_for_clusters(&happy, Cache::open_in_memory().unwrap(), gitiles_first_clusters(&happy));
+    let engine = engine_for_clusters(
+        &happy,
+        Cache::open_in_memory().unwrap(),
+        gitiles_first_clusters(&happy),
+    );
     let happy_pin = engine.resolve_head(&["ext.xml"]).unwrap()["ext.xml"]
         .pin
         .clone();
@@ -880,8 +880,11 @@ fn canonical_endpoint_down_falls_back_with_an_identical_pin() {
             ..Default::default()
         },
     );
-    let engine =
-        engine_for_clusters(&down, Cache::open_in_memory().unwrap(), gitiles_first_clusters(&down));
+    let engine = engine_for_clusters(
+        &down,
+        Cache::open_in_memory().unwrap(),
+        gitiles_first_clusters(&down),
+    );
     let out = engine.resolve_head(&["ext.xml"]).unwrap();
     assert_eq!(
         out["ext.xml"].content,

@@ -100,7 +100,11 @@ pub fn build_preamble(
         lines.push(" * Generated from the following upstream sources:".to_string());
         lines.push(" *".to_string());
         for group in &groups {
-            lines.push(format!(" *   {} ({})", group.repo, short_sha(&group.commit)));
+            lines.push(format!(
+                " *   {} ({})",
+                group.repo,
+                short_sha(&group.commit)
+            ));
             for (path, blob) in &group.files {
                 lines.push(format!(" *     {} (blob {})", path, short_sha(blob)));
             }

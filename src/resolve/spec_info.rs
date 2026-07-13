@@ -81,7 +81,10 @@ pub(super) fn version_short_name(name: &str, api: Api) -> String {
 /// flow into generated C symbol suffixes (`kExtIdx_vk`, etc.), the per-API
 /// IndexMap keys, and (for non-merged builds) the output file stem.
 pub(super) fn api_names(requests: &[ApiRequest]) -> Vec<String> {
-    requests.iter().map(|r| r.api.as_str().to_string()).collect()
+    requests
+        .iter()
+        .map(|r| r.api.as_str().to_string())
+        .collect()
 }
 
 /// Build the set of API name strings for fast membership testing against

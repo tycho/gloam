@@ -554,7 +554,12 @@ mod tests {
             "the canonical Gitiles endpoint must come first"
         );
         assert!(
-            matches!(cluster.endpoints[1], Endpoint::GitHub { slug: "google/angle" }),
+            matches!(
+                cluster.endpoints[1],
+                Endpoint::GitHub {
+                    slug: "google/angle"
+                }
+            ),
             "the GitHub mirror is the ordered fallback"
         );
     }

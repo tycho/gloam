@@ -380,7 +380,10 @@ mod tests {
         assert_eq!(c.stored_head("acme/repo").unwrap(), None);
         c.set_head("acme/repo", "main", "c0ffee", 1000).unwrap();
         // Readable regardless of how stale the fetch timestamp is.
-        assert_eq!(c.stored_head("acme/repo").unwrap().as_deref(), Some("c0ffee"));
+        assert_eq!(
+            c.stored_head("acme/repo").unwrap().as_deref(),
+            Some("c0ffee")
+        );
     }
 
     #[test]
