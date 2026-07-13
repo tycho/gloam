@@ -1,17 +1,21 @@
-//! Provenance acquisition via the GitHub REST API.
+//! Provenance acquisition via the GitHub REST API and raw-content host.
 //!
 //! For each repository cluster we resolve a consistent snapshot:
-//!   1. branch HEAD → commit SHA,
-//!   2. per file, its blob SHA + content, pinned to that commit.
+//!   1. branch HEAD → commit SHA (conditional: an `If-None-Match` ETag turns
+//!      an unchanged ref into a rate-limit-free 304),
+//!   2. per changed directory, one **Contents API** listing yields every
+//!      file's blob SHA pinned to that commit,
+//!   3. content comes from `raw.githubusercontent.com` (unmetered) and is
+//!      verified locally against the listed blob SHA.
 //!
 //! Everything is pinned to the resolved commit, so content is race-free even if
-//! upstream moves mid-resolution.  For `--lock`, blobs are fetched directly by
-//! their pinned SHA (content-addressed), skipping steps 1–2.
+//! upstream moves mid-resolution.  For `--lock`, content is fetched by pinned
+//! commit + path from the raw host (blobs API as fallback), skipping steps 1–2.
 //!
-//! Files are resolved with the **Contents API** (one call per file, returning
-//! the blob SHA and — for files ≤1 MB — inline content) rather than a recursive
-//! tree walk, because large repos (`google/angle`, `Vulkan-Docs`) can truncate
-//! recursive trees and silently drop entries.
+//! Directory listings are used rather than a recursive tree walk because large
+//! repos (`google/angle`, `Vulkan-Docs`) can truncate recursive trees and
+//! silently drop entries; per-directory listings cap at 1000 entries, far above
+//! any tracked directory.
 
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine;
@@ -21,6 +25,7 @@ use serde_json::Value;
 use super::{Cluster, ResolvedFile, ResolvedRepo};
 
 const API_BASE: &str = "https://api.github.com";
+const RAW_BASE: &str = "https://raw.githubusercontent.com";
 
 /// One cluster resolved at a snapshot: repo provenance plus each requested
 /// file's provenance and content.
@@ -48,21 +53,27 @@ pub struct Github {
     token: Option<String>,
     /// API base URL (overridable in tests to point at a mock server).
     base: String,
+    /// Raw-content host base URL (`raw.githubusercontent.com`; overridable in
+    /// tests).  Serves plain file bytes without touching the metered API.
+    raw_base: String,
 }
 
 impl Github {
     /// Construct a client, reading an auth token from `$GITHUB_TOKEN` when set.
     pub fn new() -> Result<Self> {
-        Self::build(API_BASE.to_string())
+        Self::build(API_BASE.to_string(), RAW_BASE.to_string())
     }
 
-    /// Construct a client against an alternate API base URL — for tests that
-    /// point at a local mock GitHub server.
-    pub fn with_base_url(base: impl Into<String>) -> Result<Self> {
-        Self::build(base.into())
+    /// Construct a client against alternate API and raw-content base URLs —
+    /// for tests that point at a local mock GitHub server.
+    pub fn with_base_urls(
+        api_base: impl Into<String>,
+        raw_base: impl Into<String>,
+    ) -> Result<Self> {
+        Self::build(api_base.into(), raw_base.into())
     }
 
-    fn build(base: String) -> Result<Self> {
+    fn build(base: String, raw_base: String) -> Result<Self> {
         let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
         let client = reqwest::blocking::Client::builder()
             .user_agent(concat!("gloam/", env!("CARGO_PKG_VERSION")))
@@ -72,6 +83,7 @@ impl Github {
             client,
             token,
             base,
+            raw_base,
         })
     }
 
@@ -184,9 +196,11 @@ impl Github {
     }
 
     /// Resolve a file's blob SHA (and inline content if the API returned it)
-    /// at a specific commit, via the Contents API.  Content is `None` for
-    /// files over the API's 1 MB inline limit — callers decide whether the
-    /// blob is worth downloading (the engine checks its cache by SHA first).
+    /// at a specific commit, via the single-file Contents API.  Content is
+    /// `None` for files over the API's 1 MB inline limit.  Only used by
+    /// [`Self::resolve_cluster_head`] (the xtask bundler path, which runs in
+    /// CI with a token) — the engine resolves via directory listings and the
+    /// raw host instead.
     pub(crate) fn contents(
         &self,
         repo: &str,
@@ -207,8 +221,71 @@ impl Github {
         Ok((sha, content))
     }
 
-    /// Fetch a blob's content by its SHA (content-addressed; used for large
-    /// files and for `--lock`).
+    /// List a directory at a specific commit via the Contents API: one call
+    /// yields `(path_in_repo, blob_sha)` for every file entry.  `dir` may be
+    /// `""` for the repository root.  Subdirectory entries are skipped —
+    /// callers list each directory they need individually.
+    pub fn contents_dir(
+        &self,
+        repo: &str,
+        dir: &str,
+        commit: &str,
+    ) -> Result<Vec<(String, String)>> {
+        let base = &self.base;
+        let url = if dir.is_empty() {
+            format!("{base}/repos/{repo}/contents?ref={commit}")
+        } else {
+            format!("{base}/repos/{repo}/contents/{dir}?ref={commit}")
+        };
+        let v = self.get_json(&url)?;
+        let entries = v.as_array().ok_or_else(|| {
+            anyhow!("directory listing for {repo}:{dir}@{commit} is not a JSON array")
+        })?;
+        let mut out = Vec::new();
+        for entry in entries {
+            if entry["type"].as_str() != Some("file") {
+                continue;
+            }
+            let (Some(path), Some(sha)) = (entry["path"].as_str(), entry["sha"].as_str()) else {
+                continue;
+            };
+            out.push((path.to_string(), sha.to_string()));
+        }
+        Ok(out)
+    }
+
+    /// Fetch a file's bytes at a specific commit from the raw-content host
+    /// (`raw.githubusercontent.com`) — unmetered, so it never counts against
+    /// the API rate limit.  Callers must verify the bytes against a blob SHA
+    /// learned from the API before trusting them.
+    pub fn raw_content(&self, repo: &str, commit: &str, path: &str) -> Result<Vec<u8>> {
+        let raw_base = &self.raw_base;
+        let url = format!("{raw_base}/{repo}/{commit}/{path}");
+        let started = std::time::Instant::now();
+        // No GitHub API headers and — deliberately — no auth token: the raw
+        // host serves public content, and the API credential must never be
+        // sent cross-host.
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .with_context(|| format!("GET {url}"))?;
+        crate::diag::debug(format_args!(
+            "HTTP GET {url} -> {} in {}ms",
+            resp.status(),
+            started.elapsed().as_millis()
+        ));
+        let resp = resp
+            .error_for_status()
+            .with_context(|| format!("HTTP error from {url}"))?;
+        Ok(resp
+            .bytes()
+            .with_context(|| format!("body of {url}"))?
+            .to_vec())
+    }
+
+    /// Fetch a blob's content by its SHA (content-addressed; the `--lock`
+    /// fallback when the raw host can't serve a pinned commit).
     pub fn blob_content(&self, repo: &str, blob_sha: &str) -> Result<Vec<u8>> {
         let base = &self.base;
         let url = format!("{base}/repos/{repo}/git/blobs/{blob_sha}");

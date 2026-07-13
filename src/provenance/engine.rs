@@ -105,23 +105,32 @@ impl Engine {
             };
             self.cache.put_commit(&commit, cluster.repo, now)?;
 
+            // Cache-first per file: a tree entry at this commit plus verified
+            // blob content means zero network.  Everything else is a miss.
+            let mut misses: Vec<&super::FileSpec> = Vec::new();
             for key in cluster_keys {
                 let spec = cluster.files.iter().find(|f| f.key == key).unwrap();
-                // blob SHA + content, cache-first.
-                let (blob, content) = match self.cache.blob_for_path(&commit, spec.path_in_repo)? {
-                    Some(b) => match self.verified_cached_blob(&b, now)? {
-                        Some(content) => (b, content),
-                        None => self.fetch_and_cache(cluster, spec.path_in_repo, &commit, now)?,
-                    },
-                    None => self.fetch_and_cache(cluster, spec.path_in_repo, &commit, now)?,
+                let hit = match self.cache.blob_for_path(&commit, spec.path_in_repo)? {
+                    Some(blob) => self
+                        .verified_cached_blob(&blob, now)?
+                        .map(|content| (blob, content)),
+                    None => None,
                 };
-                out.insert(
-                    key.to_string(),
-                    Resolved {
-                        pin: pin_for(cluster, spec.path_in_repo, &commit, &blob),
-                        content,
-                    },
-                );
+                match hit {
+                    Some((blob, content)) => {
+                        out.insert(
+                            key.to_string(),
+                            Resolved {
+                                pin: pin_for(cluster, spec.path_in_repo, &commit, &blob),
+                                content,
+                            },
+                        );
+                    }
+                    None => misses.push(spec),
+                }
+            }
+            if !misses.is_empty() {
+                self.fetch_misses(cluster, &commit, &misses, now, &mut out)?;
             }
         }
 
@@ -148,21 +157,39 @@ impl Engine {
             let content = match self.verified_cached_blob(&pin.blob, now)? {
                 Some(c) => c,
                 None => {
-                    let c = self
+                    // Raw host first (unmetered): the pin names the commit
+                    // and path, and the bytes are acceptable only if they
+                    // hash to the pinned blob.  A failed or mismatching raw
+                    // fetch (e.g. the pinned commit was garbage-collected
+                    // upstream) falls back to the content-addressed blobs
+                    // API.
+                    let raw = self
                         .gh
-                        .blob_content(&pin.repo, &pin.blob)
-                        .with_context(|| format!("fetching pinned blob for '{key}'"))?;
-                    // Never launder wrong content into "verified" provenance:
-                    // the fetched bytes must hash to the pinned blob SHA.
-                    let got = git_blob_sha1(&c);
-                    if got != pin.blob {
-                        bail!(
-                            "pinned blob for '{key}' from {} hashes to {got}, \
-                             expected {} — refusing corrupt or mismatched content",
-                            pin.repo,
-                            pin.blob
-                        );
-                    }
+                        .raw_content(&pin.repo, &pin.commit, &pin.path_in_repo)
+                        .ok()
+                        .filter(|c| git_blob_sha1(c) == pin.blob);
+                    let c = match raw {
+                        Some(c) => c,
+                        None => {
+                            let c = self
+                                .gh
+                                .blob_content(&pin.repo, &pin.blob)
+                                .with_context(|| format!("fetching pinned blob for '{key}'"))?;
+                            // Never launder wrong content into "verified"
+                            // provenance: the fetched bytes must hash to the
+                            // pinned blob SHA.
+                            let got = git_blob_sha1(&c);
+                            if got != pin.blob {
+                                bail!(
+                                    "pinned blob for '{key}' from {} hashes to {got}, \
+                                     expected {} — refusing corrupt or mismatched content",
+                                    pin.repo,
+                                    pin.blob
+                                );
+                            }
+                            c
+                        }
+                    };
                     self.cache.put_blob(&pin.blob, &c, now)?;
                     c
                 }
@@ -219,58 +246,91 @@ impl Engine {
         }
     }
 
-    fn fetch_and_cache(
+    /// Resolve cache misses at `commit`: one Contents-API directory listing
+    /// per parent directory yields the blob SHAs, then content comes from the
+    /// cache (unchanged blob at a new commit — zero download) or the
+    /// unmetered raw host, verified against the listed SHA.
+    fn fetch_misses(
         &self,
         cluster: &Cluster,
-        path: &str,
         commit: &str,
+        misses: &[&super::FileSpec],
         now: i64,
-    ) -> Result<(String, Vec<u8>)> {
-        // Resolve the blob SHA at this commit; the Contents API inlines
-        // content for small files but returns only the SHA for large ones.
-        let (blob, inline) = self
-            .gh
-            .contents(cluster.repo, path, commit)
-            .with_context(|| format!("resolving {} from {}", path, cluster.repo))?;
+        out: &mut BTreeMap<String, Resolved>,
+    ) -> Result<()> {
+        // One listing per distinct parent directory, in miss order.
+        let mut dirs: Vec<&str> = Vec::new();
+        for spec in misses {
+            let dir = parent_dir(spec.path_in_repo);
+            if !dirs.contains(&dir) {
+                dirs.push(dir);
+            }
+        }
+        // path_in_repo -> blob SHA learned from the listings.
+        let mut listed: BTreeMap<String, String> = BTreeMap::new();
+        for dir in dirs {
+            let entries = self
+                .gh
+                .contents_dir(cluster.repo, dir, commit)
+                .with_context(|| {
+                    format!("listing {}:{dir} at {commit}", cluster.repo)
+                })?;
+            for (path, sha) in entries {
+                // Record tree entries only for files this cluster tracks —
+                // rows for untracked listing entries would bloat the cache
+                // for nothing.
+                if cluster.files.iter().any(|f| f.path_in_repo == path) {
+                    self.cache.put_tree_entry(commit, &path, &sha)?;
+                    listed.insert(path, sha);
+                }
+            }
+        }
 
-        let verify = |content: &[u8]| -> Result<()> {
-            let got = git_blob_sha1(content);
-            if got != blob {
-                bail!(
-                    "content of {} from {} hashes to {got}, but the API reported \
-                     blob {blob} — refusing corrupt or mismatched content",
-                    path,
+        for spec in misses {
+            let blob = listed.get(spec.path_in_repo).ok_or_else(|| {
+                anyhow!(
+                    "{} is missing from the directory listing of {} at {commit} \
+                     — tracked file absent upstream",
+                    spec.path_in_repo,
                     cluster.repo
-                );
-            }
-            Ok(())
-        };
-
-        let content = match inline {
-            Some(c) => {
-                verify(&c)?;
-                self.cache.put_blob(&blob, &c, now)?;
-                c
-            }
-            // Large file: an advanced commit usually leaves big blobs
-            // (vk.xml) untouched, so check the cache by SHA before paying
-            // for the download — re-fetching unchanged content is exactly
-            // the redundant transfer this layer exists to avoid.
-            None => match self.verified_cached_blob(&blob, now)? {
+                )
+            })?;
+            // An advanced commit usually leaves blobs untouched, so check
+            // the cache by SHA before paying for the download — re-fetching
+            // unchanged content is exactly the redundant transfer this layer
+            // exists to avoid.
+            let content = match self.verified_cached_blob(blob, now)? {
                 Some(c) => c,
                 None => {
                     let c = self
                         .gh
-                        .blob_content(cluster.repo, &blob)
-                        .with_context(|| format!("fetching {} from {}", path, cluster.repo))?;
-                    verify(&c)?;
-                    self.cache.put_blob(&blob, &c, now)?;
+                        .raw_content(cluster.repo, commit, spec.path_in_repo)
+                        .with_context(|| {
+                            format!("fetching {} from {}", spec.path_in_repo, cluster.repo)
+                        })?;
+                    let got = git_blob_sha1(&c);
+                    if got != *blob {
+                        bail!(
+                            "content of {} from {} hashes to {got}, but the directory \
+                             listing reported blob {blob} — refusing corrupt or \
+                             mismatched content",
+                            spec.path_in_repo,
+                            cluster.repo
+                        );
+                    }
+                    self.cache.put_blob(blob, &c, now)?;
                     c
                 }
-            },
-        };
-        self.cache.put_tree_entry(commit, path, &blob)?;
-        Ok((blob, content))
+            };
+            out.insert(
+                spec.key.to_string(),
+                Resolved {
+                    pin: pin_for(cluster, spec.path_in_repo, commit, blob),
+                    content,
+                },
+            );
+        }
+        Ok(())
     }
 
     /// Return cached content for `blob_sha` only if it still hashes to that
@@ -282,6 +342,15 @@ impl Engine {
             .cache
             .blob(blob_sha, now)?
             .filter(|content| git_blob_sha1(content) == blob_sha))
+    }
+}
+
+/// The parent directory of a path within a repository (`""` for root-level
+/// files) — the unit at which misses are grouped for directory listings.
+fn parent_dir(path: &str) -> &str {
+    match path.rfind('/') {
+        Some(i) => &path[..i],
+        None => "",
     }
 }
 
@@ -367,7 +436,7 @@ mod tests {
         // points at an unroutable address — rather than silently serving the
         // corrupt bytes.
         let cache = Cache::from_connection(Connection::open_in_memory().unwrap()).unwrap();
-        let gh = Github::with_base_url("http://127.0.0.1:1").unwrap();
+        let gh = Github::with_base_urls("http://127.0.0.1:1", "http://127.0.0.1:1").unwrap();
         let engine = Engine::from_parts(gh, cache);
 
         let bundle = sample_bundle();

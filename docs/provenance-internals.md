@@ -43,42 +43,62 @@ both correct (all files in a snapshot share one commit) and cheap (it collapses
 | `Cyan4973/xxHash` | `dev` | `xxhash.h` | BSD-2-Clause / Yann Collet |
 | `tycho/gloam-registry` | `master` | `xml/glsl_exts.xml` | MIT / Steven Noonan |
 
-### Resolving a cluster (race-free)
+### Resolving a cluster (race-free, near-zero metered calls)
 
 For each cluster we resolve a consistent snapshot pinned to one commit:
 
-1. `GET /repos/{o}/{r}/git/ref/heads/{branch}` → tip **commit** SHA.
+1. `GET /repos/{o}/{r}/git/ref/heads/{branch}` → tip **commit** SHA — sent
+   **conditionally** when possible: the response ETag from the previous
+   resolution is stored (see the `http_etags` table) and replayed as
+   `If-None-Match`. An unchanged ref answers `304 Not Modified`, which GitHub
+   does **not** count against the API rate limit — a free heartbeat that
+   refreshes the HEAD TTL. Only a 200 (ref actually moved, or no stored ETag)
+   costs a metered call.
 2. Registries (`OpenGL-Registry`,
    `EGL-Registry`) and `google/angle` typically have no semver tags and show a
    bare commit; `Vulkan-Docs`, `Vulkan-Headers`, and `xxHash` tag and show
    `vX.Y.Z-N-gSHA`.
-3. Per needed file: `GET /repos/{o}/{r}/contents/{path}?ref={commit}` → its
-   **blob** SHA (and inline base64 content for files ≤1 MB). For larger files,
-   follow with `GET /repos/{o}/{r}/git/blobs/{blob}`.
+3. Per **changed directory** (missing files grouped by parent directory): one
+   `GET /repos/{o}/{r}/contents/{dir}?ref={commit}` directory listing → the
+   **blob** SHA of every file in it. Tree entries are recorded for the
+   cluster's tracked files; a tracked file absent from its listing is a hard
+   error. (Contents directory listings cap at 1000 entries; every tracked
+   directory is far below that.)
+4. Per file whose blob isn't already cached: fetch the bytes from
+   `https://raw.githubusercontent.com/{o}/{r}/{commit}/{path}` — the raw host
+   is **unmetered** — and verify them locally by git-blob hashing against the
+   SHA from step 3 (mismatch is a hard error). An unchanged blob at a new
+   commit is served from the cache with zero download.
 
 Everything is pinned to the commit from step 1, so even if upstream commits
 mid-resolution the content we get is exactly what our metadata describes — the
 metadata/data race is eliminated without the weaker "re-fetch and compare"
-approach.
+approach. And because raw-host bytes are verified against API-reported blob
+SHAs, content correctness never rests on the unauthenticated raw host.
 
-**Why the Contents API, not a recursive tree walk.** An earlier design used
+**Why directory listings, not a recursive tree walk.** An earlier design used
 `git/trees/{commit}?recursive=1` to resolve paths to blobs in one call. But the
 recursive-tree endpoint truncates at GitHub's tree limits, and large repos
 (`google/angle`, `Vulkan-Docs`) can exceed them — silently dropping the entry we
-need. The Contents API resolves each file independently (one call, blob SHA plus
-inline content when small) and never truncates, at the cost of one call per file
-instead of one per cluster. Per-cluster sharing still applies to the HEAD
-resolution.
+need. Per-directory Contents listings never truncate for directories of this
+size, and one call covers every tracked file in the directory. (A still earlier
+iteration used one Contents call *per file*, with inline base64 content and a
+blobs-API follow-up for >1 MB files; the listing+raw split replaces both — the
+metered API now carries only metadata, never content.)
 
-For `--lock`, the commit/blob are already known, so we skip resolution
-and fetch each file's content directly by its pinned blob id (content-addressed,
-cache-first).
+For `--lock`, the commit/blob are already known, so we skip resolution and
+fetch each file's content cache-first, then raw-host-first (verified against
+the pinned blob), with the content-addressed
+`GET /repos/{o}/{r}/git/blobs/{blob}` API as the fallback when the pinned
+commit is no longer reachable upstream.
 
 ### `--lock` shortcut
 
 When generating from a `--lock` manifest, commit/tree are already known.
-We skip steps 1–3 and fetch each required file directly by its pinned blob id
-(step 4 only), cache permitting. Cheaper and fully reproducible.
+We skip steps 1–3 and fetch each required file's content directly (step 4
+only), cache permitting: raw host by pinned commit + path, verified against
+the pinned blob, with the blobs API as fallback. Cheaper and fully
+reproducible.
 
 `--lock` requires that the locked blobs are obtainable. The user must therefore
 either:
@@ -94,11 +114,14 @@ add `--fetch` — bundled content cannot satisfy that lock.
 
 ### GITHUB_TOKEN
 
-All API calls read `$GITHUB_TOKEN` when present and fall back to unauthenticated
-access otherwise.
+Calls to `api.github.com` read `$GITHUB_TOKEN` when present and fall back to
+unauthenticated access otherwise. The token is **only** consulted for
+`api.github.com` requests — it is never sent to `raw.githubusercontent.com`
+(the raw host serves public content, and the API credential must not leak
+cross-host).
 
-- Unauthenticated: 60 req/hr — fine for a one-off `--fetch` thanks to per-cluster
-  sharing + the cache, but not for CI.
+- Unauthenticated: 60 req/hr — comfortable for `--fetch` now that content is
+  unmetered, 304s are free, and only ref moves + directory listings are billed.
 - Authenticated: 5000 req/hr for a PAT; **1000 req/hr/repo** for the Actions
   `GITHUB_TOKEN`. Reading other public repos' APIs is allowed for any token.
 
@@ -182,6 +205,13 @@ tree_entries(commit_sha TEXT, path_in_repo TEXT, blob_sha TEXT,
 
 -- Content, deduped by SHA. NO commit column: a blob lives in many commits.
 blobs(blob_sha TEXT PRIMARY KEY, content BLOB, last_used INTEGER)
+
+-- Response ETags for conditional requests, keyed by the full request URL
+-- (an ETag belongs to a *request*, not to a domain object). Stores NO
+-- payloads: a 304 means "whatever the caller derived from this URL last
+-- time still holds", and the caller refreshes its own domain row (e.g.
+-- repos.head_fetched_at). Rows are tiny and never evicted.
+http_etags(url TEXT PRIMARY KEY, etag TEXT, fetched_at INTEGER)
 ```
 
 ### Two TTL classes
@@ -197,9 +227,10 @@ blobs(blob_sha TEXT PRIMARY KEY, content BLOB, last_used INTEGER)
 
 - **`--fetch`, no lock:** if `repos.head_fetched_at` is fresh, reuse
   `head_commit → tree_entries → blobs` with zero API calls. If stale, re-resolve
-  HEAD (acquisition model); unchanged HEAD just bumps `head_fetched_at`, a moved
-  HEAD inserts the new commit/tree/blobs. Old blobs stay until object-TTL
-  eviction.
+  HEAD conditionally with the stored ETag (acquisition model); an unchanged
+  HEAD answers 304 (unmetered) and just bumps `head_fetched_at`, a moved HEAD
+  inserts the new commit/tree/blobs and records the new ETag. Old blobs stay
+  until object-TTL eviction.
 - **`--fetch --lock`:** never touches `repos` (HEAD). Keys off the manifest's
   pinned commit/blob SHAs: serve blobs straight from `blobs`, fetch missing ones
   by id and insert them, and opportunistically record the manifest's
