@@ -1,11 +1,26 @@
-//! Unified source loading: resolve a set of registry keys to provenance pins
-//! **and** content, from one consistent place.
+//! Unified source loading: resolve registry keys to provenance pins **and**
+//! content, from one consistent place.
 //!
-//! - Bundled mode (default / no `--fetch`): pins from the embedded
+//! [`SourceStore`] is the run-scoped resolver: one is constructed per
+//! invocation and threaded everywhere sources are needed.  It memoizes —
+//! the fetch engine (SQLite cache + bundle seed) is constructed at most once
+//! per run, and each source is resolved, read, and hash-verified at most
+//! once.  Content is memoized by **blob SHA**, so swapping the lock set
+//! mid-run (the implicit-pin settlement in `run()`) re-resolves pins but
+//! never re-reads content.  This also makes snapshot coherence structural:
+//! every phase of a run sees the same bytes for a key, by construction.
+//!
+//! Modes:
+//! - Bundled (default / no `--fetch`): pins from the embedded
 //!   `bundled/provenance.json`, content from the embedded files.
 //! - `--fetch`: through the [`engine`](super::engine), which seeds the cache
-//!   from the bundle and resolves each cluster's HEAD — so content and pins come
-//!   from the same snapshot, with no separate provenance round-trip.
+//!   from the bundle and resolves each cluster's HEAD.
+//! - Locked (`--lock` or the implicit baseline): pins come from the lock;
+//!   content from the bundle (blob must match) or the cache-backed engine.
+
+use std::cell::{OnceCell, RefCell};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow, bail};
 use indexmap::IndexMap;
@@ -13,177 +28,248 @@ use indexmap::IndexMap;
 use super::manifest::{ProvenancePin, git_blob_sha1};
 use crate::bundled;
 
-/// A loaded source: its provenance pin plus content bytes.
-#[derive(Debug)]
+/// A loaded source: its provenance pin plus shared content bytes.
+/// Cloning is cheap (the content is `Arc`-shared with the store's memo).
+#[derive(Debug, Clone)]
 pub struct LoadedSource {
     pub pin: ProvenancePin,
-    pub content: Vec<u8>,
+    pub content: Arc<Vec<u8>>,
 }
 
-/// How sources are resolved for a run.
-pub struct LoadCtx<'a> {
-    /// Resolve from upstream (cache-backed) rather than the embedded bundle.
-    pub use_fetch: bool,
-    /// When set (`--lock`), pin sources to this manifest's provenance instead of
-    /// resolving HEAD.
-    pub lock: Option<&'a IndexMap<String, ProvenancePin>>,
+/// Run-scoped source resolver.  See the module docs.
+pub struct SourceStore {
+    use_fetch: bool,
+    /// Current lock set: pins are taken from here when present.
+    lock: Option<IndexMap<String, ProvenancePin>>,
+    /// Lazily constructed fetch engine — opened and bundle-seeded once.
+    #[cfg(feature = "fetch")]
+    engine: OnceCell<super::engine::Engine>,
+    /// key → loaded source, valid for the current lock set (cleared by
+    /// [`Self::set_lock`]).
+    resolved: RefCell<IndexMap<String, LoadedSource>>,
+    /// blob SHA → content.  Content-addressed, so it survives lock swaps.
+    content: RefCell<HashMap<String, Arc<Vec<u8>>>>,
 }
 
-impl LoadCtx<'_> {
-    /// Bundled, no lock — the default and the test default.
-    pub fn bundled() -> Self {
+impl SourceStore {
+    pub fn new(use_fetch: bool, lock: Option<IndexMap<String, ProvenancePin>>) -> Self {
         Self {
-            use_fetch: false,
-            lock: None,
+            use_fetch,
+            lock,
+            #[cfg(feature = "fetch")]
+            engine: OnceCell::new(),
+            resolved: RefCell::new(IndexMap::new()),
+            content: RefCell::new(HashMap::new()),
         }
     }
-}
 
-/// Resolve registry `keys` to pins + content per the load context.
-pub fn resolve(keys: &[&str], ctx: &LoadCtx) -> Result<IndexMap<String, LoadedSource>> {
-    let started = std::time::Instant::now();
-    let mode = match (ctx.lock.is_some(), ctx.use_fetch) {
-        (true, true) => "locked+fetch",
-        (true, false) => "locked+bundled",
-        (false, true) => "fetch",
-        (false, false) => "bundled",
-    };
-    let result = if let Some(pins) = ctx.lock {
-        resolve_locked(keys, pins, ctx.use_fetch)
-    } else {
-        #[cfg(feature = "fetch")]
-        if ctx.use_fetch {
-            resolve_fetch(keys)
+    /// Bundled, no lock — the default and the test default.
+    pub fn bundled() -> Self {
+        Self::new(false, None)
+    }
+
+    /// Replace the lock set (the implicit-pin settlement in `run()`).
+    /// Clears the per-key memo — pins may now differ — but keeps the
+    /// content memo: blobs are content-addressed and cannot change meaning.
+    pub fn set_lock(&mut self, lock: Option<IndexMap<String, ProvenancePin>>) {
+        self.lock = lock;
+        self.resolved.borrow_mut().clear();
+    }
+
+    /// Resolve registry `keys` to pins + content.  Memoized: repeat keys are
+    /// map hits and emit no debug tracing (only actual resolution work does).
+    pub fn resolve(&self, keys: &[&str]) -> Result<IndexMap<String, LoadedSource>> {
+        let mut out: IndexMap<String, LoadedSource> = IndexMap::new();
+        let mut misses: Vec<&str> = Vec::new();
+        {
+            let resolved = self.resolved.borrow();
+            for &key in keys {
+                match resolved.get(key) {
+                    Some(src) => {
+                        out.insert(key.to_string(), src.clone());
+                    }
+                    None => misses.push(key),
+                }
+            }
+        }
+        if misses.is_empty() {
+            return Ok(out);
+        }
+
+        let started = std::time::Instant::now();
+        let mode = match (self.lock.is_some(), self.use_fetch) {
+            (true, true) => "locked+fetch",
+            (true, false) => "locked+bundled",
+            (false, true) => "fetch",
+            (false, false) => "bundled",
+        };
+
+        let fresh = if let Some(pins) = &self.lock {
+            self.resolve_locked(&misses, pins)?
         } else {
-            resolve_bundled(keys)
-        }
-        #[cfg(not(feature = "fetch"))]
-        resolve_bundled(keys)
-    };
-    crate::diag::debug(format_args!(
-        "resolve[{mode}] {} key(s) in {}ms (first: {})",
-        keys.len(),
-        started.elapsed().as_millis(),
-        keys.first().unwrap_or(&"<none>"),
-    ));
-    result
-}
+            #[cfg(feature = "fetch")]
+            if self.use_fetch {
+                self.resolve_fetch(&misses)?
+            } else {
+                self.resolve_bundled(&misses)?
+            }
+            #[cfg(not(feature = "fetch"))]
+            self.resolve_bundled(&misses)?
+        };
 
-/// `--lock`: pin every key to the manifest's provenance.  Content comes from the
-/// cache-backed engine (with `--fetch`) or from the bundle when its blob matches
-/// the lock; a mismatch or missing key is refused.
-fn resolve_locked(
-    keys: &[&str],
-    pins: &IndexMap<String, ProvenancePin>,
-    use_fetch: bool,
-) -> Result<IndexMap<String, LoadedSource>> {
-    // Refuse up front if the lock lacks provenance for anything we need.
-    for &key in keys {
-        if !pins.contains_key(key) {
-            bail!(
-                "manifest (--lock) has no provenance for required file '{key}'; \
-                 regenerate without --lock"
-            );
+        crate::diag::debug(format_args!(
+            "resolve[{mode}] {} key(s) in {}ms ({} memoized; first: {})",
+            misses.len(),
+            started.elapsed().as_millis(),
+            keys.len() - misses.len(),
+            misses.first().unwrap_or(&"<none>"),
+        ));
+
+        let mut resolved = self.resolved.borrow_mut();
+        for (key, src) in fresh {
+            resolved.insert(key.clone(), src.clone());
+            out.insert(key, src);
         }
+        Ok(out)
+    }
+
+    // -- content memo ---------------------------------------------------------
+
+    /// Content for `blob`, from the memo or via `fetch` (result is memoized).
+    fn content_for_blob<F>(&self, blob: &str, fetch: F) -> Result<Arc<Vec<u8>>>
+    where
+        F: FnOnce() -> Result<Vec<u8>>,
+    {
+        if let Some(c) = self.content.borrow().get(blob) {
+            return Ok(c.clone());
+        }
+        let c = Arc::new(fetch()?);
+        self.content
+            .borrow_mut()
+            .insert(blob.to_string(), c.clone());
+        Ok(c)
+    }
+
+    // -- mode implementations ---------------------------------------------------
+
+    /// Locked: pin every key from the lock set.  Content comes from the
+    /// bundle when its blob matches, else the cache-backed engine (--fetch).
+    /// This is the single owner of the missing-pin refusal.
+    fn resolve_locked(
+        &self,
+        keys: &[&str],
+        pins: &IndexMap<String, ProvenancePin>,
+    ) -> Result<IndexMap<String, LoadedSource>> {
+        // Refuse up front if the lock lacks provenance for anything we need.
+        for &key in keys {
+            if !pins.contains_key(key) {
+                bail!(
+                    "manifest (--lock) has no provenance for required file '{key}'; \
+                     regenerate without --lock"
+                );
+            }
+        }
+
+        let mut out = IndexMap::new();
+        for &key in keys {
+            let pin = pins.get(key).unwrap().clone();
+            let content = self.content_for_blob(&pin.blob, || {
+                // Bundled content satisfies the lock only if its blob matches.
+                if let Some(text) = bundled::content_by_key(key) {
+                    if git_blob_sha1(text.as_bytes()) == pin.blob {
+                        return Ok(text.as_bytes().to_vec());
+                    }
+                }
+                #[cfg(feature = "fetch")]
+                if self.use_fetch {
+                    let mut single = IndexMap::new();
+                    single.insert(key.to_string(), pin.clone());
+                    let mut resolved = self.engine()?.resolve_pinned(&single, &[key])?;
+                    return Ok(resolved
+                        .remove(key)
+                        .ok_or_else(|| anyhow!("engine did not resolve '{key}'"))?
+                        .content);
+                }
+                if bundled::content_by_key(key).is_some() {
+                    bail!(
+                        "--lock without --fetch: bundled '{key}' does not match the \
+                         locked blob ({}); use --fetch",
+                        &pin.blob[..7.min(pin.blob.len())]
+                    );
+                }
+                bail!(
+                    "--lock without --fetch: '{key}' is not in this gloam build's bundle; \
+                     use --fetch"
+                )
+            })?;
+            out.insert(key.to_string(), LoadedSource { pin, content });
+        }
+        Ok(out)
+    }
+
+    fn resolve_bundled(&self, keys: &[&str]) -> Result<IndexMap<String, LoadedSource>> {
+        let bundle = bundled::bundled_provenance()?;
+        let mut out = IndexMap::new();
+        for &key in keys {
+            let pin = bundle.provenance.get(key).cloned().ok_or_else(|| {
+                anyhow!("bundled/provenance.json has no entry for '{key}' — run `cargo xtask bundle`")
+            })?;
+            let content = self.content_for_blob(&pin.blob, || {
+                Ok(bundled::content_by_key(key)
+                    .ok_or_else(|| {
+                        anyhow!("bundled content for '{key}' is empty — run `cargo xtask bundle`")
+                    })?
+                    .as_bytes()
+                    .to_vec())
+            })?;
+            out.insert(key.to_string(), LoadedSource { pin, content });
+        }
+        Ok(out)
     }
 
     #[cfg(feature = "fetch")]
-    if use_fetch {
-        let engine = fetch_engine()?;
-        let resolved = engine.resolve_pinned(pins, keys)?;
-        return Ok(resolved
-            .into_iter()
-            .map(|(key, r)| {
-                (
-                    key,
-                    LoadedSource {
-                        pin: r.pin,
-                        content: r.content,
-                    },
-                )
-            })
-            .collect());
-    }
-    let _ = use_fetch;
-
-    // No --fetch: serve from the bundle only if its blob matches the lock.
-    let mut out = IndexMap::new();
-    for &key in keys {
-        let pin = pins.get(key).unwrap().clone();
-        let content = bundled::content_by_key(key).ok_or_else(|| {
-            anyhow!(
-                "--lock without --fetch: '{key}' is not in this gloam build's bundle; use --fetch"
-            )
-        })?;
-        let bundled_blob = git_blob_sha1(content.as_bytes());
-        if bundled_blob != pin.blob {
-            bail!(
-                "--lock without --fetch: bundled '{key}' (blob {}) does not match the \
-                 locked blob ({}); use --fetch",
-                &bundled_blob[..7.min(bundled_blob.len())],
-                &pin.blob[..7.min(pin.blob.len())]
+    fn resolve_fetch(&self, keys: &[&str]) -> Result<IndexMap<String, LoadedSource>> {
+        let resolved = self.engine()?.resolve_head(keys)?;
+        let mut out = IndexMap::new();
+        for (key, r) in resolved {
+            // The engine just read (and verified) this content; memoize it
+            // under its blob so later locked-mode resolves reuse it.
+            let content = Arc::new(r.content);
+            self.content
+                .borrow_mut()
+                .insert(r.pin.blob.clone(), content.clone());
+            out.insert(
+                key,
+                LoadedSource {
+                    pin: r.pin,
+                    content,
+                },
             );
         }
-        out.insert(
-            key.to_string(),
-            LoadedSource {
-                pin,
-                content: content.as_bytes().to_vec(),
-            },
-        );
+        Ok(out)
     }
-    Ok(out)
-}
 
-fn resolve_bundled(keys: &[&str]) -> Result<IndexMap<String, LoadedSource>> {
-    let bundle = bundled::bundled_provenance()?;
-    let mut out = IndexMap::new();
-    for &key in keys {
-        let pin = bundle.provenance.get(key).cloned().ok_or_else(|| {
-            anyhow!("bundled/provenance.json has no entry for '{key}' — run `cargo xtask bundle`")
-        })?;
-        let content = bundled::content_by_key(key)
-            .ok_or_else(|| {
-                anyhow!("bundled content for '{key}' is empty — run `cargo xtask bundle`")
-            })?
-            .as_bytes()
-            .to_vec();
-        out.insert(key.to_string(), LoadedSource { pin, content });
+    /// The fetch engine, constructed (cache opened, bundle seeded) at most
+    /// once per run.
+    #[cfg(feature = "fetch")]
+    fn engine(&self) -> Result<&super::engine::Engine> {
+        if self.engine.get().is_none() {
+            let started = std::time::Instant::now();
+            let engine = super::engine::Engine::new()?;
+            let opened = started.elapsed().as_millis();
+            // Seed from the embedded bundle so unchanged content resolves
+            // from cache.
+            engine.seed_from_bundle(&bundled::bundled_provenance()?, |k| {
+                bundled::content_by_key(k).map(|s| s.as_bytes().to_vec())
+            })?;
+            crate::diag::debug(format_args!(
+                "engine: cache opened in {opened}ms, bundle seeded in {}ms (once per run)",
+                started.elapsed().as_millis() - opened
+            ));
+            let _ = self.engine.set(engine);
+        }
+        Ok(self.engine.get().expect("engine just initialized"))
     }
-    Ok(out)
-}
-
-#[cfg(feature = "fetch")]
-fn fetch_engine() -> Result<super::engine::Engine> {
-    let started = std::time::Instant::now();
-    let engine = super::engine::Engine::new()?;
-    let opened = started.elapsed().as_millis();
-    // Seed from the embedded bundle so unchanged content resolves from cache.
-    engine.seed_from_bundle(&bundled::bundled_provenance()?, |k| {
-        bundled::content_by_key(k).map(|s| s.as_bytes().to_vec())
-    })?;
-    crate::diag::debug(format_args!(
-        "engine: cache opened in {opened}ms, bundle seeded in {}ms",
-        started.elapsed().as_millis() - opened
-    ));
-    Ok(engine)
-}
-
-#[cfg(feature = "fetch")]
-fn resolve_fetch(keys: &[&str]) -> Result<IndexMap<String, LoadedSource>> {
-    let engine = fetch_engine()?;
-    let resolved = engine.resolve_head(keys)?;
-    let mut out = IndexMap::new();
-    for (key, r) in resolved {
-        out.insert(
-            key,
-            LoadedSource {
-                pin: r.pin,
-                content: r.content,
-            },
-        );
-    }
-    Ok(out)
 }
 
 #[cfg(test)]
@@ -193,8 +279,10 @@ mod tests {
     #[test]
     fn bundled_resolve_returns_pins_and_content() {
         // Uses the populated bundled/provenance.json; offline.
-        let resolved =
-            resolve(&["gl.xml", "xxhash.h"], &LoadCtx::bundled()).expect("bundled resolve");
+        let store = SourceStore::bundled();
+        let resolved = store
+            .resolve(&["gl.xml", "xxhash.h"])
+            .expect("bundled resolve");
 
         let gl = &resolved["gl.xml"];
         assert_eq!(gl.pin.repo, "KhronosGroup/OpenGL-Registry");
@@ -210,10 +298,44 @@ mod tests {
 
     #[test]
     fn bundled_resolve_errors_on_unknown_key() {
-        let err = resolve(&["nope.xml"], &LoadCtx::bundled())
+        let err = SourceStore::bundled()
+            .resolve(&["nope.xml"])
             .unwrap_err()
             .to_string();
         assert!(err.contains("nope.xml"), "{err}");
+    }
+
+    #[test]
+    fn repeat_resolves_share_memoized_content() {
+        let store = SourceStore::bundled();
+        let a = store.resolve(&["gl.xml"]).unwrap();
+        let b = store.resolve(&["gl.xml"]).unwrap();
+        assert!(
+            Arc::ptr_eq(&a["gl.xml"].content, &b["gl.xml"].content),
+            "second resolve must be a memo hit sharing the same Arc"
+        );
+    }
+
+    #[test]
+    fn set_lock_keeps_content_memo_but_rereads_pins() {
+        let bundle = bundled::bundled_provenance().unwrap();
+        let mut store = SourceStore::bundled();
+        let before = store.resolve(&["gl.xml"]).unwrap()["gl.xml"].clone();
+
+        // Lock to the same blob but a sentinel commit: the pin must change,
+        // the content Arc must be reused (content-addressed memo).
+        let mut pin = bundle.provenance["gl.xml"].clone();
+        pin.commit = "f".repeat(40);
+        let mut pins = IndexMap::new();
+        pins.insert("gl.xml".to_string(), pin);
+        store.set_lock(Some(pins));
+
+        let after = store.resolve(&["gl.xml"]).unwrap()["gl.xml"].clone();
+        assert_eq!(after.pin.commit, "f".repeat(40), "pin re-read from lock");
+        assert!(
+            Arc::ptr_eq(&before.content, &after.content),
+            "content memo survives the lock swap"
+        );
     }
 
     #[test]
@@ -223,11 +345,8 @@ mod tests {
         let bundle = bundled::bundled_provenance().unwrap();
         let mut pins = IndexMap::new();
         pins.insert("gl.xml".to_string(), bundle.provenance["gl.xml"].clone());
-        let ctx = LoadCtx {
-            use_fetch: false,
-            lock: Some(&pins),
-        };
-        let resolved = resolve(&["gl.xml"], &ctx).unwrap();
+        let store = SourceStore::new(false, Some(pins));
+        let resolved = store.resolve(&["gl.xml"]).unwrap();
         assert!(!resolved["gl.xml"].content.is_empty());
     }
 
@@ -237,22 +356,15 @@ mod tests {
         pin.blob = "0".repeat(40);
         let mut pins = IndexMap::new();
         pins.insert("gl.xml".to_string(), pin);
-        let ctx = LoadCtx {
-            use_fetch: false,
-            lock: Some(&pins),
-        };
-        let err = resolve(&["gl.xml"], &ctx).unwrap_err().to_string();
+        let store = SourceStore::new(false, Some(pins));
+        let err = store.resolve(&["gl.xml"]).unwrap_err().to_string();
         assert!(err.contains("does not match the locked blob"), "{err}");
     }
 
     #[test]
     fn locked_missing_key_is_refused() {
-        let pins = IndexMap::new();
-        let ctx = LoadCtx {
-            use_fetch: false,
-            lock: Some(&pins),
-        };
-        let err = resolve(&["gl.xml"], &ctx).unwrap_err().to_string();
+        let store = SourceStore::new(false, Some(IndexMap::new()));
+        let err = store.resolve(&["gl.xml"]).unwrap_err().to_string();
         assert!(
             err.contains("no provenance for required file 'gl.xml'"),
             "{err}"

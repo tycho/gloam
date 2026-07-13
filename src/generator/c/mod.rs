@@ -12,7 +12,7 @@ use minijinja::{Environment, Value, context};
 
 use crate::cli::CArgs;
 use crate::preamble;
-use crate::provenance::load::{self, LoadCtx};
+use crate::provenance::load::{LoadedSource, SourceStore};
 use crate::provenance::manifest::{OutputEntry, ProvenancePin, git_blob_sha1};
 use crate::resolve::FeatureSet;
 use indexmap::IndexMap;
@@ -33,16 +33,17 @@ pub fn generate(
     fs: &FeatureSet,
     args: &CArgs,
     out: &Path,
-    load_ctx: &LoadCtx,
+    store: &SourceStore,
     command_line: &str,
 ) -> Result<GeneratedTree> {
     let stem = output_stem(fs);
     let env = build_env()?;
 
-    // Resolve provenance pins for every contributing source (cache-warm in
-    // --fetch mode after this call, so the aux-header copy below reuses them).
+    // Resolve provenance pins for every contributing source (memo hits after
+    // the implicit-pin settlement resolved the same keys).
     let source_key_refs: Vec<&str> = fs.source_keys.iter().map(String::as_str).collect();
-    let mut pins: IndexMap<String, ProvenancePin> = load::resolve(&source_key_refs, load_ctx)
+    let mut pins: IndexMap<String, ProvenancePin> = store
+        .resolve(&source_key_refs)
         .context("resolving source provenance")?
         .into_iter()
         .map(|(key, src)| (key, src.pin))
@@ -92,7 +93,7 @@ pub fn generate(
     });
 
     // Auxiliary headers, copied verbatim; collect their pins + BOM entries.
-    for aux in copy_auxiliary_headers(fs, &include_dir, load_ctx, args.external_headers)? {
+    for aux in copy_auxiliary_headers(fs, &include_dir, store, args.external_headers)? {
         files.push(OutputEntry {
             path: aux.rel_path,
             blob: aux.pin.blob.clone(),
@@ -151,17 +152,18 @@ impl FnNameLayout {
 /// etc.), plus any quoted `#include` directives found inside them.  This
 /// catches implicit dependencies like `vulkan_video_codecs_common.h` which are
 /// `#include`'d by other vk_video headers but never declared in the XML spec.
-/// Content is resolved via `ctx` only to scan for includes; keys are returned
-/// in emit order.
+/// Returns each header's key with its loaded source (pin + content), in emit
+/// order: the BFS already read the content to scan for includes, so callers
+/// never re-resolve what this walk resolved.
 ///
 /// When `external_headers` is true the Vulkan type-definition headers
 /// (vk_platform.h, vk_video/*) come from the system include path, so we
 /// skip bundling them.  xxhash.h is still needed by the generated .c.
-pub fn aux_header_keys(
+pub fn aux_headers(
     fs: &FeatureSet,
-    ctx: &LoadCtx,
+    store: &SourceStore,
     external_headers: bool,
-) -> Result<Vec<String>> {
+) -> Result<Vec<(String, LoadedSource)>> {
     // xxhash.h is always needed by the generated .c (extension hash search).
     let mut queue: Vec<String> = std::iter::once("xxhash.h".to_string())
         .chain(if external_headers && fs.is_vulkan {
@@ -173,21 +175,20 @@ pub fn aux_header_keys(
         })
         .collect();
     let mut visited: HashSet<String> = HashSet::new();
-    let mut keys: Vec<String> = Vec::new();
+    let mut out: Vec<(String, LoadedSource)> = Vec::new();
 
     while let Some(hdr_path) = queue.pop() {
         if !visited.insert(hdr_path.clone()) {
             continue;
         }
 
-        // Resolve for content (cache-warm; instant in bundled mode).
-        let resolved = load::resolve(&[hdr_path.as_str()], ctx)
+        let mut resolved = store
+            .resolve(&[hdr_path.as_str()])
             .with_context(|| format!("loading auxiliary header '{}'", hdr_path))?;
         let src = resolved
-            .get(&hdr_path)
+            .shift_remove(&hdr_path)
             .ok_or_else(|| anyhow!("auxiliary header '{}' was not resolved", hdr_path))?;
         let content = String::from_utf8_lossy(&src.content);
-        keys.push(hdr_path.clone());
 
         // Scan for `#include "relative/path.h"` lines and enqueue them,
         // resolved relative to the directory of the current header.
@@ -220,36 +221,34 @@ pub fn aux_header_keys(
                 }
             }
         }
+
+        out.push((hdr_path, src));
     }
 
-    Ok(keys)
+    Ok(out)
 }
 
-/// Copy the auxiliary-header closure (see [`aux_header_keys`]) to the output
+/// Copy the auxiliary-header closure (see [`aux_headers`]) to the output
 /// include tree.  Returns one [`AuxHeader`] per emitted file (its registry
-/// key, output path, and provenance pin) for the manifest BOM.
+/// key, output path, and provenance pin) for the manifest BOM.  Content and
+/// pins come straight from the closure walk — nothing is re-resolved.
 fn copy_auxiliary_headers(
     fs: &FeatureSet,
     include_dir: &Path,
-    ctx: &LoadCtx,
+    store: &SourceStore,
     external_headers: bool,
 ) -> Result<Vec<AuxHeader>> {
     let mut emitted: Vec<AuxHeader> = Vec::new();
-    for hdr_path in aux_header_keys(fs, ctx, external_headers)? {
+    for (hdr_path, src) in aux_headers(fs, store, external_headers)? {
         let dest = include_dir.join(&hdr_path);
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let resolved = load::resolve(&[hdr_path.as_str()], ctx)
-            .with_context(|| format!("loading auxiliary header '{}'", hdr_path))?;
-        let src = resolved
-            .get(&hdr_path)
-            .ok_or_else(|| anyhow!("auxiliary header '{}' was not resolved", hdr_path))?;
-        std::fs::write(&dest, &src.content)?;
+        std::fs::write(&dest, src.content.as_slice())?;
         emitted.push(AuxHeader {
             key: hdr_path.clone(),
             rel_path: format!("include/{hdr_path}"),
-            pin: src.pin.clone(),
+            pin: src.pin,
         });
     }
     Ok(emitted)

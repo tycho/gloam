@@ -88,21 +88,20 @@ fn run() -> Result<()> {
         }
         None => None,
     };
-    let ctx = provenance::load::LoadCtx {
-        use_fetch: cli.use_fetch(),
-        lock: lock_pins.as_ref(),
-    };
+    // One run-scoped source store: the fetch engine is constructed at most
+    // once, and every source is resolved/read/verified at most once.
+    let mut store = provenance::load::SourceStore::new(cli.use_fetch(), lock_pins);
 
     let diag = diag::Diag::new(cli.quiet);
 
     // `gloam lock`: write a provenance-only snapshot, no loader generation.
     if let Generator::Lock(lock_args) = &cli.generator {
-        return write_lock_snapshot(&ctx, &command_line, lock_args, diag);
+        return write_lock_snapshot(&store, &command_line, lock_args, diag);
     }
 
     diag.info("resolving feature sets...");
 
-    let feature_sets = resolve::build_feature_sets(&cli, &ctx, diag)?;
+    let feature_sets = resolve::build_feature_sets(&cli, &store, diag)?;
 
     let out = std::path::Path::new(&cli.out_path);
     std::fs::create_dir_all(out)?;
@@ -120,15 +119,16 @@ fn run() -> Result<()> {
             &feature_sets,
             c_args.external_headers,
             out,
-            &ctx,
+            &store,
             diag,
         )?),
         _ => None,
     };
-    let gen_ctx = provenance::load::LoadCtx {
-        use_fetch: cli.use_fetch(),
-        lock: implicit_pins.as_ref().or(lock_pins.as_ref()),
-    };
+    // Settle the pins for generation: the store re-reads pins from the new
+    // lock set but keeps its content memo (blobs are content-addressed).
+    if let Some(pins) = implicit_pins {
+        store.set_lock(Some(pins));
+    }
 
     // Aggregate provenance pins and the output BOM across all feature sets
     // written into this tree, for `.gloam/manifest.json`.
@@ -139,7 +139,7 @@ fn run() -> Result<()> {
         Generator::C(c_args) => {
             diag.info("generating C loader...");
             for fs in &feature_sets {
-                let tree = generator::c::generate(fs, c_args, out, &gen_ctx, &command_line)?;
+                let tree = generator::c::generate(fs, c_args, out, &store, &command_line)?;
                 pins.extend(tree.pins);
                 for f in tree.files {
                     files.entry(f.path.clone()).or_insert(f);
@@ -169,14 +169,15 @@ fn gloam_meta(command_line: &str) -> GloamMeta {
 /// `gloam lock`: resolve provenance for every supported source and write a
 /// provenance-only snapshot manifest (no output BOM).
 fn write_lock_snapshot(
-    ctx: &provenance::load::LoadCtx,
+    store: &provenance::load::SourceStore,
     command_line: &str,
     args: &cli::LockArgs,
     diag: diag::Diag,
 ) -> Result<()> {
     diag.info("snapshotting provenance...");
     let keys = provenance::all_keys();
-    let mut pins: IndexMap<String, ProvenancePin> = provenance::load::resolve(&keys, ctx)?
+    let mut pins: IndexMap<String, ProvenancePin> = store
+        .resolve(&keys)?
         .into_iter()
         .map(|(key, src)| (key, src.pin))
         .collect();
@@ -221,14 +222,19 @@ fn implicit_lock_pins(
     feature_sets: &[resolve::FeatureSet],
     external_headers: bool,
     out: &std::path::Path,
-    ctx: &provenance::load::LoadCtx,
+    store: &provenance::load::SourceStore,
     diag: diag::Diag,
 ) -> Result<IndexMap<String, ProvenancePin>> {
     let mut keys: Vec<String> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for fs in feature_sets {
-        let aux = generator::c::aux_header_keys(fs, ctx, external_headers)?;
-        for key in fs.source_keys.iter().cloned().chain(aux) {
+        let aux = generator::c::aux_headers(fs, store, external_headers)?;
+        for key in fs
+            .source_keys
+            .iter()
+            .cloned()
+            .chain(aux.into_iter().map(|(key, _)| key))
+        {
             if seen.insert(key.clone()) {
                 keys.push(key);
             }
@@ -236,7 +242,8 @@ fn implicit_lock_pins(
     }
 
     let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
-    let mut pins: IndexMap<String, ProvenancePin> = provenance::load::resolve(&key_refs, ctx)?
+    let mut pins: IndexMap<String, ProvenancePin> = store
+        .resolve(&key_refs)?
         .into_iter()
         .map(|(key, src)| (key, src.pin))
         .collect();

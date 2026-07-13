@@ -54,7 +54,7 @@ use typedefs::{build_type_list, collect_required_headers};
 
 pub fn build_feature_sets(
     cli: &Cli,
-    ctx: &crate::provenance::load::LoadCtx,
+    store: &crate::provenance::load::SourceStore,
     diag: crate::diag::Diag,
 ) -> Result<Vec<FeatureSet>> {
     let requests = cli.api_requests()?;
@@ -77,7 +77,7 @@ pub fn build_feature_sets(
         }
         for (spec, reqs) in &by_spec {
             let apis: Vec<&str> = reqs.iter().map(|r| r.api.as_str()).collect();
-            let sources = fetch::load_spec(spec.as_str(), &apis, ctx)?;
+            let sources = fetch::load_spec(spec.as_str(), &apis, store)?;
             let raw = parse::parse(&sources, *spec, diag)?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,
@@ -94,7 +94,7 @@ pub fn build_feature_sets(
         for req in &requests {
             let spec = req.spec();
             let apis = [req.api.as_str()];
-            let sources = fetch::load_spec(spec.as_str(), &apis, ctx)?;
+            let sources = fetch::load_spec(spec.as_str(), &apis, store)?;
             let raw = parse::parse(&sources, spec, diag)?;
             let config = ResolveConfig {
                 ext_filter: &ext_filter,
