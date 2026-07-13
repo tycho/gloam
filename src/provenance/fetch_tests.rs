@@ -89,6 +89,23 @@ impl MockGitHub {
     }
 }
 
+/// A mock HTTP response: status line tail, extra headers, raw body bytes.
+struct MockResponse {
+    status: &'static str,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+impl MockResponse {
+    fn json(v: serde_json::Value) -> Self {
+        Self {
+            status: "200 OK",
+            headers: Vec::new(),
+            body: v.to_string().into_bytes(),
+        }
+    }
+}
+
 fn handle_conn(
     stream: &mut TcpStream,
     fixture: &HashMap<String, RepoData>,
@@ -99,13 +116,19 @@ fn handle_conn(
     if reader.read_line(&mut request_line).is_err() {
         return;
     }
-    // Drain the rest of the request headers.
+    // Parse the request headers (lowercased names) so routes can implement
+    // conditional requests.
+    let mut headers: HashMap<String, String> = HashMap::new();
     loop {
         let mut h = String::new();
         match reader.read_line(&mut h) {
             Ok(0) => break,
             Ok(_) if h == "\r\n" || h == "\n" => break,
-            Ok(_) => {}
+            Ok(_) => {
+                if let Some((name, value)) = h.split_once(':') {
+                    headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
+                }
+            }
             Err(_) => break,
         }
     }
@@ -115,23 +138,37 @@ fn handle_conn(
         .nth(1)
         .unwrap_or("/")
         .to_string();
-    log.lock().unwrap().push(path.clone());
 
-    let (status, body) = match route(&path, fixture) {
-        Some(b) => ("200 OK", b),
-        None => ("404 Not Found", String::new()),
-    };
-    let resp = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
+    let resp = route(&path, &headers, fixture).unwrap_or(MockResponse {
+        status: "404 Not Found",
+        headers: Vec::new(),
+        body: Vec::new(),
+    });
+    // Log entries carry the outcome so tests can tell a 304 from a 200.
+    let code = resp.status.split_whitespace().next().unwrap_or("?");
+    log.lock().unwrap().push(format!("{path} [{code}]"));
+
+    let mut head = format!(
+        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
+        resp.status,
+        resp.body.len()
     );
-    let _ = stream.write_all(resp.as_bytes());
+    for (name, value) in &resp.headers {
+        head.push_str(&format!("{name}: {value}\r\n"));
+    }
+    head.push_str("\r\n");
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(&resp.body);
     let _ = stream.flush();
 }
 
-/// Serve the GitHub endpoints `acquire` uses.  Returns the JSON body, or `None`
+/// Serve the GitHub endpoints `acquire` uses.  Returns the response, or `None`
 /// for a 404.
-fn route(path: &str, fixture: &HashMap<String, RepoData>) -> Option<String> {
+fn route(
+    path: &str,
+    headers: &HashMap<String, String>,
+    fixture: &HashMap<String, RepoData>,
+) -> Option<MockResponse> {
     let b64 = |c: &[u8]| BASE64.encode(c);
     let p = path.split('?').next().unwrap_or(path);
     let segs: Vec<&str> = p
@@ -147,7 +184,22 @@ fn route(path: &str, fixture: &HashMap<String, RepoData>) -> Option<String> {
     let rest = &segs[3..];
 
     let json = match rest {
-        ["git", "ref", "heads", _branch] => serde_json::json!({ "object": { "sha": rd.head } }),
+        ["git", "ref", "heads", _branch] => {
+            // Serve an ETag derived from the head; a matching If-None-Match
+            // gets GitHub's rate-limit-free 304 with an empty body.
+            let etag = format!("W/\"{}\"", rd.head);
+            if headers.get("if-none-match") == Some(&etag) {
+                return Some(MockResponse {
+                    status: "304 Not Modified",
+                    headers: vec![("ETag".to_string(), etag)],
+                    body: Vec::new(),
+                });
+            }
+            let mut resp =
+                MockResponse::json(serde_json::json!({ "object": { "sha": rd.head } }));
+            resp.headers.push(("ETag".to_string(), etag));
+            return Some(resp);
+        }
         ["git", "blobs", sha] => {
             let (_path, content) = rd.files.values().find(|(b, _)| b == sha)?;
             serde_json::json!({ "content": b64(content), "encoding": "base64" })
@@ -165,7 +217,7 @@ fn route(path: &str, fixture: &HashMap<String, RepoData>) -> Option<String> {
         }
         _ => return None,
     };
-    Some(json.to_string())
+    Some(MockResponse::json(json))
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +320,47 @@ fn stale_head_unchanged_upstream_reuses_cached_blobs() {
             .iter()
             .any(|p| p.contains("/contents/") || p.contains("/git/blobs/")),
         "unchanged upstream must not re-download content: {reqs:?}"
+    );
+}
+
+#[test]
+fn stale_head_with_stored_etag_heartbeats_via_304() {
+    let fix = fixture(&["vk.xml"]);
+    let server = MockGitHub::start(fix.clone());
+    let cache = Cache::open_in_memory().unwrap();
+    // Stale HEAD, warm blobs — plus the ETag a previous 200 would have stored
+    // for the ref request URL.
+    seed(&cache, &fix, "vk.xml", cache::HEAD_TTL_SECS * 10);
+    let (cluster, _) = find("vk.xml").unwrap();
+    let ref_url = format!(
+        "{}/repos/{}/git/ref/heads/{}",
+        server.base_url, cluster.repo, cluster.branch
+    );
+    let etag = format!("W/\"{}\"", fix[cluster.repo].head);
+    cache.set_etag(&ref_url, &etag, cache::now()).unwrap();
+
+    let engine = engine_for(&server, cache);
+    let out = engine.resolve_head(&["vk.xml"]).unwrap();
+    assert_eq!(out["vk.xml"].content, fixture_content(&fix, "vk.xml"));
+
+    let reqs = server.requests();
+    assert_eq!(
+        reqs.len(),
+        1,
+        "only the conditional ref request may happen: {reqs:?}"
+    );
+    assert!(
+        reqs[0].contains("/git/ref/heads/") && reqs[0].contains("[304]"),
+        "the ref request must be answered 304: {reqs:?}"
+    );
+
+    // The 304 refreshed the HEAD TTL: a second resolve is fully offline.
+    let _ = engine.resolve_head(&["vk.xml"]).unwrap();
+    assert_eq!(
+        server.requests().len(),
+        1,
+        "a 304 must refresh the TTL like a 200: {:?}",
+        server.requests()
     );
 }
 

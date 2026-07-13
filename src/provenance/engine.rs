@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use anyhow::{Context, Result, anyhow, bail};
 use indexmap::IndexMap;
 
-use super::acquire::Github;
+use super::acquire::{Github, HeadRef};
 use super::cache::{self, Cache};
 use super::manifest::{BundledProvenance, ProvenancePin, git_blob_sha1};
 use super::{Cluster, find};
@@ -97,14 +97,11 @@ impl Engine {
         let now = cache::now();
 
         for (cluster, cluster_keys) in by_cluster {
-            // Resolve the cluster's HEAD commit (cache-first).
+            // Resolve the cluster's HEAD commit (cache-first, then a
+            // conditional request).
             let commit = match self.cache.fresh_head(cluster.repo, now, self.head_ttl)? {
                 Some(c) => c,
-                None => {
-                    let c = self.gh.head_commit(cluster.repo, cluster.branch)?;
-                    self.cache.set_head(cluster.repo, cluster.branch, &c, now)?;
-                    c
-                }
+                None => self.resolve_stale_head(cluster, now)?,
             };
             self.cache.put_commit(&commit, cluster.repo, now)?;
 
@@ -185,6 +182,41 @@ impl Engine {
         }
 
         Ok(out)
+    }
+
+    /// Re-resolve a cluster's HEAD after the TTL lapsed, using a conditional
+    /// request so an unchanged upstream costs no metered API call.
+    ///
+    /// On 304 the stored commit is re-`set_head` with `now` — a
+    /// rate-limit-free TTL heartbeat.  On 200 the (possibly new) commit and
+    /// the response ETag are recorded for the next round trip.
+    fn resolve_stale_head(&self, cluster: &Cluster, now: i64) -> Result<String> {
+        let url = self.gh.ref_url(cluster.repo, cluster.branch);
+        // A 304 is only actionable if we still know what we derived from this
+        // URL last time — never send If-None-Match without a stored commit.
+        let stored = self.cache.stored_head(cluster.repo)?;
+        let etag = match &stored {
+            Some(_) => self.cache.etag_for(&url)?,
+            None => None,
+        };
+        match self
+            .gh
+            .head_commit_conditional(cluster.repo, cluster.branch, etag.as_deref())?
+        {
+            HeadRef::NotModified => {
+                let c = stored.expect("If-None-Match sent only with a stored head");
+                self.cache.set_head(cluster.repo, cluster.branch, &c, now)?;
+                Ok(c)
+            }
+            HeadRef::Resolved { commit, etag } => {
+                self.cache
+                    .set_head(cluster.repo, cluster.branch, &commit, now)?;
+                if let Some(etag) = &etag {
+                    self.cache.set_etag(&url, etag, now)?;
+                }
+                Ok(commit)
+            }
+        }
     }
 
     fn fetch_and_cache(

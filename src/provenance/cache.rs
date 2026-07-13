@@ -12,6 +12,9 @@
 //!   - **Object TTL** (`commits.last_used`, `blobs.last_used`): how long unused
 //!     commits/blobs survive before eviction.  Refreshed on every reuse.
 //!
+//! `http_etags` rows (per-request-URL ETags for conditional requests) belong to
+//! neither class: they are tiny and never evicted.
+//!
 //! The cache is pure derived data (rebuildable from the network and the bundle),
 //! so we never migrate: a `PRAGMA user_version` mismatch drops and recreates.
 
@@ -19,7 +22,7 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// Bump on any incompatible schema change; a mismatch drops & recreates.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// Default HEAD TTL: re-resolve a branch HEAD at most ~daily.
 pub const HEAD_TTL_SECS: i64 = 24 * 60 * 60;
@@ -69,7 +72,8 @@ impl Cache {
                 "DROP TABLE IF EXISTS repos;
                  DROP TABLE IF EXISTS commits;
                  DROP TABLE IF EXISTS tree_entries;
-                 DROP TABLE IF EXISTS blobs;",
+                 DROP TABLE IF EXISTS blobs;
+                 DROP TABLE IF EXISTS http_etags;",
             )
             .context("dropping stale cache schema")?;
             conn.execute_batch(SCHEMA)
@@ -106,6 +110,19 @@ impl Cache {
         })
     }
 
+    /// Return the cached HEAD commit for `repo` regardless of freshness — the
+    /// anchor a conditional ref request's 304 refers back to.
+    pub fn stored_head(&self, repo: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT head_commit FROM repos WHERE repo = ?1",
+                params![repo],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?)
+    }
+
     /// Record (or refresh) a repo's branch HEAD.
     pub fn set_head(&self, repo: &str, branch: &str, commit: &str, now: i64) -> Result<()> {
         self.conn.execute(
@@ -116,6 +133,39 @@ impl Cache {
                 head_commit = excluded.head_commit,
                 head_fetched_at = excluded.head_fetched_at",
             params![repo, branch, commit, now],
+        )?;
+        Ok(())
+    }
+
+    // -- HTTP ETags ------------------------------------------------------------
+
+    /// Return the stored ETag for a request URL, if any.
+    pub fn etag_for(&self, url: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT etag FROM http_etags WHERE url = ?1",
+                params![url],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?)
+    }
+
+    /// Record (or refresh) the ETag for a request URL.
+    ///
+    /// Keyed by the full request URL because an ETag belongs to a *request*,
+    /// not to a domain object.  The row stores no payload: a 304 means
+    /// "whatever the caller derived from this URL last time still holds", and
+    /// the caller refreshes its own domain row.  Rows are tiny and never
+    /// evicted.
+    pub fn set_etag(&self, url: &str, etag: &str, now: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO http_etags(url, etag, fetched_at)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(url) DO UPDATE SET
+                etag = excluded.etag,
+                fetched_at = excluded.fetched_at",
+            params![url, etag, now],
         )?;
         Ok(())
     }
@@ -252,6 +302,11 @@ CREATE TABLE blobs(
     content   BLOB NOT NULL,
     last_used INTEGER NOT NULL
 );
+CREATE TABLE http_etags(
+    url        TEXT PRIMARY KEY,
+    etag       TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL
+);
 CREATE INDEX idx_blobs_last_used   ON blobs(last_used);
 CREATE INDEX idx_commits_last_used ON commits(last_used);
 ";
@@ -311,6 +366,29 @@ mod tests {
         assert_eq!(c.fresh_head("acme/repo", 1000 + 200, 100).unwrap(), None);
         // Unknown repo.
         assert_eq!(c.fresh_head("nope/repo", 1000, 100).unwrap(), None);
+    }
+
+    #[test]
+    fn stored_head_ignores_freshness() {
+        let c = mem();
+        assert_eq!(c.stored_head("acme/repo").unwrap(), None);
+        c.set_head("acme/repo", "main", "c0ffee", 1000).unwrap();
+        // Readable regardless of how stale the fetch timestamp is.
+        assert_eq!(c.stored_head("acme/repo").unwrap().as_deref(), Some("c0ffee"));
+    }
+
+    #[test]
+    fn etag_roundtrip_and_upsert() {
+        let c = mem();
+        let url = "https://api.example/repos/acme/repo/git/ref/heads/main";
+        assert_eq!(c.etag_for(url).unwrap(), None);
+        c.set_etag(url, "W/\"aaa\"", 100).unwrap();
+        assert_eq!(c.etag_for(url).unwrap().as_deref(), Some("W/\"aaa\""));
+        // Upsert replaces in place.
+        c.set_etag(url, "W/\"bbb\"", 200).unwrap();
+        assert_eq!(c.etag_for(url).unwrap().as_deref(), Some("W/\"bbb\""));
+        // Keyed by full URL: a different request has its own row.
+        assert_eq!(c.etag_for("https://api.example/other").unwrap(), None);
     }
 
     /// Whether a commit row exists (test helper — production code never needs

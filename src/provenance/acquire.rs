@@ -29,6 +29,19 @@ pub struct ClusterFetch {
     pub files: Vec<(ResolvedFile, Vec<u8>)>,
 }
 
+/// Outcome of a conditional branch-ref resolution.
+pub enum HeadRef {
+    /// HTTP 304: whatever commit the caller derived from this URL last time
+    /// still holds (and the round trip did not count against the rate limit).
+    NotModified,
+    /// HTTP 200: a (possibly new) tip commit, plus the response ETag to send
+    /// as `If-None-Match` next time.
+    Resolved {
+        commit: String,
+        etag: Option<String>,
+    },
+}
+
 /// A thin GitHub REST API client.
 pub struct Github {
     client: reqwest::blocking::Client,
@@ -96,15 +109,78 @@ impl Github {
 
     // -- snapshot resolution -------------------------------------------------
 
-    /// Resolve the HEAD commit SHA of a branch.
-    pub fn head_commit(&self, repo: &str, branch: &str) -> Result<String> {
+    /// The exact ref-resolution request URL for a branch — also the key under
+    /// which the engine stores this request's ETag (an ETag belongs to a
+    /// request, so cache rows are keyed by the URL the request actually used).
+    pub fn ref_url(&self, repo: &str, branch: &str) -> String {
         let base = &self.base;
-        let url = format!("{base}/repos/{repo}/git/ref/heads/{branch}");
-        let v = self.get_json(&url)?;
-        v["object"]["sha"]
+        format!("{base}/repos/{repo}/git/ref/heads/{branch}")
+    }
+
+    /// Resolve the HEAD commit SHA of a branch, conditionally.
+    ///
+    /// When `etag` is given it is sent as `If-None-Match`; a 304 response
+    /// (which GitHub does not count against the rate limit) yields
+    /// [`HeadRef::NotModified`] — the caller's previously derived commit still
+    /// holds.  A 200 yields the commit plus the response's ETag for the next
+    /// conditional round trip.
+    pub fn head_commit_conditional(
+        &self,
+        repo: &str,
+        branch: &str,
+        etag: Option<&str>,
+    ) -> Result<HeadRef> {
+        let url = self.ref_url(repo, branch);
+        let started = std::time::Instant::now();
+        let mut req = self
+            .client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28");
+        if let Some(tok) = &self.token {
+            req = req.bearer_auth(tok);
+        }
+        if let Some(etag) = etag {
+            req = req.header("If-None-Match", etag);
+        }
+        let resp = req.send().with_context(|| format!("GET {url}"))?;
+        crate::diag::debug(format_args!(
+            "HTTP GET {url} -> {} in {}ms",
+            resp.status(),
+            started.elapsed().as_millis()
+        ));
+        if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+            return Ok(HeadRef::NotModified);
+        }
+        let new_etag = resp
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        let resp = resp
+            .error_for_status()
+            .with_context(|| format!("HTTP error from {url}"))?;
+        let text = resp.text().with_context(|| format!("body of {url}"))?;
+        let v: Value =
+            serde_json::from_str(&text).with_context(|| format!("parsing JSON from {url}"))?;
+        let commit = v["object"]["sha"]
             .as_str()
             .map(str::to_string)
-            .ok_or_else(|| anyhow!("no object.sha in ref response for {repo}@{branch}"))
+            .ok_or_else(|| anyhow!("no object.sha in ref response for {repo}@{branch}"))?;
+        Ok(HeadRef::Resolved {
+            commit,
+            etag: new_etag,
+        })
+    }
+
+    /// Resolve the HEAD commit SHA of a branch (unconditional).
+    pub fn head_commit(&self, repo: &str, branch: &str) -> Result<String> {
+        match self.head_commit_conditional(repo, branch, None)? {
+            HeadRef::Resolved { commit, .. } => Ok(commit),
+            HeadRef::NotModified => bail!(
+                "unexpected 304 for unconditional ref request to {repo}@{branch}"
+            ),
+        }
     }
 
     /// Resolve a file's blob SHA (and inline content if the API returned it)
