@@ -60,7 +60,7 @@ jobs:
               .provenance
               | to_entries | map(.value)
               | group_by(.repo)[]
-              | "- `\(.[0].repo)` @ `\(.[0].describe)` (commit \(.[0].commit[0:12]))"
+              | "- `\(.[0].repo)` @ commit `\(.[0].commit[0:12])`"
             ' bundled/provenance.json | sort
             echo "PROV_EOF"
           } >> "$GITHUB_OUTPUT"

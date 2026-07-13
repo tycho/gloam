@@ -1,7 +1,7 @@
 //! Local provenance cache (SQLite via `rusqlite`).
 //!
 //! Exists only to serve `--fetch`: it caches upstream blobs and their commit /
-//! describe / tree metadata so repeated generation (and the pregen preflight)
+//! tree metadata so repeated generation (and the pregen preflight)
 //! avoids redundant API traffic, and so `--lock` against older snapshots works
 //! without disturbing our notion of each repo's HEAD.
 //!
@@ -19,7 +19,7 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// Bump on any incompatible schema change; a mismatch drops & recreates.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 /// Default HEAD TTL: re-resolve a branch HEAD at most ~daily.
 pub const HEAD_TTL_SECS: i64 = 24 * 60 * 60;
@@ -122,36 +122,18 @@ impl Cache {
 
     // -- commits -------------------------------------------------------------
 
-    /// Insert a commit's metadata (no-op if already present, but refresh use).
-    pub fn put_commit(&self, commit_sha: &str, repo: &str, describe: &str, now: i64) -> Result<()> {
+    /// Insert a commit row (no-op if already present, but refresh use).
+    /// Commit rows exist for eviction bookkeeping: tree entries are swept
+    /// when their commit is evicted.
+    pub fn put_commit(&self, commit_sha: &str, repo: &str, now: i64) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO commits(commit_sha, repo, describe, last_used)
-             VALUES (?1, ?2, ?3, ?4)
+            "INSERT INTO commits(commit_sha, repo, last_used)
+             VALUES (?1, ?2, ?3)
              ON CONFLICT(commit_sha) DO UPDATE SET
-                describe = excluded.describe,
                 last_used = excluded.last_used",
-            params![commit_sha, repo, describe, now],
+            params![commit_sha, repo, now],
         )?;
         Ok(())
-    }
-
-    /// Look up a commit's `describe`, refreshing its last-used timestamp.
-    pub fn commit_describe(&self, commit_sha: &str, now: i64) -> Result<Option<String>> {
-        let describe = self
-            .conn
-            .query_row(
-                "SELECT describe FROM commits WHERE commit_sha = ?1",
-                params![commit_sha],
-                |r| r.get::<_, String>(0),
-            )
-            .optional()?;
-        if describe.is_some() {
-            self.conn.execute(
-                "UPDATE commits SET last_used = ?2 WHERE commit_sha = ?1",
-                params![commit_sha, now],
-            )?;
-        }
-        Ok(describe)
     }
 
     // -- tree entries --------------------------------------------------------
@@ -257,7 +239,6 @@ CREATE TABLE repos(
 CREATE TABLE commits(
     commit_sha TEXT PRIMARY KEY,
     repo       TEXT NOT NULL,
-    describe   TEXT NOT NULL,
     last_used  INTEGER NOT NULL
 );
 CREATE TABLE tree_entries(
@@ -332,16 +313,26 @@ mod tests {
         assert_eq!(c.fresh_head("nope/repo", 1000, 100).unwrap(), None);
     }
 
+    /// Whether a commit row exists (test helper — production code never needs
+    /// to read commits back; they exist for eviction bookkeeping).
+    fn has_commit(c: &Cache, sha: &str) -> bool {
+        c.conn
+            .query_row(
+                "SELECT 1 FROM commits WHERE commit_sha = ?1",
+                params![sha],
+                |_| Ok(()),
+            )
+            .optional()
+            .unwrap()
+            .is_some()
+    }
+
     #[test]
     fn commit_and_tree_roundtrip() {
         let c = mem();
-        c.put_commit("abc123", "acme/repo", "v1.0-3-gabc123", 50)
-            .unwrap();
+        c.put_commit("abc123", "acme/repo", 50).unwrap();
         c.put_tree_entry("abc123", "src/x.h", "blob99").unwrap();
-        assert_eq!(
-            c.commit_describe("abc123", 60).unwrap().as_deref(),
-            Some("v1.0-3-gabc123")
-        );
+        assert!(has_commit(&c, "abc123"));
         assert_eq!(
             c.blob_for_path("abc123", "src/x.h").unwrap().as_deref(),
             Some("blob99")
@@ -353,7 +344,7 @@ mod tests {
     fn eviction_drops_cold_objects_and_orphan_tree_entries() {
         let c = mem();
         // Cold commit + its tree entry + a cold blob.
-        c.put_commit("cold", "acme/repo", "desc", 0).unwrap();
+        c.put_commit("cold", "acme/repo", 0).unwrap();
         c.put_tree_entry("cold", "p", "coldblob").unwrap();
         c.put_blob("coldblob", b"x", 0).unwrap();
         // Warm blob.
@@ -366,11 +357,7 @@ mod tests {
 
         assert!(!c.has_blob("coldblob").unwrap(), "cold blob evicted");
         assert!(c.has_blob("warmblob").unwrap(), "warm blob kept");
-        assert_eq!(
-            c.commit_describe("cold", 100_000).unwrap(),
-            None,
-            "cold commit evicted"
-        );
+        assert!(!has_commit(&c, "cold"), "cold commit evicted");
         assert_eq!(
             c.blob_for_path("cold", "p").unwrap(),
             None,

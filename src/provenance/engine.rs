@@ -73,8 +73,7 @@ impl Engine {
         let tx = self.cache.transaction()?;
         for (key, pin) in &bundle.provenance {
             if self.cache.has_blob(&pin.blob)? {
-                self.cache
-                    .put_commit(&pin.commit, &pin.repo, &pin.describe, now)?;
+                self.cache.put_commit(&pin.commit, &pin.repo, now)?;
                 self.cache
                     .put_tree_entry(&pin.commit, &pin.path_in_repo, &pin.blob)?;
                 continue;
@@ -82,8 +81,7 @@ impl Engine {
             let Some(content) = content_for(key) else {
                 continue;
             };
-            self.cache
-                .put_commit(&pin.commit, &pin.repo, &pin.describe, now)?;
+            self.cache.put_commit(&pin.commit, &pin.repo, now)?;
             self.cache
                 .put_tree_entry(&pin.commit, &pin.path_in_repo, &pin.blob)?;
             self.cache.put_blob(&pin.blob, &content, now)?;
@@ -99,7 +97,7 @@ impl Engine {
         let now = cache::now();
 
         for (cluster, cluster_keys) in by_cluster {
-            // Resolve the cluster's HEAD commit + describe (cache-first).
+            // Resolve the cluster's HEAD commit (cache-first).
             let commit = match self.cache.fresh_head(cluster.repo, now, self.head_ttl)? {
                 Some(c) => c,
                 None => {
@@ -108,14 +106,7 @@ impl Engine {
                     c
                 }
             };
-            let describe = match self.cache.commit_describe(&commit, now)? {
-                Some(d) => d,
-                None => {
-                    let d = self.gh.describe(cluster.repo, &commit)?;
-                    self.cache.put_commit(&commit, cluster.repo, &d, now)?;
-                    d
-                }
-            };
+            self.cache.put_commit(&commit, cluster.repo, now)?;
 
             for key in cluster_keys {
                 let spec = cluster.files.iter().find(|f| f.key == key).unwrap();
@@ -130,7 +121,7 @@ impl Engine {
                 out.insert(
                     key.to_string(),
                     Resolved {
-                        pin: pin_for(cluster, spec.path_in_repo, &commit, &describe, &blob),
+                        pin: pin_for(cluster, spec.path_in_repo, &commit, &blob),
                         content,
                     },
                 );
@@ -180,8 +171,7 @@ impl Engine {
                 }
             };
             // Opportunistically keep commit/tree metadata warm.
-            self.cache
-                .put_commit(&pin.commit, &pin.repo, &pin.describe, now)?;
+            self.cache.put_commit(&pin.commit, &pin.repo, now)?;
             self.cache
                 .put_tree_entry(&pin.commit, &pin.path_in_repo, &pin.blob)?;
 
@@ -263,19 +253,12 @@ impl Engine {
     }
 }
 
-fn pin_for(
-    cluster: &Cluster,
-    path_in_repo: &str,
-    commit: &str,
-    describe: &str,
-    blob: &str,
-) -> ProvenancePin {
+fn pin_for(cluster: &Cluster, path_in_repo: &str, commit: &str, blob: &str) -> ProvenancePin {
     ProvenancePin {
         repo: cluster.repo.to_string(),
         repo_url: cluster.repo_url.to_string(),
         path_in_repo: path_in_repo.to_string(),
         commit: commit.to_string(),
-        describe: describe.to_string(),
         blob: blob.to_string(),
     }
 }
@@ -314,7 +297,6 @@ mod tests {
                 repo_url: "https://github.com/Cyan4973/xxHash".to_string(),
                 path_in_repo: "xxhash.h".to_string(),
                 commit: "c0ffee00".to_string(),
-                describe: "v0.8.2".to_string(),
                 // Must be the real hash: the engine re-verifies cached blobs.
                 blob: git_blob_sha1(SAMPLE_CONTENT),
             },
@@ -342,7 +324,7 @@ mod tests {
         let r = &resolved["xxhash.h"];
         assert_eq!(r.content, SAMPLE_CONTENT);
         assert_eq!(r.pin.blob, git_blob_sha1(SAMPLE_CONTENT));
-        assert_eq!(r.pin.describe, "v0.8.2");
+        assert_eq!(r.pin.commit, "c0ffee00");
     }
 
     #[test]

@@ -346,11 +346,12 @@ pub fn supplemental_keys(spec_name: &str, apis: &[&str]) -> Vec<&'static str> {
 // Source grouping (shared by the header preamble and --version)
 // ---------------------------------------------------------------------------
 
-/// One repository's contribution: its `git describe` and the files taken from
+/// One repository's contribution: its pinned commit and the files taken from
 /// it (path + blob), for the grouped "upstream sources" listing.
 pub struct RepoSources {
     pub repo: String,
-    pub describe: String,
+    /// Full commit SHA-1 (displays shorten it).
+    pub commit: String,
     /// (path_in_repo, blob), sorted by path.
     pub files: Vec<(String, String)>,
 }
@@ -367,7 +368,7 @@ pub fn group_pins_by_repo(
             .entry(pin.repo.clone())
             .or_insert_with(|| RepoSources {
                 repo: pin.repo.clone(),
-                describe: pin.describe.clone(),
+                commit: pin.commit.clone(),
                 files: Vec::new(),
             });
         group
@@ -394,8 +395,6 @@ pub struct ResolvedRepo {
     pub branch: String,
     /// Full upstream commit SHA-1.
     pub commit: String,
-    /// `git describe`-style version (bare short commit when untagged).
-    pub describe: String,
 }
 
 /// Resolved provenance for one file: its repo snapshot plus the file's blob.

@@ -23,7 +23,11 @@ fn build_long_version() -> String {
         Ok(bundle) if !bundle.provenance.is_empty() => {
             out.push_str("\n\nEmbedded upstream sources:");
             for group in provenance::group_pins_by_repo(&bundle.provenance) {
-                out.push_str(&format!("\n  {} ({})", group.repo, group.describe));
+                out.push_str(&format!(
+                    "\n  {} ({})",
+                    group.repo,
+                    &group.commit[..7.min(group.commit.len())]
+                ));
                 for (path, blob) in &group.files {
                     out.push_str(&format!(
                         "\n    {} (blob {})",

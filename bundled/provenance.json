@@ -1,12 +1,11 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "provenance": {
     "EGL/eglplatform.h": {
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/EGL/eglplatform.h",
       "commit": "3d7796b3721d93976b6bfe536aa97bbc4bce8667",
-      "describe": "3d7796b",
       "blob": "6786afd90b685895efa25b302afba68fc8296941"
     },
     "KHR/khrplatform.h": {
@@ -14,7 +13,6 @@
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/KHR/khrplatform.h",
       "commit": "3d7796b3721d93976b6bfe536aa97bbc4bce8667",
-      "describe": "3d7796b",
       "blob": "01646449caedc958effc3b450360aefd260671ab"
     },
     "egl.xml": {
@@ -22,7 +20,6 @@
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/egl.xml",
       "commit": "3d7796b3721d93976b6bfe536aa97bbc4bce8667",
-      "describe": "3d7796b",
       "blob": "ec184e75dfdb5d5244febe18a8f380cdea60bd03"
     },
     "egl_angle_ext.xml": {
@@ -30,7 +27,6 @@
       "repo_url": "https://github.com/google/angle",
       "path_in_repo": "scripts/egl_angle_ext.xml",
       "commit": "ea467c307853f502fc16707b8bc9170bc8d3102c",
-      "describe": "ea467c3",
       "blob": "5ff7f83dcd72014797d9972f1fbe3809f4849d76"
     },
     "gl.xml": {
@@ -38,7 +34,6 @@
       "repo_url": "https://github.com/KhronosGroup/OpenGL-Registry",
       "path_in_repo": "xml/gl.xml",
       "commit": "9d527dbc81bb76e35ba284fe385ed8a5ddb90cbc",
-      "describe": "9d527db",
       "blob": "902d7aabcd5e6d6fdb348b20f1a1b9733dac5fbb"
     },
     "gl_angle_ext.xml": {
@@ -46,7 +41,6 @@
       "repo_url": "https://github.com/google/angle",
       "path_in_repo": "scripts/gl_angle_ext.xml",
       "commit": "ea467c307853f502fc16707b8bc9170bc8d3102c",
-      "describe": "ea467c3",
       "blob": "1c4b34c8b37a5900244e89ef6883990f0452426e"
     },
     "glsl_exts.xml": {
@@ -54,7 +48,6 @@
       "repo_url": "https://github.com/tycho/gloam",
       "path_in_repo": "bundled/xml/glsl_exts.xml",
       "commit": "0c8ced30f035da2c45386595d296fdd3209efaec",
-      "describe": "0.4.11",
       "blob": "f4651bd4d326c0eb4504dc19c99efb7f323ed5ca"
     },
     "glx.xml": {
@@ -62,7 +55,6 @@
       "repo_url": "https://github.com/KhronosGroup/OpenGL-Registry",
       "path_in_repo": "xml/glx.xml",
       "commit": "9d527dbc81bb76e35ba284fe385ed8a5ddb90cbc",
-      "describe": "9d527db",
       "blob": "80bce12bf53a81f58fd585846495cf1937b35b44"
     },
     "vk.xml": {
@@ -70,7 +62,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Docs",
       "path_in_repo": "xml/vk.xml",
       "commit": "7f61271fa6b6e7d71bf56dbc3a6165cda43bd8cb",
-      "describe": "v1.4.356-1-g7f61271",
       "blob": "76589cc9e2d1136841a7884f0e568ec5f0179e3e"
     },
     "vk_video/vulkan_video_codec_av1std.h": {
@@ -78,7 +69,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_av1std.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "5347b3639505d7ae7104d014b62a8ec0e680db50"
     },
     "vk_video/vulkan_video_codec_av1std_decode.h": {
@@ -86,7 +76,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_av1std_decode.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "e262e961ac04d00f5452c29f4ddf285f654a447c"
     },
     "vk_video/vulkan_video_codec_av1std_encode.h": {
@@ -94,7 +83,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_av1std_encode.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "8afb2537f165a9c543b2f5b332cb09192f1c6b60"
     },
     "vk_video/vulkan_video_codec_h264std.h": {
@@ -102,7 +90,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_h264std.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "3db81affc7e7de147072c3ab3ac3ec69e120b6fe"
     },
     "vk_video/vulkan_video_codec_h264std_decode.h": {
@@ -110,7 +97,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_h264std_decode.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "fa1140586bbde4fc4add06605d18f0dffb26b23a"
     },
     "vk_video/vulkan_video_codec_h264std_encode.h": {
@@ -118,7 +104,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_h264std_encode.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "aba6fbf3a1d0b8a64061263072dc70cd3d3cacb2"
     },
     "vk_video/vulkan_video_codec_h265std.h": {
@@ -126,7 +111,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_h265std.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "cf0cbefc088c670b3e7283ec4bfb85bf96b54886"
     },
     "vk_video/vulkan_video_codec_h265std_decode.h": {
@@ -134,7 +118,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_h265std_decode.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "7cfe54f284340b0f5559a8171721bcb58832a478"
     },
     "vk_video/vulkan_video_codec_h265std_encode.h": {
@@ -142,7 +125,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_h265std_encode.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "fd8ee03b6980f391dcff226c4e5ea0ce9c1310c2"
     },
     "vk_video/vulkan_video_codec_vp9std.h": {
@@ -150,7 +132,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_vp9std.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "312a78574ef80010507cb92c32db7e00623cf7d2"
     },
     "vk_video/vulkan_video_codec_vp9std_decode.h": {
@@ -158,7 +139,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codec_vp9std_decode.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "2a7ecdc9776375b0fc088b30eaed35c998887b96"
     },
     "vk_video/vulkan_video_codecs_common.h": {
@@ -166,7 +146,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vk_video/vulkan_video_codecs_common.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "faedbef4673c1071a104c2de6c6270bec9ce657b"
     },
     "vulkan/vk_platform.h": {
@@ -174,7 +153,6 @@
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
       "path_in_repo": "include/vulkan/vk_platform.h",
       "commit": "8d6039a455a7ecc7d2a592ff97f62db4e59b70bf",
-      "describe": "v1.4.356",
       "blob": "bbe60245d0f6f054782782b4de390193837e569c"
     },
     "wgl.xml": {
@@ -182,7 +160,6 @@
       "repo_url": "https://github.com/KhronosGroup/OpenGL-Registry",
       "path_in_repo": "xml/wgl.xml",
       "commit": "9d527dbc81bb76e35ba284fe385ed8a5ddb90cbc",
-      "describe": "9d527db",
       "blob": "1ef34b838104167593158efa3d631bf851a0d4bc"
     },
     "xxhash.h": {
@@ -190,7 +167,6 @@
       "repo_url": "https://github.com/Cyan4973/xxHash",
       "path_in_repo": "xxhash.h",
       "commit": "e573d4d2aaeaba0f3e5a0a9a54144a1f2b4b56e7",
-      "describe": "e573d4d",
       "blob": "dceb9216aa5ac144172ddab595f98c5b0f80e653"
     }
   }

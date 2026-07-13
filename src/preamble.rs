@@ -100,9 +100,9 @@ pub fn build_preamble(
         lines.push(" * Generated from the following upstream sources:".to_string());
         lines.push(" *".to_string());
         for group in &groups {
-            lines.push(format!(" *   {} ({})", group.repo, group.describe));
+            lines.push(format!(" *   {} ({})", group.repo, short_sha(&group.commit)));
             for (path, blob) in &group.files {
-                lines.push(format!(" *     {} (blob {})", path, short_blob(blob)));
+                lines.push(format!(" *     {} (blob {})", path, short_sha(blob)));
             }
         }
     }
@@ -137,9 +137,9 @@ fn contributing_attributions(fs: &FeatureSet) -> Vec<&'static Attribution> {
     seen
 }
 
-/// Short (7-char) form of a blob SHA-1 for the header's source list.
-fn short_blob(blob: &str) -> &str {
-    &blob[..7.min(blob.len())]
+/// Short (7-char) form of a SHA-1 for the header's source list.
+fn short_sha(sha: &str) -> &str {
+    &sha[..7.min(sha.len())]
 }
 
 /// Build a one-line summary of extension selection.
@@ -381,7 +381,6 @@ mod tests {
                 repo_url: "https://github.com/KhronosGroup/OpenGL-Registry".into(),
                 path_in_repo: "xml/gl.xml".into(),
                 commit: "a1b2c3d4".into(),
-                describe: "a1b2c3d".into(),
                 blob: "0fa1e2d3aaaa".into(),
             },
         );
@@ -392,13 +391,12 @@ mod tests {
                 repo_url: "https://github.com/Cyan4973/xxHash".into(),
                 path_in_repo: "xxhash.h".into(),
                 commit: "7e3f2a19".into(),
-                describe: "v0.8.2-9-g7e3f2a1".into(),
                 blob: "abcabc12".into(),
             },
         );
         let p = build_preamble(&fs, &pins, "gloam --api gl:core=3.3 c");
         assert!(p.contains("Generated from the following upstream sources:"));
-        assert!(p.contains("Cyan4973/xxHash (v0.8.2-9-g7e3f2a1)"));
+        assert!(p.contains("Cyan4973/xxHash (7e3f2a1)"));
         assert!(p.contains("KhronosGroup/OpenGL-Registry (a1b2c3d)"));
         assert!(p.contains("xml/gl.xml (blob 0fa1e2d)"));
         // Repos sorted case-insensitively: Cyan4973 before KhronosGroup.

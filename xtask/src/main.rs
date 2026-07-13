@@ -193,8 +193,7 @@ fn bundle() -> Result<()> {
             .resolve_cluster_head(cluster, &keys)
             .with_context(|| format!("resolving {}", cluster.repo))?;
         eprintln!(
-            "    {} @ {}",
-            fetched.repo.describe,
+            "    commit {}",
             &fetched.repo.commit[..12.min(fetched.repo.commit.len())]
         );
 
@@ -214,7 +213,6 @@ fn bundle() -> Result<()> {
                     repo_url: fetched.repo.repo_url.clone(),
                     path_in_repo: file.path_in_repo.clone(),
                     commit: fetched.repo.commit.clone(),
-                    describe: fetched.repo.describe.clone(),
                     blob: file.blob.clone(),
                 },
             ));

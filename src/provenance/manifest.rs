@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
 /// Manifest/provenance schema version (bump on incompatible layout changes).
-pub const SCHEMA_VERSION: u32 = 1;
+/// History: 2 removed `ProvenancePin.describe` — the tag-derived version
+/// string only resolved correctly for a minority of upstream repos and cost
+/// the bulk of the GitHub API budget; the commit SHA is the provenance.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Immutable provenance for one upstream file — a "pin".
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,8 +27,6 @@ pub struct ProvenancePin {
     pub path_in_repo: String,
     /// Full upstream commit SHA-1.
     pub commit: String,
-    /// `git describe`-style version.
-    pub describe: String,
     /// Git blob SHA-1 of the file content.
     pub blob: String,
 }
@@ -94,13 +95,12 @@ impl Manifest {
     }
 }
 
-/// Carry forward `commit`/`describe` from a previous pin set for every
-/// repository whose pinned content is unchanged, returning the preserved repo
-/// slugs.
+/// Carry forward `commit` from a previous pin set for every repository whose
+/// pinned content is unchanged, returning the preserved repo slugs.
 ///
 /// Granularity is per repository, not per file: pins from one repo share a
 /// single resolved commit (cluster resolution), and both the generated
-/// preamble and `--version` print one `repo (describe)` line per repo, so
+/// preamble and `--version` print one `repo (commit)` line per repo, so
 /// per-file preservation could make pins from the same repo disagree.  A repo
 /// is preserved only when every one of its pins in `pins` has a previous pin
 /// with the same `repo_url`, `path_in_repo`, and `blob`; a changed blob, a
@@ -136,11 +136,8 @@ pub fn preserve_unchanged_repos(
             continue;
         }
         for k in keys {
-            let old = &prev[k];
-            let (commit, describe) = (old.commit.clone(), old.describe.clone());
-            let pin = pins.get_mut(k).unwrap();
-            pin.commit = commit;
-            pin.describe = describe;
+            let commit = prev[k].commit.clone();
+            pins.get_mut(k).unwrap().commit = commit;
         }
         preserved.push(repo.clone());
     }
@@ -189,7 +186,6 @@ mod tests {
                 repo_url: "https://github.com/KhronosGroup/OpenGL-Registry".to_string(),
                 path_in_repo: "xml/gl.xml".to_string(),
                 commit: "a1b2c3d4".to_string(),
-                describe: "a1b2c3d".to_string(),
                 blob: "0fa1e2d3".to_string(),
             },
         );
@@ -247,7 +243,6 @@ mod tests {
             repo_url: format!("https://github.com/{repo}"),
             path_in_repo: path.to_string(),
             commit: commit.to_string(),
-            describe: commit[..commit.len().min(7)].to_string(),
             blob: blob.to_string(),
         }
     }
@@ -273,7 +268,6 @@ mod tests {
         let kept = preserve_unchanged_repos(&mut new, &prev);
         assert_eq!(kept, vec!["org/repo"]);
         assert_eq!(new["a.xml"].commit, "oldcommit");
-        assert_eq!(new["a.xml"].describe, "oldcomm");
         assert_eq!(new["b.xml"].commit, "oldcommit");
     }
 

@@ -24,16 +24,15 @@ fn generate_gl(dir: &Path) {
         .success();
 }
 
-/// Rewrite every provenance pin's commit/describe in the tree manifest to a
-/// sentinel, optionally corrupting one pin's blob.  This simulates "the
-/// previous run recorded older commits" without needing network.
+/// Rewrite every provenance pin's commit in the tree manifest to a sentinel,
+/// optionally corrupting one pin's blob.  This simulates "the previous run
+/// recorded older commits" without needing network.
 fn tamper_manifest(dir: &Path, corrupt_blob_key: Option<&str>) {
     let path = dir.join(".gloam").join("manifest.json");
     let mut m: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     for (key, pin) in m["provenance"].as_object_mut().unwrap() {
         pin["commit"] = serde_json::json!("f".repeat(40));
-        pin["describe"] = serde_json::json!("sentinelver");
         if corrupt_blob_key == Some(key.as_str()) {
             pin["blob"] = serde_json::json!("0".repeat(40));
         }
@@ -66,12 +65,12 @@ fn regeneration_preserves_unchanged_provenance_commits() {
         );
     }
 
-    // ...including into the generated header's sources block.
+    // ...including into the generated header's sources block (short commit).
     let header =
         std::fs::read_to_string(dir.path().join("include").join("gloam").join("gl.h")).unwrap();
     assert!(
-        header.contains("(sentinelver)"),
-        "preamble should use the preserved describe"
+        header.contains("(fffffff)"),
+        "preamble should use the preserved commit"
     );
 
     // A further regeneration with nothing changed is byte-identical.

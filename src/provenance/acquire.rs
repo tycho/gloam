@@ -2,8 +2,7 @@
 //!
 //! For each repository cluster we resolve a consistent snapshot:
 //!   1. branch HEAD → commit SHA,
-//!   2. a `git describe`-equivalent (nearest reachable tag + commits-since),
-//!   3. per file, its blob SHA + content, pinned to that commit.
+//!   2. per file, its blob SHA + content, pinned to that commit.
 //!
 //! Everything is pinned to the resolved commit, so content is race-free even if
 //! upstream moves mid-resolution.  For `--lock`, blobs are fetched directly by
@@ -22,13 +21,6 @@ use serde_json::Value;
 use super::{Cluster, ResolvedFile, ResolvedRepo};
 
 const API_BASE: &str = "https://api.github.com";
-
-/// Caps on how far we look when computing a `git describe` equivalent.
-/// Describe is only computed when resolving a stale HEAD (at most ~daily per
-/// repo), so these bounds trade a few extra calls on tag-heavy repos for
-/// accuracy; beyond them we fall back to a bare short commit.
-const MAX_TAG_PAGES: u32 = 10; // up to 1000 tags
-const MAX_COMMIT_PAGES: u32 = 5; // up to 500 commits scanned from HEAD
 
 /// One cluster resolved at a snapshot: repo provenance plus each requested
 /// file's provenance and content.
@@ -102,28 +94,6 @@ impl Github {
         serde_json::from_str(&text).with_context(|| format!("parsing JSON from {url}"))
     }
 
-    /// Fetch a paginated array endpoint, following `?page=` up to `max_pages`.
-    fn get_paged(&self, base_url: &str, max_pages: u32) -> Result<Vec<Value>> {
-        let mut out = Vec::new();
-        for page in 1..=max_pages {
-            let sep = if base_url.contains('?') { '&' } else { '?' };
-            let url = format!("{base_url}{sep}per_page=100&page={page}");
-            let v = self.get_json(&url)?;
-            let arr = v
-                .as_array()
-                .ok_or_else(|| anyhow!("expected JSON array from {url}"))?;
-            if arr.is_empty() {
-                break;
-            }
-            let n = arr.len();
-            out.extend(arr.iter().cloned());
-            if n < 100 {
-                break; // last page
-            }
-        }
-        Ok(out)
-    }
-
     // -- snapshot resolution -------------------------------------------------
 
     /// Resolve the HEAD commit SHA of a branch.
@@ -135,66 +105,6 @@ impl Github {
             .as_str()
             .map(str::to_string)
             .ok_or_else(|| anyhow!("no object.sha in ref response for {repo}@{branch}"))
-    }
-
-    /// Compute a `git describe`-equivalent for `head` in `repo`.
-    ///
-    /// Strategy: build a map of tagged commit SHAs, then scan commits from HEAD
-    /// until one is tagged.  Exact tag match → the tag name; otherwise
-    /// `"<tag>-<N>-g<short>"`; no reachable tag within the scan window → the
-    /// bare short commit (`git describe --always`).
-    pub fn describe(&self, repo: &str, head: &str) -> Result<String> {
-        let base = &self.base;
-        let short = &head[..head.len().min(7)];
-
-        // Tagged-commit SHA -> tag name.  Network errors propagate: silently
-        // degrading to a bare short commit would change the describe string —
-        // which lands in every generated preamble and the manifest — in a way
-        // that is indistinguishable from a real upstream change.
-        let tags_url = format!("{base}/repos/{repo}/tags");
-        let tags = self
-            .get_paged(&tags_url, MAX_TAG_PAGES)
-            .with_context(|| format!("listing tags of {repo}"))?;
-        let mut tag_by_commit: std::collections::HashMap<String, String> =
-            std::collections::HashMap::new();
-        for t in &tags {
-            if let (Some(name), Some(sha)) = (t["name"].as_str(), t["commit"]["sha"].as_str()) {
-                tag_by_commit
-                    .entry(sha.to_string())
-                    .or_insert_with(|| name.to_string());
-            }
-        }
-
-        if tag_by_commit.is_empty() {
-            return Ok(short.to_string());
-        }
-
-        // Walk commits from HEAD; first tagged commit wins.  A truncated walk
-        // (error mid-pagination) would produce a wrong `-N-` offset, so
-        // errors propagate here too.
-        //
-        // Note: the commits list is reverse-chronological, not topological,
-        // so N can differ from real `git describe` on merge-heavy repos.
-        // Accepted — it's stable for a given commit, which is what the
-        // churn-avoidance machinery needs.
-        let commits_url = format!("{base}/repos/{repo}/commits?sha={head}");
-        let commits = self
-            .get_paged(&commits_url, MAX_COMMIT_PAGES)
-            .with_context(|| format!("walking commits of {repo} from {short}"))?;
-        for (i, c) in commits.iter().enumerate() {
-            let Some(sha) = c["sha"].as_str() else {
-                continue;
-            };
-            if let Some(tag) = tag_by_commit.get(sha) {
-                return Ok(if i == 0 {
-                    tag.clone()
-                } else {
-                    format!("{tag}-{i}-g{short}")
-                });
-            }
-        }
-
-        Ok(short.to_string())
     }
 
     /// Resolve a file's blob SHA (and inline content if the API returned it)
@@ -240,16 +150,12 @@ impl Github {
         let commit = self
             .head_commit(cluster.repo, cluster.branch)
             .with_context(|| format!("resolving HEAD of {}", cluster.repo))?;
-        let describe = self
-            .describe(cluster.repo, &commit)
-            .with_context(|| format!("describing {}@{}", cluster.repo, commit))?;
 
         let repo = ResolvedRepo {
             repo: cluster.repo.to_string(),
             repo_url: cluster.repo_url.to_string(),
             branch: cluster.branch.to_string(),
             commit: commit.clone(),
-            describe,
         };
 
         let mut files = Vec::new();
@@ -310,7 +216,6 @@ mod tests {
 
         assert_eq!(fetched.repo.repo, "Cyan4973/xxHash");
         assert_eq!(fetched.repo.commit.len(), 40, "full commit SHA-1");
-        assert!(!fetched.repo.describe.is_empty());
 
         let (file, content) = &fetched.files[0];
         assert_eq!(file.key, "xxhash.h");

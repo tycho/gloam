@@ -148,8 +148,6 @@ fn route(path: &str, fixture: &HashMap<String, RepoData>) -> Option<String> {
 
     let json = match rest {
         ["git", "ref", "heads", _branch] => serde_json::json!({ "object": { "sha": rd.head } }),
-        ["tags"] => serde_json::json!([]),
-        ["commits"] => serde_json::json!([{ "sha": rd.head }]),
         ["git", "blobs", sha] => {
             let (_path, content) = rd.files.values().find(|(b, _)| b == sha)?;
             serde_json::json!({ "content": b64(content), "encoding": "base64" })
@@ -188,9 +186,7 @@ fn seed(cache: &Cache, fixture: &HashMap<String, RepoData>, key: &str, head_age_
     cache
         .set_head(cluster.repo, cluster.branch, &rd.head, now - head_age_secs)
         .unwrap();
-    cache
-        .put_commit(&rd.head, cluster.repo, "desc", now)
-        .unwrap();
+    cache.put_commit(&rd.head, cluster.repo, now).unwrap();
     cache
         .put_tree_entry(&rd.head, file.path_in_repo, blob)
         .unwrap();
@@ -351,7 +347,6 @@ fn lock_resolves_by_blob_cache_first() {
             repo_url: cluster.repo_url.to_string(),
             path_in_repo: file.path_in_repo.to_string(),
             commit: rd.head.clone(),
-            describe: "desc".to_string(),
             blob: blob.clone(),
         },
     );
