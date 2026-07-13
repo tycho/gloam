@@ -24,8 +24,14 @@ use rusqlite::{Connection, OptionalExtension, params};
 /// Bump on any incompatible schema change; a mismatch drops & recreates.
 const SCHEMA_VERSION: i64 = 3;
 
-/// Default HEAD TTL: re-resolve a branch HEAD at most ~daily.
-pub const HEAD_TTL_SECS: i64 = 24 * 60 * 60;
+/// Default HEAD TTL.  Deliberately 12h rather than 24h: a daily consumer
+/// with a persistent cache (the nightly gloam-pregen CI job) would race a
+/// 24h gate — cron jitter can make consecutive runs land slightly under 24h
+/// apart, silently generating from the previous day's HEADs.  Half the
+/// cadence eliminates the race by construction, and the extra check is
+/// nearly free (GitHub answers with unmetered 304s; Gitiles with one ~1KB
+/// response).
+pub const HEAD_TTL_SECS: i64 = 12 * 60 * 60;
 /// Default object TTL: evict commits/blobs unused for ~30 days.
 pub const OBJECT_TTL_SECS: i64 = 30 * 24 * 60 * 60;
 
