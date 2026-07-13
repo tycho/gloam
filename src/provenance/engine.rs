@@ -55,12 +55,30 @@ impl Engine {
     /// Seed the cache from an embedded bundle: `content_for(key)` yields the
     /// embedded bytes for a registry key.  Records commit/describe/tree/blob
     /// rows (not HEAD).  Skips any pin whose content is unavailable.
+    ///
+    /// `put_blob` is idempotent, but binding multi-MB content per call is the
+    /// dominant cost of repeated seeding — blobs already present (they're
+    /// content-addressed, so presence is sufficient) get only the cheap
+    /// metadata refresh.  The skipped `last_used` bump is harmless: any blob
+    /// actually read is bumped by the read, and an evicted-but-needed blob
+    /// reseeds on the next pass.
     pub fn seed_from_bundle<F>(&self, bundle: &BundledProvenance, content_for: F) -> Result<()>
     where
         F: Fn(&str) -> Option<Vec<u8>>,
     {
         let now = cache::now();
+        // One transaction for the whole seed: the metadata refreshes are
+        // dozens of small writes, and one WAL commit per statement is the
+        // slow path.
+        let tx = self.cache.transaction()?;
         for (key, pin) in &bundle.provenance {
+            if self.cache.has_blob(&pin.blob)? {
+                self.cache
+                    .put_commit(&pin.commit, &pin.repo, &pin.describe, now)?;
+                self.cache
+                    .put_tree_entry(&pin.commit, &pin.path_in_repo, &pin.blob)?;
+                continue;
+            }
             let Some(content) = content_for(key) else {
                 continue;
             };
@@ -70,6 +88,7 @@ impl Engine {
                 .put_tree_entry(&pin.commit, &pin.path_in_repo, &pin.blob)?;
             self.cache.put_blob(&pin.blob, &content, now)?;
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -185,21 +204,50 @@ impl Engine {
         commit: &str,
         now: i64,
     ) -> Result<(String, Vec<u8>)> {
-        let (blob, content) = self
+        // Resolve the blob SHA at this commit; the Contents API inlines
+        // content for small files but returns only the SHA for large ones.
+        let (blob, inline) = self
             .gh
-            .file_at_commit(cluster.repo, path, commit)
-            .with_context(|| format!("fetching {} from {}", path, cluster.repo))?;
-        let got = git_blob_sha1(&content);
-        if got != blob {
-            bail!(
-                "content of {} from {} hashes to {got}, but the API reported \
-                 blob {blob} — refusing corrupt or mismatched content",
-                path,
-                cluster.repo
-            );
-        }
+            .contents(cluster.repo, path, commit)
+            .with_context(|| format!("resolving {} from {}", path, cluster.repo))?;
+
+        let verify = |content: &[u8]| -> Result<()> {
+            let got = git_blob_sha1(content);
+            if got != blob {
+                bail!(
+                    "content of {} from {} hashes to {got}, but the API reported \
+                     blob {blob} — refusing corrupt or mismatched content",
+                    path,
+                    cluster.repo
+                );
+            }
+            Ok(())
+        };
+
+        let content = match inline {
+            Some(c) => {
+                verify(&c)?;
+                self.cache.put_blob(&blob, &c, now)?;
+                c
+            }
+            // Large file: an advanced commit usually leaves big blobs
+            // (vk.xml) untouched, so check the cache by SHA before paying
+            // for the download — re-fetching unchanged content is exactly
+            // the redundant transfer this layer exists to avoid.
+            None => match self.verified_cached_blob(&blob, now)? {
+                Some(c) => c,
+                None => {
+                    let c = self
+                        .gh
+                        .blob_content(cluster.repo, &blob)
+                        .with_context(|| format!("fetching {} from {}", path, cluster.repo))?;
+                    verify(&c)?;
+                    self.cache.put_blob(&blob, &c, now)?;
+                    c
+                }
+            },
+        };
         self.cache.put_tree_entry(commit, path, &blob)?;
-        self.cache.put_blob(&blob, &content, now)?;
         Ok((blob, content))
     }
 

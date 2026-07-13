@@ -27,6 +27,11 @@ use super::manifest::{ProvenancePin, git_blob_sha1};
 // Fixture + mock server
 // ---------------------------------------------------------------------------
 
+/// Files larger than this are served like GitHub serves >1MB files: the
+/// Contents API returns only the blob SHA, and content must be fetched via
+/// the blobs API.
+const MOCK_INLINE_LIMIT: usize = 1024;
+
 #[derive(Clone)]
 struct RepoData {
     head: String,
@@ -152,7 +157,13 @@ fn route(path: &str, fixture: &HashMap<String, RepoData>) -> Option<String> {
         ["contents", parts @ ..] => {
             let path_in_repo = parts.join("/");
             let (blob, content) = rd.files.get(&path_in_repo)?;
-            serde_json::json!({ "sha": blob, "content": b64(content), "encoding": "base64" })
+            if content.len() > MOCK_INLINE_LIMIT {
+                // Mirror GitHub's >1MB behavior: blob SHA only, no inline
+                // content — the caller must fetch the blob separately.
+                serde_json::json!({ "sha": blob, "encoding": "none" })
+            } else {
+                serde_json::json!({ "sha": blob, "content": b64(content), "encoding": "base64" })
+            }
         }
         _ => return None,
     };
@@ -261,6 +272,65 @@ fn stale_head_unchanged_upstream_reuses_cached_blobs() {
             .iter()
             .any(|p| p.contains("/contents/") || p.contains("/git/blobs/")),
         "unchanged upstream must not re-download content: {reqs:?}"
+    );
+}
+
+#[test]
+fn unchanged_large_blob_is_not_redownloaded_at_new_commit() {
+    // Simulates the weekly upstream-commit case: HEAD advances (no cached
+    // tree entry for the new commit) but a large file's blob is unchanged
+    // and already cached.  The engine must resolve the SHA via the Contents
+    // API and then serve the content from cache — never the blobs API.
+    let mut fix = fixture(&["vk.xml"]);
+    let (cluster, file) = find("vk.xml").unwrap();
+    let content = vec![b'v'; MOCK_INLINE_LIMIT * 4];
+    let blob = git_blob_sha1(&content);
+    fix.get_mut(cluster.repo)
+        .unwrap()
+        .files
+        .insert(file.path_in_repo.to_string(), (blob.clone(), content.clone()));
+
+    let server = MockGitHub::start(fix);
+    let cache = Cache::open_in_memory().unwrap();
+    // Warm blob only — no HEAD row, no tree entry for the new commit.
+    cache.put_blob(&blob, &content, cache::now()).unwrap();
+
+    let engine = engine_for(&server, cache);
+    let out = engine.resolve_head(&["vk.xml"]).unwrap();
+    assert_eq!(out["vk.xml"].content, content);
+
+    let reqs = server.requests();
+    assert!(
+        reqs.iter().any(|p| p.contains("/contents/")),
+        "the new commit's blob SHA must be resolved: {reqs:?}"
+    );
+    assert!(
+        !reqs.iter().any(|p| p.contains("/git/blobs/")),
+        "an unchanged large blob must not be re-downloaded: {reqs:?}"
+    );
+}
+
+#[test]
+fn changed_large_blob_is_downloaded_via_blob_api() {
+    // Counterpart: a large file whose blob is NOT cached must pull through
+    // the blobs API (and end up cached for next time).
+    let mut fix = fixture(&["vk.xml"]);
+    let (cluster, file) = find("vk.xml").unwrap();
+    let content = vec![b'w'; MOCK_INLINE_LIMIT * 4];
+    let blob = git_blob_sha1(&content);
+    fix.get_mut(cluster.repo)
+        .unwrap()
+        .files
+        .insert(file.path_in_repo.to_string(), (blob, content.clone()));
+
+    let server = MockGitHub::start(fix);
+    let engine = engine_for(&server, Cache::open_in_memory().unwrap());
+    let out = engine.resolve_head(&["vk.xml"]).unwrap();
+    assert_eq!(out["vk.xml"].content, content);
+    assert!(
+        server.requests().iter().any(|p| p.contains("/git/blobs/")),
+        "a cold large blob must be fetched: {:?}",
+        server.requests()
     );
 }
 

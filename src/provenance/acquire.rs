@@ -198,8 +198,15 @@ impl Github {
     }
 
     /// Resolve a file's blob SHA (and inline content if the API returned it)
-    /// at a specific commit, via the Contents API.
-    fn contents(&self, repo: &str, path: &str, commit: &str) -> Result<(String, Option<Vec<u8>>)> {
+    /// at a specific commit, via the Contents API.  Content is `None` for
+    /// files over the API's 1 MB inline limit — callers decide whether the
+    /// blob is worth downloading (the engine checks its cache by SHA first).
+    pub(crate) fn contents(
+        &self,
+        repo: &str,
+        path: &str,
+        commit: &str,
+    ) -> Result<(String, Option<Vec<u8>>)> {
         let base = &self.base;
         let url = format!("{base}/repos/{repo}/contents/{path}?ref={commit}");
         let v = self.get_json(&url)?;
@@ -212,22 +219,6 @@ impl Github {
             _ => None, // e.g. "none" for files > 1 MB; fetch the blob separately
         };
         Ok((sha, content))
-    }
-
-    /// Resolve a single file at a commit to its blob SHA and content, fetching
-    /// the blob separately when the Contents API didn't inline it (large file).
-    pub fn file_at_commit(
-        &self,
-        repo: &str,
-        path: &str,
-        commit: &str,
-    ) -> Result<(String, Vec<u8>)> {
-        let (blob, inline) = self.contents(repo, path, commit)?;
-        let content = match inline {
-            Some(c) => c,
-            None => self.blob_content(repo, &blob)?,
-        };
-        Ok((blob, content))
     }
 
     /// Fetch a blob's content by its SHA (content-addressed; used for large

@@ -79,6 +79,14 @@ impl Cache {
         Ok(Self { conn })
     }
 
+    /// Begin a transaction covering subsequent cache calls on this
+    /// connection, committing on `commit()`.  Batching many small writes
+    /// (e.g. bundle seeding) into one transaction replaces one WAL commit
+    /// per statement with one per batch.
+    pub fn transaction(&self) -> Result<rusqlite::Transaction<'_>> {
+        Ok(self.conn.unchecked_transaction()?)
+    }
+
     // -- HEAD (repos) --------------------------------------------------------
 
     /// Return the cached HEAD commit for `repo` if it was fetched within the
