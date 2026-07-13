@@ -27,7 +27,7 @@
 //! 1–2.
 //!
 //! Directory listings are used rather than a recursive tree walk because
-//! large repos (`google/angle`, `Vulkan-Docs`) can truncate recursive trees
+//! large repos (`angle/angle`, `Vulkan-Docs`) can truncate recursive trees
 //! and silently drop entries; per-directory listings cap at 1000 entries, far
 //! above any tracked directory.
 

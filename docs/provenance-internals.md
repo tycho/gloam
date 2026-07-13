@@ -39,9 +39,41 @@ both correct (all files in a snapshot share one commit) and cheap (it collapses
 | `KhronosGroup/EGL-Registry` | `main` | `api/egl.xml`, `api/KHR/khrplatform.h`, `api/EGL/eglplatform.h` | Apache-2.0 / The Khronos Group Inc. |
 | `KhronosGroup/Vulkan-Docs` | `main` | `xml/vk.xml` | Apache-2.0 / The Khronos Group Inc. |
 | `KhronosGroup/Vulkan-Headers` | `main` | `include/vulkan/vk_platform.h`, `include/vk_video/*` | Apache-2.0 / The Khronos Group Inc. |
-| `google/angle` | `main` | `scripts/gl_angle_ext.xml`, `scripts/egl_angle_ext.xml` | BSD-3-Clause / The ANGLE Project Authors |
+| `angle/angle` (chromium.googlesource.com; mirror: github.com/google/angle, fallback) | `main` | `scripts/gl_angle_ext.xml`, `scripts/egl_angle_ext.xml` | BSD-3-Clause / The ANGLE Project Authors |
 | `Cyan4973/xxHash` | `dev` | `xxhash.h` | BSD-2-Clause / Yann Collet |
 | `tycho/gloam-registry` | `master` | `xml/glsl_exts.xml` | MIT / Steven Noonan |
+
+### Endpoints: identity vs transport
+
+A cluster's `repo`/`repo_url` are its canonical **identity** — that is what
+every pin records. Separately, each cluster carries an ordered list of fetch
+**endpoints** (canonical first, mirrors after) that are pure transport: every
+per-cluster operation (HEAD resolution, directory listing, content-at-commit)
+tries them in order, warning and falling over on failure. Because endpoints
+share one git history, object SHAs are identical across them, so which
+endpoint served the bytes is invisible in every output (manifest, preamble,
+`--version`) and in the cache (rows are keyed by canonical slug and object
+SHAs).
+
+Lag semantics: a mirror can **lag** the canonical repo but never diverge from
+it. Content fetches are pinned to the already-resolved commit, so a lagging
+mirror either serves byte-identical content or 404s — never wrong bytes. A
+404 counts as that endpoint failing; if no endpoint has the commit, the
+run fails with advice to retry shortly (there is no silent HEAD
+re-resolution, which could tear the snapshot). The content-addressed
+blobs-API fallback for GC'd pinned commits is a nearly-never robustness
+path, not a design pillar.
+
+Two dialects are spoken. **GitHub** endpoints use the REST API plus the raw
+host as described below. **Gitiles** endpoints (e.g.
+`chromium.googlesource.com` for ANGLE) use `+log/refs/heads/{branch}?n=1&format=JSON`
+for the branch tip, `+/{commit}/{dir}?format=JSON` for listings (entries carry
+git object types — files are `"blob"` — with the git blob SHA-1 in `id`), and
+`+/{commit}/{path}?format=TEXT` for content (base64 body). Gitiles specifics:
+every JSON response starts with a `)]}'` anti-XSSI line that must be stripped
+(its absence is a hard error), no ETag is served (HEAD resolution is always
+unconditional there; ETag conditionals remain GitHub-only), there is no
+blob-by-SHA endpoint, and no auth of any kind is sent to Gitiles hosts.
 
 ### Resolving a cluster (race-free, near-zero metered calls)
 
@@ -55,7 +87,7 @@ For each cluster we resolve a consistent snapshot pinned to one commit:
    refreshes the HEAD TTL. Only a 200 (ref actually moved, or no stored ETag)
    costs a metered call.
 2. Registries (`OpenGL-Registry`,
-   `EGL-Registry`) and `google/angle` typically have no semver tags and show a
+   `EGL-Registry`) and `angle/angle` typically have no semver tags and show a
    bare commit; `Vulkan-Docs`, `Vulkan-Headers`, and `xxHash` tag and show
    `vX.Y.Z-N-gSHA`.
 3. Per **changed directory** (missing files grouped by parent directory): one
@@ -79,7 +111,7 @@ SHAs, content correctness never rests on the unauthenticated raw host.
 **Why directory listings, not a recursive tree walk.** An earlier design used
 `git/trees/{commit}?recursive=1` to resolve paths to blobs in one call. But the
 recursive-tree endpoint truncates at GitHub's tree limits, and large repos
-(`google/angle`, `Vulkan-Docs`) can exceed them — silently dropping the entry we
+(`angle/angle`, `Vulkan-Docs`) can exceed them — silently dropping the entry we
 need. Per-directory Contents listings never truncate for directories of this
 size, and one call covers every tracked file in the directory. (A still earlier
 iteration used one Contents call *per file*, with inline base64 content and a

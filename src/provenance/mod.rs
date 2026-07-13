@@ -276,14 +276,23 @@ pub static CLUSTERS: &[Cluster] = &[
             },
         ],
     },
+    // ANGLE develops on chromium.googlesource.com; github.com/google/angle is
+    // an official mirror of the same git history.  The canonical repo is the
+    // recorded identity, the mirror a transport fallback (it may lag, never
+    // diverge — and content fetches are commit-pinned anyway).
     Cluster {
-        repo: "google/angle",
-        repo_url: "https://github.com/google/angle",
+        repo: "angle/angle",
+        repo_url: "https://chromium.googlesource.com/angle/angle",
         branch: "main",
         attribution: &ATTR_ANGLE,
-        endpoints: &[Endpoint::GitHub {
-            slug: "google/angle",
-        }],
+        endpoints: &[
+            Endpoint::Gitiles {
+                base: "https://chromium.googlesource.com/angle/angle",
+            },
+            Endpoint::GitHub {
+                slug: "google/angle",
+            },
+        ],
         files: &[
             FileSpec {
                 key: "gl_angle_ext.xml",
@@ -527,7 +536,26 @@ mod tests {
         // keys).
         let (gl_c, _) = find("gl_angle_ext.xml").unwrap();
         let (egl_c, _) = find("egl_angle_ext.xml").unwrap();
-        assert_eq!(gl_c.repo, "google/angle");
-        assert_eq!(egl_c.repo, "google/angle");
+        assert_eq!(gl_c.repo, "angle/angle");
+        assert_eq!(egl_c.repo, "angle/angle");
+    }
+
+    #[test]
+    fn angle_cluster_is_gitiles_first_with_github_mirror() {
+        let (cluster, _) = find("gl_angle_ext.xml").unwrap();
+        assert_eq!(cluster.repo, "angle/angle");
+        assert_eq!(
+            cluster.repo_url,
+            "https://chromium.googlesource.com/angle/angle"
+        );
+        assert!(
+            matches!(cluster.endpoints[0], Endpoint::Gitiles { base }
+                if base == "https://chromium.googlesource.com/angle/angle"),
+            "the canonical Gitiles endpoint must come first"
+        );
+        assert!(
+            matches!(cluster.endpoints[1], Endpoint::GitHub { slug: "google/angle" }),
+            "the GitHub mirror is the ordered fallback"
+        );
     }
 }
