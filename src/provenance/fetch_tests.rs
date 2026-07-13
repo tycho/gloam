@@ -1,11 +1,14 @@
 //! Deterministic tests for the fetch path (acquisition + cache + engine) that
-//! exercise `reqwest` end-to-end against a local mock GitHub server — never the
-//! real API and never the production cache file.
+//! exercise `reqwest` end-to-end against a local mock server speaking both
+//! endpoint dialects (GitHub and Gitiles) — never the real hosts and never
+//! the production cache file.
 //!
 //! The mock serves the exact endpoints `acquire` calls, from a synthetic
 //! fixture built from the real registry (so tests don't depend on the current
 //! `bundled/` tree).  A request log lets tests assert *which* network calls
-//! happened, distinguishing cache hits from misses.
+//! happened, distinguishing cache hits from misses.  Gitiles-first failover
+//! is exercised through a synthetic cluster whose Gitiles endpoint points at
+//! the mock's `/gitiles/…` routes.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -20,17 +23,12 @@ use indexmap::IndexMap;
 use super::acquire::Github;
 use super::cache::{self, Cache};
 use super::engine::Engine;
-use super::find;
 use super::manifest::{ProvenancePin, git_blob_sha1};
+use super::{ATTR_ANGLE, Cluster, Endpoint, FileSpec, find};
 
 // ---------------------------------------------------------------------------
 // Fixture + mock server
 // ---------------------------------------------------------------------------
-
-/// Files larger than this are served like GitHub serves >1MB files: the
-/// Contents API returns only the blob SHA, and content must be fetched via
-/// the blobs API.
-const MOCK_INLINE_LIMIT: usize = 1024;
 
 #[derive(Clone)]
 struct RepoData {
@@ -66,6 +64,14 @@ struct MockKnobs {
     /// `path_in_repo` values whose raw-host responses are corrupted: the
     /// served bytes do not hash to the listed blob SHA.
     corrupt_raw: Vec<String>,
+    /// Every Gitiles route answers 503 — the canonical endpoint is down.
+    gitiles_down: bool,
+    /// Gitiles `+/{commit}/…` routes answer 503 while `+log` still resolves —
+    /// the canonical endpoint dies between HEAD resolution and content.
+    gitiles_content_down: bool,
+    /// Commit served by the Gitiles `+log` route instead of the fixture head
+    /// — a canonical repo that is ahead of its mirror.
+    gitiles_head: Option<String>,
 }
 
 struct MockGitHub {
@@ -181,8 +187,26 @@ fn parent_dir(path: &str) -> &str {
     path.rfind('/').map_or("", |i| &path[..i])
 }
 
-/// Serve the GitHub endpoints `acquire` uses.  Returns the response, or `None`
-/// for a 404.
+/// A 503 — the endpoint is down.
+fn unavailable() -> MockResponse {
+    MockResponse {
+        status: "503 Service Unavailable",
+        headers: Vec::new(),
+        body: Vec::new(),
+    }
+}
+
+/// A Gitiles JSON response: the payload behind the `)]}'` anti-XSSI line.
+fn gitiles_json(v: serde_json::Value) -> MockResponse {
+    MockResponse {
+        status: "200 OK",
+        headers: Vec::new(),
+        body: format!(")]}}'\n{v}").into_bytes(),
+    }
+}
+
+/// Serve the GitHub and Gitiles endpoints `acquire` uses.  Returns the
+/// response, or `None` for a 404.
 fn route(
     path: &str,
     headers: &HashMap<String, String>,
@@ -190,12 +214,74 @@ fn route(
     knobs: &MockKnobs,
 ) -> Option<MockResponse> {
     let b64 = |c: &[u8]| BASE64.encode(c);
-    let p = path.split('?').next().unwrap_or(path);
+    let (p, query) = path.split_once('?').unwrap_or((path, ""));
     let segs: Vec<&str> = p
         .trim_start_matches('/')
         .split('/')
         .filter(|s| !s.is_empty())
         .collect();
+
+    // Gitiles dialect: /gitiles/{owner}/{name}/+log/refs/heads/{branch},
+    // /gitiles/{owner}/{name}/+/{commit}/{path...}.  All JSON responses carry
+    // the anti-XSSI prefix; format=TEXT bodies are bare base64.
+    if segs.first() == Some(&"gitiles") {
+        if knobs.gitiles_down {
+            return Some(unavailable());
+        }
+        let repo = format!("{}/{}", segs.get(1)?, segs.get(2)?);
+        let rd = fixture.get(&repo)?;
+        let rest = &segs[3..];
+        match rest.first() {
+            Some(&"+log") => {
+                let head = knobs
+                    .gitiles_head
+                    .clone()
+                    .unwrap_or_else(|| rd.head.clone());
+                return Some(gitiles_json(
+                    serde_json::json!({ "log": [{ "commit": head }] }),
+                ));
+            }
+            Some(&"+") => {
+                if knobs.gitiles_content_down {
+                    return Some(unavailable());
+                }
+                // Only the fixture's head commit is servable — an unknown
+                // commit 404s, like a snapshot the host does not have.
+                if *rest.get(1)? != rd.head {
+                    return None;
+                }
+                let sub = rest[2..].join("/");
+                if query.contains("format=TEXT") {
+                    // File content: bare base64 of the raw bytes.
+                    let (_blob, content) = rd.files.get(&sub)?;
+                    return Some(MockResponse {
+                        status: "200 OK",
+                        headers: Vec::new(),
+                        body: b64(content).into_bytes(),
+                    });
+                }
+                // format=JSON: a directory listing — Gitiles entries carry
+                // git object types ("blob" for files) and bare names.
+                let entries: Vec<serde_json::Value> = rd
+                    .files
+                    .iter()
+                    .filter(|(p, _)| parent_dir(p) == sub)
+                    .map(|(p, (sha, _))| {
+                        serde_json::json!({
+                            "name": p.rsplit('/').next().unwrap(),
+                            "type": "blob",
+                            "id": sha,
+                        })
+                    })
+                    .collect();
+                if entries.is_empty() {
+                    return None;
+                }
+                return Some(gitiles_json(serde_json::json!({ "entries": entries })));
+            }
+            _ => return None,
+        }
+    }
 
     // Raw-content host: /raw/{owner}/{name}/{commit}/{path...} → plain bytes.
     // Only the fixture's head commit is servable — an unknown commit 404s,
@@ -251,32 +337,29 @@ fn route(
             serde_json::json!({ "content": b64(content), "encoding": "base64" })
         }
         ["contents", parts @ ..] => {
-            let path_in_repo = parts.join("/");
-            if let Some((blob, content)) = rd.files.get(&path_in_repo) {
-                // Single-file form (still used by the xtask bundler path).
-                if content.len() > MOCK_INLINE_LIMIT {
-                    // Mirror GitHub's >1MB behavior: blob SHA only, no inline
-                    // content — the caller must fetch the blob separately.
-                    serde_json::json!({ "sha": blob, "encoding": "none" })
-                } else {
-                    serde_json::json!({ "sha": blob, "content": b64(content), "encoding": "base64" })
-                }
-            } else {
-                // Directory listing: a JSON array of every fixture file
-                // directly in this directory ("" lists the repo root).
-                let entries: Vec<serde_json::Value> = rd
-                    .files
-                    .iter()
-                    .filter(|(p, _)| parent_dir(p) == path_in_repo)
-                    .map(|(p, (sha, _))| {
-                        serde_json::json!({ "path": p, "sha": sha, "type": "file" })
-                    })
-                    .collect();
-                if entries.is_empty() {
-                    return None;
-                }
-                serde_json::Value::Array(entries)
+            // Listings are pinned to a commit: an unknown `ref` 404s, like a
+            // mirror that has not yet synced the requested commit.
+            let ref_ok = query
+                .split('&')
+                .any(|kv| kv.strip_prefix("ref=") == Some(rd.head.as_str()));
+            if !ref_ok {
+                return None;
             }
+            // Directory listing: a JSON array of every fixture file directly
+            // in this directory ("" lists the repo root).
+            let dir = parts.join("/");
+            let entries: Vec<serde_json::Value> = rd
+                .files
+                .iter()
+                .filter(|(p, _)| parent_dir(p) == dir)
+                .map(|(p, (sha, _))| {
+                    serde_json::json!({ "path": p, "sha": sha, "type": "file" })
+                })
+                .collect();
+            if entries.is_empty() {
+                return None;
+            }
+            serde_json::Value::Array(entries)
         }
         _ => return None,
     };
@@ -311,6 +394,70 @@ fn seed(cache: &Cache, fixture: &HashMap<String, RepoData>, key: &str, head_age_
 fn fixture_content(fixture: &HashMap<String, RepoData>, key: &str) -> Vec<u8> {
     let (cluster, file) = find(key).unwrap();
     fixture[cluster.repo].files[file.path_in_repo].1.clone()
+}
+
+// ---------------------------------------------------------------------------
+// Synthetic Gitiles-first cluster
+// ---------------------------------------------------------------------------
+
+/// Leak a runtime string for use in a synthetic `&'static Cluster` (mock
+/// URLs carry a random port, so they can't be literals).
+fn leak(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+/// A synthetic single-file cluster in the arrangement the real ANGLE cluster
+/// uses: canonical identity `angle/angle` served by a Gitiles endpoint (the
+/// mock's `/gitiles/…` routes), with the GitHub dialect (mirror slug
+/// `google/angle`) as ordered fallback.
+fn gitiles_first_clusters(server: &MockGitHub) -> &'static [Cluster] {
+    let endpoints = vec![
+        Endpoint::Gitiles {
+            base: leak(format!("{}/gitiles/angle/angle", server.base_url)),
+        },
+        Endpoint::GitHub {
+            slug: "google/angle",
+        },
+    ];
+    Box::leak(
+        vec![Cluster {
+            repo: "angle/angle",
+            repo_url: "https://chromium.googlesource.com/angle/angle",
+            branch: "main",
+            attribution: &ATTR_ANGLE,
+            endpoints: Box::leak(endpoints.into_boxed_slice()),
+            files: &[FileSpec {
+                key: "ext.xml",
+                path_in_repo: "scripts/ext.xml",
+            }],
+        }]
+        .into_boxed_slice(),
+    )
+}
+
+/// Fixture for the synthetic cluster: identical content and head under both
+/// the canonical Gitiles repo key and the GitHub mirror slug — mirrors carry
+/// the same git objects.
+fn gitiles_fixture() -> HashMap<String, RepoData> {
+    let content = b"// synthetic content for ext.xml\n".to_vec();
+    let blob = git_blob_sha1(&content);
+    let rd = RepoData {
+        head: git_blob_sha1(b"angle/angle"),
+        files: HashMap::from([("scripts/ext.xml".to_string(), (blob, content))]),
+    };
+    HashMap::from([
+        ("angle/angle".to_string(), rd.clone()),
+        ("google/angle".to_string(), rd),
+    ])
+}
+
+fn engine_for_clusters(
+    server: &MockGitHub,
+    cache: Cache,
+    clusters: &'static [Cluster],
+) -> Engine {
+    let gh = Github::with_base_urls(&server.base_url, format!("{}/raw", server.base_url)).unwrap();
+    Engine::with_clusters(gh, cache, clusters)
 }
 
 // ---------------------------------------------------------------------------
@@ -562,6 +709,7 @@ fn corrupt_raw_content_is_rejected() {
         fix,
         MockKnobs {
             corrupt_raw: vec!["xxhash.h".to_string()],
+            ..Default::default()
         },
     );
     let engine = engine_for(&server, Cache::open_in_memory().unwrap());
@@ -676,5 +824,161 @@ fn lock_falls_back_to_blobs_api_when_raw_unavailable() {
         reqs.iter()
             .any(|p| p.contains("/git/blobs/") && p.contains("[200]")),
         "the blobs API serves the fallback: {reqs:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint failover (Gitiles-first synthetic cluster)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gitiles_primary_serves_the_whole_resolve() {
+    // Happy path: HEAD, listing, and content are all served by the canonical
+    // Gitiles endpoint, and the pin carries the canonical identity.
+    let fix = gitiles_fixture();
+    let server = MockGitHub::start(fix.clone());
+    let clusters = gitiles_first_clusters(&server);
+    let engine = engine_for_clusters(&server, Cache::open_in_memory().unwrap(), clusters);
+
+    let out = engine.resolve_head(&["ext.xml"]).unwrap();
+    assert_eq!(
+        out["ext.xml"].content,
+        fix["angle/angle"].files["scripts/ext.xml"].1
+    );
+    assert_eq!(out["ext.xml"].pin.repo, "angle/angle");
+    assert_eq!(
+        out["ext.xml"].pin.repo_url,
+        "https://chromium.googlesource.com/angle/angle"
+    );
+    assert_eq!(out["ext.xml"].pin.path_in_repo, "scripts/ext.xml");
+
+    let reqs = server.requests();
+    assert!(
+        !reqs.is_empty() && reqs.iter().all(|p| p.starts_with("/gitiles/")),
+        "a healthy canonical endpoint serves everything: {reqs:?}"
+    );
+}
+
+#[test]
+fn canonical_endpoint_down_falls_back_with_an_identical_pin() {
+    // Identity/transport separation: with the canonical Gitiles endpoint
+    // down, the GitHub mirror serves everything — and the resulting pin is
+    // byte-identical to the happy-path pin.
+    let fix = gitiles_fixture();
+
+    let happy = MockGitHub::start(fix.clone());
+    let engine =
+        engine_for_clusters(&happy, Cache::open_in_memory().unwrap(), gitiles_first_clusters(&happy));
+    let happy_pin = engine.resolve_head(&["ext.xml"]).unwrap()["ext.xml"]
+        .pin
+        .clone();
+
+    let down = MockGitHub::start_with(
+        fix.clone(),
+        MockKnobs {
+            gitiles_down: true,
+            ..Default::default()
+        },
+    );
+    let engine =
+        engine_for_clusters(&down, Cache::open_in_memory().unwrap(), gitiles_first_clusters(&down));
+    let out = engine.resolve_head(&["ext.xml"]).unwrap();
+    assert_eq!(
+        out["ext.xml"].content,
+        fix["angle/angle"].files["scripts/ext.xml"].1
+    );
+
+    // Transport fell over to the mirror...
+    let reqs = down.requests();
+    assert!(
+        reqs.iter()
+            .any(|p| p.starts_with("/gitiles/") && p.contains("[503]")),
+        "the canonical endpoint was tried first: {reqs:?}"
+    );
+    assert!(
+        reqs.iter().any(|p| p.contains("/repos/google/angle/")),
+        "the GitHub mirror served the fallback: {reqs:?}"
+    );
+    // ...but identity did not: fallback is invisible in the pin.
+    assert_eq!(
+        out["ext.xml"].pin, happy_pin,
+        "the pin must not record which endpoint served the bytes"
+    );
+    assert_eq!(out["ext.xml"].pin.repo, "angle/angle");
+}
+
+#[test]
+fn mirror_lag_is_a_hard_error_advising_retry() {
+    // The canonical resolves HEAD at a commit the mirror hasn't synced, then
+    // dies before serving content; the mirror 404s that commit.  No silent
+    // HEAD re-resolution — a hard error advising a retry.
+    let fix = gitiles_fixture();
+    let ahead = git_blob_sha1(b"canonical is ahead of the mirror");
+    let server = MockGitHub::start_with(
+        fix,
+        MockKnobs {
+            gitiles_head: Some(ahead.clone()),
+            gitiles_content_down: true,
+            ..Default::default()
+        },
+    );
+    let clusters = gitiles_first_clusters(&server);
+    let engine = engine_for_clusters(&server, Cache::open_in_memory().unwrap(), clusters);
+
+    let err = engine.resolve_head(&["ext.xml"]).unwrap_err().to_string();
+    assert!(err.contains("retry shortly"), "{err}");
+    assert!(err.contains(&ahead), "the error names the commit: {err}");
+
+    let reqs = server.requests();
+    assert_eq!(
+        reqs.iter().filter(|p| p.contains("/+log/")).count(),
+        1,
+        "no silent HEAD re-resolution: {reqs:?}"
+    );
+    assert!(
+        reqs.iter()
+            .any(|p| p.contains("/repos/google/angle/contents") && p.contains("[404]")),
+        "the mirror 404ed the lagging commit: {reqs:?}"
+    );
+}
+
+#[test]
+fn pinned_gitiles_first_cluster_falls_back_to_blobs_api() {
+    // A pin whose commit no endpoint can serve any more (e.g. GC'd
+    // upstream): commit-pinned content 404s everywhere, and the
+    // content-addressed GitHub blobs API — Gitiles has none — serves the
+    // final fallback.
+    let fix = gitiles_fixture();
+    let server = MockGitHub::start(fix.clone());
+    let clusters = gitiles_first_clusters(&server);
+    let engine = engine_for_clusters(&server, Cache::open_in_memory().unwrap(), clusters);
+
+    let (blob, content) = fix["angle/angle"].files["scripts/ext.xml"].clone();
+    let mut pins = IndexMap::new();
+    pins.insert(
+        "ext.xml".to_string(),
+        ProvenancePin {
+            repo: "angle/angle".to_string(),
+            repo_url: "https://chromium.googlesource.com/angle/angle".to_string(),
+            path_in_repo: "scripts/ext.xml".to_string(),
+            // Unknown to every endpoint — only the head commit serves.
+            commit: "beefbeefbeefbeefbeefbeefbeefbeefbeefbeef".to_string(),
+            blob,
+        },
+    );
+
+    let out = engine.resolve_pinned(&pins, &["ext.xml"]).unwrap();
+    assert_eq!(out["ext.xml"].content, content);
+
+    let reqs = server.requests();
+    assert!(
+        reqs.iter()
+            .any(|p| p.starts_with("/gitiles/") && p.contains("[404]")),
+        "the canonical endpoint is tried first: {reqs:?}"
+    );
+    assert!(
+        reqs.iter()
+            .any(|p| p.contains("/repos/google/angle/git/blobs/") && p.contains("[200]")),
+        "the blobs API serves the final fallback: {reqs:?}"
     );
 }

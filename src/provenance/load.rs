@@ -18,7 +18,9 @@
 //! - Locked (`--lock` or the implicit baseline): pins come from the lock;
 //!   content from the bundle (blob must match) or the cache-backed engine.
 
-use std::cell::{OnceCell, RefCell};
+#[cfg(feature = "fetch")]
+use std::cell::OnceCell;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 

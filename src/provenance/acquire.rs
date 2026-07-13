@@ -1,28 +1,45 @@
-//! Provenance acquisition via the GitHub REST API and raw-content host.
+//! Provenance acquisition over a cluster's fetch endpoints.
+//!
+//! Two endpoint dialects are spoken (see [`Endpoint`]):
+//!
+//! - **GitHub**: the REST API for metadata (branch ref → commit, Contents
+//!   directory listings → blob SHAs, blobs-by-SHA) plus
+//!   `raw.githubusercontent.com` for content (unmetered).  Ref resolution is
+//!   conditional: an `If-None-Match` ETag turns an unchanged ref into a
+//!   rate-limit-free 304.
+//! - **Gitiles** (e.g. `chromium.googlesource.com`): `+log?n=1&format=JSON`
+//!   for the branch tip, `+/{commit}/{dir}?format=JSON` for listings (entries
+//!   carry git object types — files are `"blob"` — and `id` is the git blob
+//!   SHA-1), and `+/{commit}/{path}?format=TEXT` for base64 content.  Every
+//!   JSON response starts with the `)]}'` anti-XSSI line, no ETags are
+//!   served, and no auth of any kind is sent.
 //!
 //! For each repository cluster we resolve a consistent snapshot:
-//!   1. branch HEAD → commit SHA (conditional: an `If-None-Match` ETag turns
-//!      an unchanged ref into a rate-limit-free 304),
-//!   2. per changed directory, one **Contents API** listing yields every
-//!      file's blob SHA pinned to that commit,
-//!   3. content comes from `raw.githubusercontent.com` (unmetered) and is
-//!      verified locally against the listed blob SHA.
+//!   1. branch HEAD → commit SHA,
+//!   2. per changed directory, one listing yields every file's blob SHA
+//!      pinned to that commit,
+//!   3. content is fetched at that commit and verified locally against the
+//!      listed blob SHA.
 //!
-//! Everything is pinned to the resolved commit, so content is race-free even if
-//! upstream moves mid-resolution.  For `--lock`, content is fetched by pinned
-//! commit + path from the raw host (blobs API as fallback), skipping steps 1–2.
+//! Everything is pinned to the resolved commit, so content is race-free even
+//! if upstream moves mid-resolution.  For `--lock`, content is fetched by
+//! pinned commit + path (GitHub blobs API as final fallback), skipping steps
+//! 1–2.
 //!
-//! Directory listings are used rather than a recursive tree walk because large
-//! repos (`google/angle`, `Vulkan-Docs`) can truncate recursive trees and
-//! silently drop entries; per-directory listings cap at 1000 entries, far above
-//! any tracked directory.
+//! Directory listings are used rather than a recursive tree walk because
+//! large repos (`google/angle`, `Vulkan-Docs`) can truncate recursive trees
+//! and silently drop entries; per-directory listings cap at 1000 entries, far
+//! above any tracked directory.
+
+use std::collections::BTreeMap;
 
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
-use super::{Cluster, ResolvedFile, ResolvedRepo};
+use super::manifest::git_blob_sha1;
+use super::{Cluster, Endpoint, ResolvedFile, ResolvedRepo};
 
 const API_BASE: &str = "https://api.github.com";
 const RAW_BASE: &str = "https://raw.githubusercontent.com";
@@ -40,18 +57,61 @@ pub enum HeadRef {
     /// still holds (and the round trip did not count against the rate limit).
     NotModified,
     /// HTTP 200: a (possibly new) tip commit, plus the response ETag to send
-    /// as `If-None-Match` next time.
+    /// as `If-None-Match` next time.  Gitiles serves no ETag, so its
+    /// resolutions always carry `etag: None`.
     Resolved {
         commit: String,
         etag: Option<String>,
     },
 }
 
-/// A thin GitHub REST API client.
+/// Try `op` against each endpoint in order; a failure warns (naming the
+/// cluster, the endpoint dialect, and the error) and falls over to the next
+/// endpoint.  When every endpoint failed, the last error is returned —
+/// callers add operation context.  The warning is skipped when there is no
+/// next endpoint to fall over to (single-endpoint clusters fail exactly as
+/// they did before endpoints existed).
+pub(crate) fn try_endpoints<'e, T, I, F>(repo: &str, what: &str, endpoints: I, mut op: F) -> Result<T>
+where
+    I: IntoIterator<Item = &'e Endpoint>,
+    F: FnMut(&'e Endpoint) -> Result<T>,
+{
+    let mut last: Option<anyhow::Error> = None;
+    let mut it = endpoints.into_iter().peekable();
+    while let Some(ep) = it.next() {
+        match op(ep) {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                if it.peek().is_some() {
+                    crate::diag::warn(format_args!(
+                        "{repo}: {} endpoint failed while {what} ({e:#}); \
+                         trying the next endpoint",
+                        ep.kind()
+                    ));
+                }
+                last = Some(e);
+            }
+        }
+    }
+    Err(last.unwrap_or_else(|| anyhow!("cluster {repo} has no fetch endpoints")))
+}
+
+/// The parent directory of a path within a repository (`""` for root-level
+/// files) — the unit at which content lookups are grouped into directory
+/// listings.
+pub(crate) fn parent_dir(path: &str) -> &str {
+    match path.rfind('/') {
+        Some(i) => &path[..i],
+        None => "",
+    }
+}
+
+/// A thin HTTP client speaking the GitHub REST API / raw-content-host and
+/// Gitiles dialects.
 pub struct Github {
     client: reqwest::blocking::Client,
     token: Option<String>,
-    /// API base URL (overridable in tests to point at a mock server).
+    /// GitHub API base URL (overridable in tests to point at a mock server).
     base: String,
     /// Raw-content host base URL (`raw.githubusercontent.com`; overridable in
     /// tests).  Serves plain file bytes without touching the metered API.
@@ -65,7 +125,9 @@ impl Github {
     }
 
     /// Construct a client against alternate API and raw-content base URLs —
-    /// for tests that point at a local mock GitHub server.
+    /// for tests that point at a local mock GitHub server.  (Gitiles endpoint
+    /// URLs live in the cluster's endpoint list, so tests point those at the
+    /// mock via synthetic clusters instead.)
     pub fn with_base_urls(
         api_base: impl Into<String>,
         raw_base: impl Into<String>,
@@ -89,6 +151,7 @@ impl Github {
 
     // -- low-level requests --------------------------------------------------
 
+    /// GET with GitHub API headers and the auth token (metered API host only).
     fn get(&self, url: &str) -> Result<reqwest::blocking::Response> {
         let started = std::time::Instant::now();
         let mut req = self
@@ -119,30 +182,91 @@ impl Github {
         serde_json::from_str(&text).with_context(|| format!("parsing JSON from {url}"))
     }
 
-    // -- snapshot resolution -------------------------------------------------
-
-    /// The exact ref-resolution request URL for a branch — also the key under
-    /// which the engine stores this request's ETag (an ETag belongs to a
-    /// request, so cache rows are keyed by the URL the request actually used).
-    pub fn ref_url(&self, repo: &str, branch: &str) -> String {
-        let base = &self.base;
-        format!("{base}/repos/{repo}/git/ref/heads/{branch}")
+    /// Auth-less GET: no GitHub API headers and — deliberately — no token.
+    /// Used for the raw-content host and for every Gitiles request: the API
+    /// credential must never be sent cross-host, and no auth of any kind is
+    /// sent to Gitiles.
+    fn get_plain(&self, url: &str) -> Result<reqwest::blocking::Response> {
+        let started = std::time::Instant::now();
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .with_context(|| format!("GET {url}"))?;
+        crate::diag::debug(format_args!(
+            "HTTP GET {url} -> {} in {}ms",
+            resp.status(),
+            started.elapsed().as_millis()
+        ));
+        resp.error_for_status()
+            .with_context(|| format!("HTTP error from {url}"))
     }
 
-    /// Resolve the HEAD commit SHA of a branch, conditionally.
+    /// GET a Gitiles JSON response: strip the mandatory `)]}'` anti-XSSI
+    /// prefix line, then parse.
+    fn gitiles_json(&self, url: &str) -> Result<Value> {
+        let text = self
+            .get_plain(url)?
+            .text()
+            .with_context(|| format!("body of {url}"))?;
+        let Some(json) = text.strip_prefix(")]}'") else {
+            bail!("Gitiles response from {url} lacks the )]}}' anti-XSSI prefix");
+        };
+        serde_json::from_str(json).with_context(|| format!("parsing JSON from {url}"))
+    }
+
+    // -- endpoint primitives ---------------------------------------------------
+
+    /// The exact ref-resolution request URL for a branch at an endpoint —
+    /// also the key under which the engine stores this request's ETag (an
+    /// ETag belongs to a request, so cache rows are keyed by the URL the
+    /// request actually used, which is naturally per-endpoint).
+    pub fn ref_url(&self, ep: &Endpoint, branch: &str) -> String {
+        match ep {
+            Endpoint::GitHub { slug } => {
+                // Must match the URL github_head() actually requests.
+                let base = &self.base;
+                format!("{base}/repos/{slug}/git/ref/heads/{branch}")
+            }
+            Endpoint::Gitiles { base } => {
+                format!("{base}/+log/refs/heads/{branch}?n=1&format=JSON")
+            }
+        }
+    }
+
+    /// Resolve the HEAD commit SHA of a branch at an endpoint, conditionally.
     ///
-    /// When `etag` is given it is sent as `If-None-Match`; a 304 response
-    /// (which GitHub does not count against the rate limit) yields
-    /// [`HeadRef::NotModified`] — the caller's previously derived commit still
-    /// holds.  A 200 yields the commit plus the response's ETag for the next
-    /// conditional round trip.
+    /// For GitHub endpoints, when `etag` is given it is sent as
+    /// `If-None-Match`; a 304 response (which GitHub does not count against
+    /// the rate limit) yields [`HeadRef::NotModified`] — the caller's
+    /// previously derived commit still holds.  A 200 yields the commit plus
+    /// the response's ETag for the next conditional round trip.
+    ///
+    /// Gitiles serves no ETag header, so its resolution is always
+    /// unconditional and always yields `etag: None`.
     pub fn head_commit_conditional(
         &self,
-        repo: &str,
+        ep: &Endpoint,
         branch: &str,
         etag: Option<&str>,
     ) -> Result<HeadRef> {
-        let url = self.ref_url(repo, branch);
+        match ep {
+            Endpoint::GitHub { slug } => self.github_head(slug, branch, etag),
+            Endpoint::Gitiles { .. } => {
+                let url = self.ref_url(ep, branch);
+                let v = self.gitiles_json(&url)?;
+                let commit = v["log"][0]["commit"]
+                    .as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| anyhow!("no log[0].commit in Gitiles log response from {url}"))?;
+                Ok(HeadRef::Resolved { commit, etag: None })
+            }
+        }
+    }
+
+    fn github_head(&self, slug: &str, branch: &str, etag: Option<&str>) -> Result<HeadRef> {
+        let base = &self.base;
+        let url = format!("{base}/repos/{slug}/git/ref/heads/{branch}");
         let started = std::time::Instant::now();
         let mut req = self
             .client
@@ -178,131 +302,154 @@ impl Github {
         let commit = v["object"]["sha"]
             .as_str()
             .map(str::to_string)
-            .ok_or_else(|| anyhow!("no object.sha in ref response for {repo}@{branch}"))?;
+            .ok_or_else(|| anyhow!("no object.sha in ref response for {slug}@{branch}"))?;
         Ok(HeadRef::Resolved {
             commit,
             etag: new_etag,
         })
     }
 
-    /// Resolve the HEAD commit SHA of a branch (unconditional).
-    pub fn head_commit(&self, repo: &str, branch: &str) -> Result<String> {
-        match self.head_commit_conditional(repo, branch, None)? {
+    /// Resolve the HEAD commit SHA of a branch at an endpoint (unconditional).
+    pub fn head_commit(&self, ep: &Endpoint, branch: &str) -> Result<String> {
+        match self.head_commit_conditional(ep, branch, None)? {
             HeadRef::Resolved { commit, .. } => Ok(commit),
-            HeadRef::NotModified => bail!(
-                "unexpected 304 for unconditional ref request to {repo}@{branch}"
-            ),
+            HeadRef::NotModified => {
+                bail!("unexpected 304 for unconditional ref request at branch {branch}")
+            }
         }
     }
 
-    /// Resolve a file's blob SHA (and inline content if the API returned it)
-    /// at a specific commit, via the single-file Contents API.  Content is
-    /// `None` for files over the API's 1 MB inline limit.  Only used by
-    /// [`Self::resolve_cluster_head`] (the xtask bundler path, which runs in
-    /// CI with a token) — the engine resolves via directory listings and the
-    /// raw host instead.
-    pub(crate) fn contents(
-        &self,
-        repo: &str,
-        path: &str,
-        commit: &str,
-    ) -> Result<(String, Option<Vec<u8>>)> {
-        let base = &self.base;
-        let url = format!("{base}/repos/{repo}/contents/{path}?ref={commit}");
-        let v = self.get_json(&url)?;
-        let sha = v["sha"]
-            .as_str()
-            .ok_or_else(|| anyhow!("no sha for {repo}:{path}@{commit}"))?
-            .to_string();
-        let content = match v["encoding"].as_str() {
-            Some("base64") => Some(decode_b64(v["content"].as_str().unwrap_or(""))?),
-            _ => None, // e.g. "none" for files > 1 MB; fetch the blob separately
-        };
-        Ok((sha, content))
-    }
-
-    /// List a directory at a specific commit via the Contents API: one call
-    /// yields `(path_in_repo, blob_sha)` for every file entry.  `dir` may be
-    /// `""` for the repository root.  Subdirectory entries are skipped —
-    /// callers list each directory they need individually.
+    /// List a directory at a specific commit: one call yields
+    /// `(path_in_repo, blob_sha)` for every file entry.  `dir` may be `""`
+    /// for the repository root.  Subdirectory entries are skipped — callers
+    /// list each directory they need individually.
     pub fn contents_dir(
         &self,
-        repo: &str,
+        ep: &Endpoint,
         dir: &str,
         commit: &str,
     ) -> Result<Vec<(String, String)>> {
-        let base = &self.base;
-        let url = if dir.is_empty() {
-            format!("{base}/repos/{repo}/contents?ref={commit}")
-        } else {
-            format!("{base}/repos/{repo}/contents/{dir}?ref={commit}")
-        };
-        let v = self.get_json(&url)?;
-        let entries = v.as_array().ok_or_else(|| {
-            anyhow!("directory listing for {repo}:{dir}@{commit} is not a JSON array")
-        })?;
-        let mut out = Vec::new();
-        for entry in entries {
-            if entry["type"].as_str() != Some("file") {
-                continue;
+        match ep {
+            Endpoint::GitHub { slug } => {
+                let base = &self.base;
+                let url = if dir.is_empty() {
+                    format!("{base}/repos/{slug}/contents?ref={commit}")
+                } else {
+                    format!("{base}/repos/{slug}/contents/{dir}?ref={commit}")
+                };
+                let v = self.get_json(&url)?;
+                let entries = v.as_array().ok_or_else(|| {
+                    anyhow!("directory listing for {slug}:{dir}@{commit} is not a JSON array")
+                })?;
+                let mut out = Vec::new();
+                for entry in entries {
+                    if entry["type"].as_str() != Some("file") {
+                        continue;
+                    }
+                    let (Some(path), Some(sha)) = (entry["path"].as_str(), entry["sha"].as_str())
+                    else {
+                        continue;
+                    };
+                    out.push((path.to_string(), sha.to_string()));
+                }
+                Ok(out)
             }
-            let (Some(path), Some(sha)) = (entry["path"].as_str(), entry["sha"].as_str()) else {
-                continue;
-            };
-            out.push((path.to_string(), sha.to_string()));
+            Endpoint::Gitiles { base } => {
+                let url = if dir.is_empty() {
+                    format!("{base}/+/{commit}/?format=JSON")
+                } else {
+                    format!("{base}/+/{commit}/{dir}?format=JSON")
+                };
+                let v = self.gitiles_json(&url)?;
+                let entries = v["entries"]
+                    .as_array()
+                    .ok_or_else(|| anyhow!("no entries array in Gitiles listing from {url}"))?;
+                let mut out = Vec::new();
+                for entry in entries {
+                    // Gitiles speaks git object types: file entries are
+                    // "blob" (not the GitHub Contents dialect's "file"), and
+                    // `id` is the git blob SHA-1.
+                    if entry["type"].as_str() != Some("blob") {
+                        continue;
+                    }
+                    let (Some(name), Some(id)) = (entry["name"].as_str(), entry["id"].as_str())
+                    else {
+                        continue;
+                    };
+                    // Entry names are bare filenames; join with the listed
+                    // directory to form the path within the repository.
+                    let path = if dir.is_empty() {
+                        name.to_string()
+                    } else {
+                        format!("{dir}/{name}")
+                    };
+                    out.push((path, id.to_string()));
+                }
+                Ok(out)
+            }
         }
-        Ok(out)
+    }
+
+    /// Fetch a file's bytes at a specific commit from an endpoint's content
+    /// route (GitHub's unmetered raw host, or Gitiles `?format=TEXT`).
+    /// Callers must verify the bytes against a blob SHA learned from a
+    /// listing (or a pin) before trusting them.
+    pub fn content_at(&self, ep: &Endpoint, commit: &str, path: &str) -> Result<Vec<u8>> {
+        match ep {
+            Endpoint::GitHub { slug } => self.raw_content(slug, commit, path),
+            Endpoint::Gitiles { base } => {
+                let url = format!("{base}/+/{commit}/{path}?format=TEXT");
+                let text = self
+                    .get_plain(&url)?
+                    .text()
+                    .with_context(|| format!("body of {url}"))?;
+                // format=TEXT bodies are base64 of the raw file bytes (with
+                // embedded newlines).
+                decode_b64(&text)
+            }
+        }
     }
 
     /// Fetch a file's bytes at a specific commit from the raw-content host
     /// (`raw.githubusercontent.com`) — unmetered, so it never counts against
-    /// the API rate limit.  Callers must verify the bytes against a blob SHA
-    /// learned from the API before trusting them.
-    pub fn raw_content(&self, repo: &str, commit: &str, path: &str) -> Result<Vec<u8>> {
+    /// the API rate limit.
+    pub fn raw_content(&self, slug: &str, commit: &str, path: &str) -> Result<Vec<u8>> {
         let raw_base = &self.raw_base;
-        let url = format!("{raw_base}/{repo}/{commit}/{path}");
-        let started = std::time::Instant::now();
-        // No GitHub API headers and — deliberately — no auth token: the raw
-        // host serves public content, and the API credential must never be
-        // sent cross-host.
-        let resp = self
-            .client
-            .get(&url)
-            .send()
-            .with_context(|| format!("GET {url}"))?;
-        crate::diag::debug(format_args!(
-            "HTTP GET {url} -> {} in {}ms",
-            resp.status(),
-            started.elapsed().as_millis()
-        ));
-        let resp = resp
-            .error_for_status()
-            .with_context(|| format!("HTTP error from {url}"))?;
-        Ok(resp
+        let url = format!("{raw_base}/{slug}/{commit}/{path}");
+        Ok(self
+            .get_plain(&url)?
             .bytes()
             .with_context(|| format!("body of {url}"))?
             .to_vec())
     }
 
-    /// Fetch a blob's content by its SHA (content-addressed; the `--lock`
-    /// fallback when the raw host can't serve a pinned commit).
-    pub fn blob_content(&self, repo: &str, blob_sha: &str) -> Result<Vec<u8>> {
+    /// Fetch a blob's content by its SHA via the GitHub blobs API
+    /// (content-addressed; the `--lock` fallback when no endpoint can serve
+    /// the pinned commit).  GitHub dialect only — Gitiles has no blob-by-SHA
+    /// endpoint.
+    pub fn blob_content(&self, slug: &str, blob_sha: &str) -> Result<Vec<u8>> {
         let base = &self.base;
-        let url = format!("{base}/repos/{repo}/git/blobs/{blob_sha}");
+        let url = format!("{base}/repos/{slug}/git/blobs/{blob_sha}");
         let v = self.get_json(&url)?;
         match v["encoding"].as_str() {
             Some("base64") => decode_b64(v["content"].as_str().unwrap_or("")),
-            other => bail!("unexpected blob encoding {other:?} for {repo}:{blob_sha}"),
+            other => bail!("unexpected blob encoding {other:?} for {slug}:{blob_sha}"),
         }
     }
 
-    /// Resolve a whole cluster at HEAD: repo provenance plus the requested files
-    /// (by registry key) with content.  `keys` selects which of the cluster's
-    /// files to fetch.
+    /// Resolve a whole cluster at HEAD: repo provenance plus the requested
+    /// files (by registry key) with content, trying the cluster's endpoints
+    /// in order for every operation.  `keys` selects which of the cluster's
+    /// files to fetch.  Used by the xtask bundler (no cache; bundle runs are
+    /// rare) — the engine resolves through the cache instead.
     pub fn resolve_cluster_head(&self, cluster: &Cluster, keys: &[&str]) -> Result<ClusterFetch> {
-        let commit = self
-            .head_commit(cluster.repo, cluster.branch)
-            .with_context(|| format!("resolving HEAD of {}", cluster.repo))?;
+        let commit = try_endpoints(
+            cluster.repo,
+            "resolving branch HEAD",
+            cluster.endpoints,
+            |ep| self.head_commit(ep, cluster.branch),
+        )
+        .with_context(|| format!("resolving HEAD of {}", cluster.repo))?;
 
         let repo = ResolvedRepo {
             repo: cluster.repo.to_string(),
@@ -311,22 +458,64 @@ impl Github {
             commit: commit.clone(),
         };
 
-        let mut files = Vec::new();
+        // Validate the requested keys and collect their specs.
+        let mut specs = Vec::new();
         for &key in keys {
             let spec = cluster
                 .files
                 .iter()
                 .find(|f| f.key == key)
                 .ok_or_else(|| anyhow!("key {key} not in cluster {}", cluster.repo))?;
-            let (blob, inline) = self
-                .contents(cluster.repo, spec.path_in_repo, &commit)
-                .with_context(|| format!("resolving {}", spec.path_in_repo))?;
-            let content = match inline {
-                Some(c) => c,
-                None => self
-                    .blob_content(cluster.repo, &blob)
-                    .with_context(|| format!("fetching blob for {}", spec.path_in_repo))?,
-            };
+            specs.push(spec);
+        }
+
+        // One listing per distinct parent directory → blob SHA per path.
+        let mut dirs: Vec<&str> = Vec::new();
+        for spec in &specs {
+            let dir = parent_dir(spec.path_in_repo);
+            if !dirs.contains(&dir) {
+                dirs.push(dir);
+            }
+        }
+        let mut listed: BTreeMap<String, String> = BTreeMap::new();
+        for dir in dirs {
+            let entries = try_endpoints(
+                cluster.repo,
+                "listing a directory",
+                cluster.endpoints,
+                |ep| self.contents_dir(ep, dir, &commit),
+            )
+            .with_context(|| format!("listing {}:{dir} at {commit}", cluster.repo))?;
+            listed.extend(entries);
+        }
+
+        let mut files = Vec::new();
+        for spec in specs {
+            let blob = listed.get(spec.path_in_repo).cloned().ok_or_else(|| {
+                anyhow!(
+                    "{} is missing from the directory listing of {} at {commit} \
+                     — tracked file absent upstream",
+                    spec.path_in_repo,
+                    cluster.repo
+                )
+            })?;
+            let content = try_endpoints(
+                cluster.repo,
+                "fetching content",
+                cluster.endpoints,
+                |ep| self.content_at(ep, &commit, spec.path_in_repo),
+            )
+            .with_context(|| format!("fetching {} from {}", spec.path_in_repo, cluster.repo))?;
+            let got = git_blob_sha1(&content);
+            if got != blob {
+                bail!(
+                    "content of {} from {} hashes to {got}, but the directory \
+                     listing reported blob {blob} — refusing corrupt or \
+                     mismatched content",
+                    spec.path_in_repo,
+                    cluster.repo
+                );
+            }
             files.push((
                 ResolvedFile {
                     key: spec.key.to_string(),
@@ -342,7 +531,7 @@ impl Github {
 }
 
 /// Decode base64 that may contain embedded newlines (as the git blobs API
-/// returns).
+/// and Gitiles `format=TEXT` return).
 fn decode_b64(s: &str) -> Result<Vec<u8>> {
     let cleaned: String = s.chars().filter(|c| !c.is_whitespace()).collect();
     BASE64

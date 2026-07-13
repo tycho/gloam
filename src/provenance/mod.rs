@@ -95,6 +95,33 @@ pub static ATTR_GLOAM: Attribution = Attribution {
 // Static registry
 // ---------------------------------------------------------------------------
 
+/// A fetch endpoint for a cluster.  Endpoints share one git history: a
+/// mirror may lag the canonical repository but never diverges from it, and
+/// git object SHAs (commits, blobs) are identical across endpoints.  Which
+/// endpoint served the bytes is therefore pure **transport** and never
+/// appears in any output — pins always record the cluster's canonical
+/// identity (`Cluster::repo` / `Cluster::repo_url`).
+#[derive(Debug)]
+pub enum Endpoint {
+    /// The GitHub dialect: `api.github.com` for metadata plus
+    /// `raw.githubusercontent.com` for content, addressed by "owner/name"
+    /// slug.
+    GitHub { slug: &'static str },
+    /// A Gitiles instance (e.g. `chromium.googlesource.com`), addressed by a
+    /// base URL that includes the project path.
+    Gitiles { base: &'static str },
+}
+
+impl Endpoint {
+    /// Dialect name for diagnostics.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Endpoint::GitHub { .. } => "GitHub",
+            Endpoint::Gitiles { .. } => "Gitiles",
+        }
+    }
+}
+
 /// One file within a cluster.
 #[derive(Debug)]
 pub struct FileSpec {
@@ -109,14 +136,19 @@ pub struct FileSpec {
 /// A repository cluster: one upstream repo at one branch.
 #[derive(Debug)]
 pub struct Cluster {
-    /// "owner/name" slug, e.g. "KhronosGroup/OpenGL-Registry".
+    /// Canonical repository slug, e.g. "KhronosGroup/OpenGL-Registry" — the
+    /// **identity** recorded in every pin, independent of which endpoint
+    /// served the bytes.
     pub repo: &'static str,
-    /// Browsable/clonable repository URL.
+    /// Canonical browsable/clonable repository URL — recorded in pins.
     pub repo_url: &'static str,
     /// Branch tracked for HEAD resolution.
     pub branch: &'static str,
     /// Attribution shared by every file in this cluster.
     pub attribution: &'static Attribution,
+    /// Fetch endpoints in fallback order: the canonical repository first,
+    /// mirrors after.  Transport only — never recorded in output.
+    pub endpoints: &'static [Endpoint],
     /// Files we may take from this cluster.
     pub files: &'static [FileSpec],
 }
@@ -127,6 +159,9 @@ pub static CLUSTERS: &[Cluster] = &[
         repo_url: "https://github.com/KhronosGroup/OpenGL-Registry",
         branch: "main",
         attribution: &ATTR_KHRONOS,
+        endpoints: &[Endpoint::GitHub {
+            slug: "KhronosGroup/OpenGL-Registry",
+        }],
         files: &[
             FileSpec {
                 key: "gl.xml",
@@ -147,6 +182,9 @@ pub static CLUSTERS: &[Cluster] = &[
         repo_url: "https://github.com/KhronosGroup/EGL-Registry",
         branch: "main",
         attribution: &ATTR_KHRONOS,
+        endpoints: &[Endpoint::GitHub {
+            slug: "KhronosGroup/EGL-Registry",
+        }],
         files: &[
             FileSpec {
                 key: "egl.xml",
@@ -167,6 +205,9 @@ pub static CLUSTERS: &[Cluster] = &[
         repo_url: "https://github.com/KhronosGroup/Vulkan-Docs",
         branch: "main",
         attribution: &ATTR_KHRONOS,
+        endpoints: &[Endpoint::GitHub {
+            slug: "KhronosGroup/Vulkan-Docs",
+        }],
         files: &[FileSpec {
             key: "vk.xml",
             path_in_repo: "xml/vk.xml",
@@ -177,6 +218,9 @@ pub static CLUSTERS: &[Cluster] = &[
         repo_url: "https://github.com/KhronosGroup/Vulkan-Headers",
         branch: "main",
         attribution: &ATTR_KHRONOS,
+        endpoints: &[Endpoint::GitHub {
+            slug: "KhronosGroup/Vulkan-Headers",
+        }],
         files: &[
             FileSpec {
                 key: "vulkan/vk_platform.h",
@@ -237,6 +281,9 @@ pub static CLUSTERS: &[Cluster] = &[
         repo_url: "https://github.com/google/angle",
         branch: "main",
         attribution: &ATTR_ANGLE,
+        endpoints: &[Endpoint::GitHub {
+            slug: "google/angle",
+        }],
         files: &[
             FileSpec {
                 key: "gl_angle_ext.xml",
@@ -253,6 +300,9 @@ pub static CLUSTERS: &[Cluster] = &[
         repo_url: "https://github.com/Cyan4973/xxHash",
         branch: "dev",
         attribution: &ATTR_XXHASH,
+        endpoints: &[Endpoint::GitHub {
+            slug: "Cyan4973/xxHash",
+        }],
         files: &[FileSpec {
             key: "xxhash.h",
             path_in_repo: "xxhash.h",
@@ -268,6 +318,9 @@ pub static CLUSTERS: &[Cluster] = &[
         repo_url: "https://github.com/tycho/gloam-registry",
         branch: "master",
         attribution: &ATTR_GLOAM,
+        endpoints: &[Endpoint::GitHub {
+            slug: "tycho/gloam-registry",
+        }],
         files: &[FileSpec {
             key: "glsl_exts.xml",
             path_in_repo: "xml/glsl_exts.xml",
@@ -453,6 +506,17 @@ mod tests {
             assert!(find(key).is_some(), "primary key {key} not in registry");
         }
         assert!(primary_key("nope").is_none());
+    }
+
+    #[test]
+    fn every_cluster_has_at_least_one_endpoint() {
+        for cluster in CLUSTERS {
+            assert!(
+                !cluster.endpoints.is_empty(),
+                "cluster {} has no fetch endpoints",
+                cluster.repo
+            );
+        }
     }
 
     #[test]

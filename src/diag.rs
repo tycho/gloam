@@ -51,6 +51,16 @@ impl Diag {
     }
 }
 
+/// Warning from provenance/fetch code that doesn't carry a [`Diag`] handle
+/// (the engine's endpoint-failover path).  Unlike [`Diag::warn`] this is
+/// unconditional: a transport falling over to a mirror is rare, and a run
+/// that silently used a fallback endpoint would be harder to debug than one
+/// line of stderr is worth.
+#[cfg(feature = "fetch")]
+pub fn warn(msg: impl std::fmt::Display) {
+    eprintln!("gloam: warning: {msg}");
+}
+
 /// True when the `GLOAM_DEBUG` environment variable is set (non-empty).
 pub fn debug_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();

@@ -1,5 +1,11 @@
-//! Unified fetch engine: combines GitHub acquisition with the SQLite cache to
-//! resolve a set of registry files to provenance pins + content.
+//! Unified fetch engine: combines endpoint acquisition (GitHub / Gitiles,
+//! with ordered transport fallover) with the SQLite cache to resolve a set of
+//! registry files to provenance pins + content.
+//!
+//! Cache rows are keyed by the cluster's canonical `repo` slug and by git
+//! object SHAs — never by the endpoint that served the bytes.  Which
+//! endpoint answered is pure transport and is invisible in pins and cache
+//! alike.
 //!
 //! Two resolution modes:
 //!   - [`Engine::resolve_head`] — no-lock `--fetch`: resolve each cluster's
@@ -17,10 +23,10 @@ use std::collections::BTreeMap;
 use anyhow::{Context, Result, anyhow, bail};
 use indexmap::IndexMap;
 
-use super::acquire::{Github, HeadRef};
+use super::acquire::{Github, HeadRef, parent_dir, try_endpoints};
 use super::cache::{self, Cache};
 use super::manifest::{BundledProvenance, ProvenancePin, git_blob_sha1};
-use super::{Cluster, find};
+use super::{Cluster, Endpoint};
 
 /// A resolved file: its provenance pin plus content bytes.
 #[derive(Debug)]
@@ -34,6 +40,9 @@ pub struct Engine {
     cache: Cache,
     head_ttl: i64,
     object_ttl: i64,
+    /// Cluster registry consulted for keys and endpoints — the static
+    /// registry in production; synthetic clusters in tests.
+    clusters: &'static [Cluster],
 }
 
 impl Engine {
@@ -44,12 +53,33 @@ impl Engine {
 
     /// Build from explicit parts (used in tests with an in-memory cache).
     pub fn from_parts(gh: Github, cache: Cache) -> Self {
+        Self::with_clusters(gh, cache, super::CLUSTERS)
+    }
+
+    /// Build against an explicit cluster registry — tests point synthetic
+    /// clusters' endpoints at a mock server.
+    pub(crate) fn with_clusters(gh: Github, cache: Cache, clusters: &'static [Cluster]) -> Self {
         Self {
             gh,
             cache,
             head_ttl: cache::HEAD_TTL_SECS,
             object_ttl: cache::OBJECT_TTL_SECS,
+            clusters,
         }
+    }
+
+    /// Find the cluster and file spec for a key within this engine's
+    /// registry (the counterpart of [`super::find`] for synthetic test
+    /// registries).
+    fn find_key(&self, key: &str) -> Option<(&'static Cluster, &'static super::FileSpec)> {
+        for cluster in self.clusters {
+            for file in cluster.files {
+                if file.key == key {
+                    return Some((cluster, file));
+                }
+            }
+        }
+        None
     }
 
     /// Seed the cache from an embedded bundle: `content_for(key)` yields the
@@ -92,7 +122,7 @@ impl Engine {
 
     /// Resolve registry keys at upstream HEAD (no-lock `--fetch`).
     pub fn resolve_head(&self, keys: &[&str]) -> Result<BTreeMap<String, Resolved>> {
-        let by_cluster = group_by_cluster(keys)?;
+        let by_cluster = group_by_cluster(self.clusters, keys)?;
         let mut out = BTreeMap::new();
         let now = cache::now();
 
@@ -157,39 +187,7 @@ impl Engine {
             let content = match self.verified_cached_blob(&pin.blob, now)? {
                 Some(c) => c,
                 None => {
-                    // Raw host first (unmetered): the pin names the commit
-                    // and path, and the bytes are acceptable only if they
-                    // hash to the pinned blob.  A failed or mismatching raw
-                    // fetch (e.g. the pinned commit was garbage-collected
-                    // upstream) falls back to the content-addressed blobs
-                    // API.
-                    let raw = self
-                        .gh
-                        .raw_content(&pin.repo, &pin.commit, &pin.path_in_repo)
-                        .ok()
-                        .filter(|c| git_blob_sha1(c) == pin.blob);
-                    let c = match raw {
-                        Some(c) => c,
-                        None => {
-                            let c = self
-                                .gh
-                                .blob_content(&pin.repo, &pin.blob)
-                                .with_context(|| format!("fetching pinned blob for '{key}'"))?;
-                            // Never launder wrong content into "verified"
-                            // provenance: the fetched bytes must hash to the
-                            // pinned blob SHA.
-                            let got = git_blob_sha1(&c);
-                            if got != pin.blob {
-                                bail!(
-                                    "pinned blob for '{key}' from {} hashes to {got}, \
-                                     expected {} — refusing corrupt or mismatched content",
-                                    pin.repo,
-                                    pin.blob
-                                );
-                            }
-                            c
-                        }
-                    };
+                    let c = self.fetch_pinned(key, pin)?;
                     self.cache.put_blob(&pin.blob, &c, now)?;
                     c
                 }
@@ -211,25 +209,110 @@ impl Engine {
         Ok(out)
     }
 
-    /// Re-resolve a cluster's HEAD after the TTL lapsed, using a conditional
-    /// request so an unchanged upstream costs no metered API call.
+    /// Fetch pinned content from the network (`--lock` cache miss): try the
+    /// key's cluster endpoints in order for commit-pinned content — the
+    /// bytes are acceptable only if they hash to the pinned blob, so a stale
+    /// mirror's 404 or a mismatch just falls through — then the
+    /// content-addressed GitHub blobs API as the final fallback (e.g. the
+    /// pinned commit was garbage-collected upstream; Gitiles has no
+    /// blob-by-SHA endpoint).
+    ///
+    /// Endpoints come from the key's cluster: the pin's `repo`/`repo_url`
+    /// are identity labels, not transport, so a pin recorded under an old
+    /// identity (e.g. a pre-migration slug) still fetches through the
+    /// current endpoints — git object SHAs are identical across them.
+    fn fetch_pinned(&self, key: &str, pin: &ProvenancePin) -> Result<Vec<u8>> {
+        let cluster = self.find_key(key).map(|(cluster, _)| cluster);
+
+        let raw = match cluster {
+            Some(cluster) => cluster.endpoints.iter().find_map(|ep| {
+                self.gh
+                    .content_at(ep, &pin.commit, &pin.path_in_repo)
+                    .ok()
+                    .filter(|c| git_blob_sha1(c) == pin.blob)
+            }),
+            // Key unknown to this build's registry (an old lock naming a
+            // file gloam no longer tracks): the GitHub dialect against the
+            // pin's own slug is the only address we have.
+            None => self
+                .gh
+                .raw_content(&pin.repo, &pin.commit, &pin.path_in_repo)
+                .ok()
+                .filter(|c| git_blob_sha1(c) == pin.blob),
+        };
+        if let Some(c) = raw {
+            return Ok(c);
+        }
+
+        let slug = match cluster {
+            Some(cluster) => cluster
+                .endpoints
+                .iter()
+                .find_map(|ep| match ep {
+                    Endpoint::GitHub { slug } => Some(*slug),
+                    Endpoint::Gitiles { .. } => None,
+                })
+                .ok_or_else(|| {
+                    anyhow!(
+                        "no endpoint of {} could serve the pinned content for '{key}', \
+                         and the cluster has no GitHub endpoint to fetch the blob by SHA",
+                        cluster.repo
+                    )
+                })?,
+            None => pin.repo.as_str(),
+        };
+        let c = self
+            .gh
+            .blob_content(slug, &pin.blob)
+            .with_context(|| format!("fetching pinned blob for '{key}'"))?;
+        // Never launder wrong content into "verified" provenance: the
+        // fetched bytes must hash to the pinned blob SHA.
+        let got = git_blob_sha1(&c);
+        if got != pin.blob {
+            bail!(
+                "pinned blob for '{key}' from {} hashes to {got}, \
+                 expected {} — refusing corrupt or mismatched content",
+                pin.repo,
+                pin.blob
+            );
+        }
+        Ok(c)
+    }
+
+    /// Re-resolve a cluster's HEAD after the TTL lapsed, trying the
+    /// cluster's endpoints in order and using a conditional request where
+    /// the dialect supports one, so an unchanged upstream costs no metered
+    /// API call.
     ///
     /// On 304 the stored commit is re-`set_head` with `now` — a
     /// rate-limit-free TTL heartbeat.  On 200 the (possibly new) commit and
     /// the response ETag are recorded for the next round trip.
     fn resolve_stale_head(&self, cluster: &Cluster, now: i64) -> Result<String> {
-        let url = self.gh.ref_url(cluster.repo, cluster.branch);
         // A 304 is only actionable if we still know what we derived from this
         // URL last time — never send If-None-Match without a stored commit.
         let stored = self.cache.stored_head(cluster.repo)?;
-        let etag = match &stored {
-            Some(_) => self.cache.etag_for(&url)?,
-            None => None,
-        };
-        match self
-            .gh
-            .head_commit_conditional(cluster.repo, cluster.branch, etag.as_deref())?
-        {
+        let (url, head) = try_endpoints(
+            cluster.repo,
+            "resolving branch HEAD",
+            cluster.endpoints,
+            |ep| {
+                // ETag conditionals apply only to the GitHub dialect
+                // (Gitiles serves no ETag header); rows are keyed by the
+                // request URL actually used, so they are naturally
+                // per-endpoint.
+                let url = self.gh.ref_url(ep, cluster.branch);
+                let etag = match (ep, &stored) {
+                    (Endpoint::GitHub { .. }, Some(_)) => self.cache.etag_for(&url)?,
+                    _ => None,
+                };
+                let head = self
+                    .gh
+                    .head_commit_conditional(ep, cluster.branch, etag.as_deref())?;
+                Ok((url, head))
+            },
+        )
+        .with_context(|| format!("resolving HEAD of {}: all endpoints failed", cluster.repo))?;
+        match head {
             HeadRef::NotModified => {
                 let c = stored.expect("If-None-Match sent only with a stored head");
                 self.cache.set_head(cluster.repo, cluster.branch, &c, now)?;
@@ -246,10 +329,17 @@ impl Engine {
         }
     }
 
-    /// Resolve cache misses at `commit`: one Contents-API directory listing
-    /// per parent directory yields the blob SHAs, then content comes from the
-    /// cache (unchanged blob at a new commit — zero download) or the
-    /// unmetered raw host, verified against the listed SHA.
+    /// Resolve cache misses at `commit`: one directory listing per parent
+    /// directory yields the blob SHAs, then content comes from the cache
+    /// (unchanged blob at a new commit — zero download) or an endpoint's
+    /// content route, verified against the listed SHA.
+    ///
+    /// Every operation tries the cluster's endpoints in order; content is
+    /// preferentially fetched from the endpoint that served the file's
+    /// directory listing (consistency).  Content fetches are commit-pinned,
+    /// so a lagging mirror either serves identical bytes or 404s — a 404
+    /// counts as that endpoint failing, and when no endpoint has the commit
+    /// the error advises retrying (there is no silent HEAD re-resolution).
     fn fetch_misses(
         &self,
         cluster: &Cluster,
@@ -266,15 +356,26 @@ impl Engine {
                 dirs.push(dir);
             }
         }
-        // path_in_repo -> blob SHA learned from the listings.
+        // path_in_repo -> blob SHA learned from the listings, plus the
+        // endpoint that served each directory.
         let mut listed: BTreeMap<String, String> = BTreeMap::new();
+        let mut dir_endpoint: Vec<(&str, &'static Endpoint)> = Vec::new();
         for dir in dirs {
-            let entries = self
-                .gh
-                .contents_dir(cluster.repo, dir, commit)
-                .with_context(|| {
-                    format!("listing {}:{dir} at {commit}", cluster.repo)
-                })?;
+            let (ep, entries) = try_endpoints(
+                cluster.repo,
+                "listing a directory",
+                cluster.endpoints,
+                |ep| Ok((ep, self.gh.contents_dir(ep, dir, commit)?)),
+            )
+            .with_context(|| {
+                format!(
+                    "listing {}:{dir} at {commit} — all endpoints failed \
+                     (a mirror that has not yet synced this commit answers 404; \
+                     retry shortly)",
+                    cluster.repo
+                )
+            })?;
+            dir_endpoint.push((dir, ep));
             for (path, sha) in entries {
                 // Record tree entries only for files this cluster tracks —
                 // rows for untracked listing entries would bloat the cache
@@ -302,12 +403,30 @@ impl Engine {
             let content = match self.verified_cached_blob(blob, now)? {
                 Some(c) => c,
                 None => {
-                    let c = self
-                        .gh
-                        .raw_content(cluster.repo, commit, spec.path_in_repo)
-                        .with_context(|| {
-                            format!("fetching {} from {}", spec.path_in_repo, cluster.repo)
-                        })?;
+                    // Prefer the endpoint that served this file's directory
+                    // listing, then the rest in cluster order.
+                    let dir = parent_dir(spec.path_in_repo);
+                    let preferred = dir_endpoint
+                        .iter()
+                        .find(|(d, _)| *d == dir)
+                        .map(|(_, ep)| *ep);
+                    let order = preferred.into_iter().chain(
+                        cluster
+                            .endpoints
+                            .iter()
+                            .filter(|ep| preferred.is_none_or(|p| !std::ptr::eq(*ep, p))),
+                    );
+                    let c = try_endpoints(cluster.repo, "fetching content", order, |ep| {
+                        self.gh.content_at(ep, commit, spec.path_in_repo)
+                    })
+                    .with_context(|| {
+                        format!(
+                            "fetching {} from {} at {commit} — all endpoints failed \
+                             (a mirror that has not yet synced this commit answers 404; \
+                             retry shortly)",
+                            spec.path_in_repo, cluster.repo
+                        )
+                    })?;
                     let got = git_blob_sha1(&c);
                     if got != *blob {
                         bail!(
@@ -345,15 +464,6 @@ impl Engine {
     }
 }
 
-/// The parent directory of a path within a repository (`""` for root-level
-/// files) — the unit at which misses are grouped for directory listings.
-fn parent_dir(path: &str) -> &str {
-    match path.rfind('/') {
-        Some(i) => &path[..i],
-        None => "",
-    }
-}
-
 fn pin_for(cluster: &Cluster, path_in_repo: &str, commit: &str, blob: &str) -> ProvenancePin {
     ProvenancePin {
         repo: cluster.repo.to_string(),
@@ -365,10 +475,16 @@ fn pin_for(cluster: &Cluster, path_in_repo: &str, commit: &str, blob: &str) -> P
 }
 
 /// Group requested keys by their cluster, preserving registry order.
-fn group_by_cluster<'a>(keys: &[&'a str]) -> Result<Vec<(&'static Cluster, Vec<&'a str>)>> {
+fn group_by_cluster<'a>(
+    clusters: &'static [Cluster],
+    keys: &[&'a str],
+) -> Result<Vec<(&'static Cluster, Vec<&'a str>)>> {
     let mut groups: Vec<(&'static Cluster, Vec<&'a str>)> = Vec::new();
     for &key in keys {
-        let (cluster, _) = find(key).ok_or_else(|| anyhow!("unknown registry key '{key}'"))?;
+        let cluster = clusters
+            .iter()
+            .find(|c| c.files.iter().any(|f| f.key == key))
+            .ok_or_else(|| anyhow!("unknown registry key '{key}'"))?;
         match groups.iter_mut().find(|(c, _)| std::ptr::eq(*c, cluster)) {
             Some((_, v)) => v.push(key),
             None => groups.push((cluster, vec![key])),
@@ -469,7 +585,8 @@ mod tests {
 
     #[test]
     fn group_by_cluster_coalesces_same_repo() {
-        let groups = group_by_cluster(&["gl.xml", "glx.xml", "xxhash.h"]).unwrap();
+        let groups =
+            group_by_cluster(super::super::CLUSTERS, &["gl.xml", "glx.xml", "xxhash.h"]).unwrap();
         // gl.xml + glx.xml share OpenGL-Registry; xxhash.h is its own cluster.
         assert_eq!(groups.len(), 2);
         let opengl = groups
