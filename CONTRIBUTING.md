@@ -193,6 +193,14 @@ current working copy, pinned to each tree's recorded provenance via
 Pass `--fresh` to run the recorded commands verbatim instead (advancing
 pins to upstream HEAD — the normal tree-update workflow).
 
+## Debug tracing
+
+Set `GLOAM_DEBUG=1` to trace provenance/fetch activity on stderr: every
+HTTP request (URL, status, latency), every `load::resolve` call (mode, key
+count, duration), and engine construction / bundle-seed timings.
+Independent of `--quiet`. Use this to answer "when and why is gloam
+hitting the network or the cache?"
+
 ## Style notes
 
 - **Determinism**: `IndexMap` is used throughout for insertion-order

@@ -41,14 +41,32 @@ impl LoadCtx<'_> {
 
 /// Resolve registry `keys` to pins + content per the load context.
 pub fn resolve(keys: &[&str], ctx: &LoadCtx) -> Result<IndexMap<String, LoadedSource>> {
-    if let Some(pins) = ctx.lock {
-        return resolve_locked(keys, pins, ctx.use_fetch);
-    }
-    #[cfg(feature = "fetch")]
-    if ctx.use_fetch {
-        return resolve_fetch(keys);
-    }
-    resolve_bundled(keys)
+    let started = std::time::Instant::now();
+    let mode = match (ctx.lock.is_some(), ctx.use_fetch) {
+        (true, true) => "locked+fetch",
+        (true, false) => "locked+bundled",
+        (false, true) => "fetch",
+        (false, false) => "bundled",
+    };
+    let result = if let Some(pins) = ctx.lock {
+        resolve_locked(keys, pins, ctx.use_fetch)
+    } else {
+        #[cfg(feature = "fetch")]
+        if ctx.use_fetch {
+            resolve_fetch(keys)
+        } else {
+            resolve_bundled(keys)
+        }
+        #[cfg(not(feature = "fetch"))]
+        resolve_bundled(keys)
+    };
+    crate::diag::debug(format_args!(
+        "resolve[{mode}] {} key(s) in {}ms (first: {})",
+        keys.len(),
+        started.elapsed().as_millis(),
+        keys.first().unwrap_or(&"<none>"),
+    ));
+    result
 }
 
 /// `--lock`: pin every key to the manifest's provenance.  Content comes from the
@@ -71,10 +89,7 @@ fn resolve_locked(
 
     #[cfg(feature = "fetch")]
     if use_fetch {
-        let engine = super::engine::Engine::new()?;
-        engine.seed_from_bundle(&bundled::bundled_provenance()?, |k| {
-            bundled::content_by_key(k).map(|s| s.as_bytes().to_vec())
-        })?;
+        let engine = fetch_engine()?;
         let resolved = engine.resolve_pinned(pins, keys)?;
         return Ok(resolved
             .into_iter()
@@ -139,12 +154,24 @@ fn resolve_bundled(keys: &[&str]) -> Result<IndexMap<String, LoadedSource>> {
 }
 
 #[cfg(feature = "fetch")]
-fn resolve_fetch(keys: &[&str]) -> Result<IndexMap<String, LoadedSource>> {
+fn fetch_engine() -> Result<super::engine::Engine> {
+    let started = std::time::Instant::now();
     let engine = super::engine::Engine::new()?;
+    let opened = started.elapsed().as_millis();
     // Seed from the embedded bundle so unchanged content resolves from cache.
     engine.seed_from_bundle(&bundled::bundled_provenance()?, |k| {
         bundled::content_by_key(k).map(|s| s.as_bytes().to_vec())
     })?;
+    crate::diag::debug(format_args!(
+        "engine: cache opened in {opened}ms, bundle seeded in {}ms",
+        started.elapsed().as_millis() - opened
+    ));
+    Ok(engine)
+}
+
+#[cfg(feature = "fetch")]
+fn resolve_fetch(keys: &[&str]) -> Result<IndexMap<String, LoadedSource>> {
+    let engine = fetch_engine()?;
     let resolved = engine.resolve_head(keys)?;
     let mut out = IndexMap::new();
     for (key, r) in resolved {

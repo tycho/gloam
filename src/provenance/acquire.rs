@@ -73,6 +73,7 @@ impl Github {
     // -- low-level requests --------------------------------------------------
 
     fn get(&self, url: &str) -> Result<reqwest::blocking::Response> {
+        let started = std::time::Instant::now();
         let mut req = self
             .client
             .get(url)
@@ -82,6 +83,11 @@ impl Github {
             req = req.bearer_auth(tok);
         }
         let resp = req.send().with_context(|| format!("GET {url}"))?;
+        crate::diag::debug(format_args!(
+            "HTTP GET {url} -> {} in {}ms",
+            resp.status(),
+            started.elapsed().as_millis()
+        ));
         let resp = resp
             .error_for_status()
             .with_context(|| format!("HTTP error from {url}"))?;

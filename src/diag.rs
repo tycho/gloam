@@ -50,3 +50,19 @@ impl Diag {
         }
     }
 }
+
+/// True when the `GLOAM_DEBUG` environment variable is set (non-empty).
+pub fn debug_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("GLOAM_DEBUG").is_some_and(|v| !v.is_empty()))
+}
+
+/// Tracing line for `GLOAM_DEBUG=1` runs: network requests, cache/engine
+/// activity, and per-phase timings.  Deliberately independent of `--quiet`
+/// (debugging a --quiet invocation must still trace) and of the `Diag`
+/// handle (callers deep in the provenance stack don't carry one).
+pub fn debug(msg: impl std::fmt::Display) {
+    if debug_enabled() {
+        eprintln!("gloam: debug: {msg}");
+    }
+}
