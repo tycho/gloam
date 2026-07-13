@@ -41,7 +41,7 @@ both correct (all files in a snapshot share one commit) and cheap (it collapses
 | `KhronosGroup/Vulkan-Headers` | `main` | `include/vulkan/vk_platform.h`, `include/vk_video/*` | Apache-2.0 / The Khronos Group Inc. |
 | `google/angle` | `main` | `scripts/gl_angle_ext.xml`, `scripts/egl_angle_ext.xml` | BSD-3-Clause / The ANGLE Project Authors |
 | `Cyan4973/xxHash` | `dev` | `xxhash.h` | BSD-2-Clause / Yann Collet |
-| `tycho/gloam` | `master` | `bundled/xml/glsl_exts.xml` | MIT / Steven Noonan |
+| `tycho/gloam-registry` | `master` | `xml/glsl_exts.xml` | MIT / Steven Noonan |
 
 ### Resolving a cluster (race-free)
 

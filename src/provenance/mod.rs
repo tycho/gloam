@@ -258,14 +258,19 @@ pub static CLUSTERS: &[Cluster] = &[
             path_in_repo: "xxhash.h",
         }],
     },
+    // gloam's own supplemental registry data lives in a separate repository
+    // (not in tycho/gloam) for two reasons: `--fetch` picks up new entries
+    // without waiting for a gloam release, and the provenance pin can
+    // reference the commit that actually modified the file — a pin inside
+    // the gloam repo could never point at its own modification commit.
     Cluster {
-        repo: "tycho/gloam",
-        repo_url: "https://github.com/tycho/gloam",
+        repo: "tycho/gloam-registry",
+        repo_url: "https://github.com/tycho/gloam-registry",
         branch: "master",
         attribution: &ATTR_GLOAM,
         files: &[FileSpec {
             key: "glsl_exts.xml",
-            path_in_repo: "bundled/xml/glsl_exts.xml",
+            path_in_repo: "xml/glsl_exts.xml",
         }],
     },
 ];

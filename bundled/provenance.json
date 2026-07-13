@@ -44,10 +44,10 @@
       "blob": "1c4b34c8b37a5900244e89ef6883990f0452426e"
     },
     "glsl_exts.xml": {
-      "repo": "tycho/gloam",
-      "repo_url": "https://github.com/tycho/gloam",
-      "path_in_repo": "bundled/xml/glsl_exts.xml",
-      "commit": "0c8ced30f035da2c45386595d296fdd3209efaec",
+      "repo": "tycho/gloam-registry",
+      "repo_url": "https://github.com/tycho/gloam-registry",
+      "path_in_repo": "xml/glsl_exts.xml",
+      "commit": "db450d44106e56e95078d0942a74bef22d614116",
       "blob": "f4651bd4d326c0eb4504dc19c99efb7f323ed5ca"
     },
     "glx.xml": {
