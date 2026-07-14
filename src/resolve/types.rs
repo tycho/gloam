@@ -8,6 +8,8 @@
 use indexmap::IndexMap;
 use serde::Serialize;
 
+use crate::identity::Spec;
+
 // ---------------------------------------------------------------------------
 // FeatureSet — the resolved, indexed output
 // ---------------------------------------------------------------------------
@@ -15,6 +17,10 @@ use serde::Serialize;
 /// Everything a code generator needs, fully indexed and sorted.
 #[derive(Debug, Serialize)]
 pub struct FeatureSet {
+    /// Typed spec identity, for Rust-side consumers (render models).
+    /// Not serialized — templates use the stringly fields below.
+    #[serde(skip)]
+    pub spec: Spec,
     /// "gl", "egl", "glx", "wgl", "vk"
     pub spec_name: String,
     /// Display name: "GL", "EGL", "GLX", "WGL", "Vulkan"

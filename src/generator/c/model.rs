@@ -9,6 +9,7 @@
 
 use serde::Serialize;
 
+use crate::identity::Spec;
 use crate::ir::TypeCategory;
 use crate::resolve::{FeatureSet, FlatEnum, Param, TypeDef};
 
@@ -32,6 +33,10 @@ pub struct RenderModel {
     /// Flat enum constants grouped by consecutive protection, for the
     /// constants section of the header.
     pub flat_enum_groups: Vec<ProtectedGroup<FlatEnum>>,
+    /// Commands the per-spec load functions must resolve by hand before the
+    /// version/extension detection machinery can run (see
+    /// [`bootstrap_names`]), in pfnArray order.
+    pub bootstrap_cmds: Vec<BootstrapCmd>,
     /// Packed function-name blob layout (offsets passed to templates as
     /// separate context keys — the table loops index it by cmd.index).
     #[serde(skip)]
@@ -89,14 +94,58 @@ impl RenderModel {
         let flat_enum_groups =
             group_by_protection(fs.flat_enums.iter().cloned(), |e| e.protect.clone());
 
+        let names = bootstrap_names(fs.spec);
+        let bootstrap_cmds = fs
+            .commands
+            .iter()
+            .filter(|c| names.contains(&c.name.as_str()))
+            .map(|c| BootstrapCmd {
+                name: c.name.clone(),
+                short_name: c.short_name.clone(),
+                pfn_type: c.pfn_type.clone(),
+            })
+            .collect();
+
         Self {
             include_type_groups,
             type_groups,
             ext_guard_groups,
             cmd_pfn_groups,
             flat_enum_groups,
+            bootstrap_cmds,
             fn_names: FnNameLayout::build(fs),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bootstrap commands
+// ---------------------------------------------------------------------------
+
+/// A command the generated load function assigns by hand from getProcAddr
+/// before the generic range loader can run.
+#[derive(Debug, Serialize)]
+pub struct BootstrapCmd {
+    pub name: String,
+    pub short_name: String,
+    pub pfn_type: String,
+}
+
+/// The commands each spec's load function must resolve up front: version
+/// detection (find_core) reads the version through them, and WGL needs its
+/// extensions-string entry points before extension detection.  These are
+/// C loader policy, not spec facts — a command listed here that isn't in the
+/// feature set is simply absent from the build (e.g. a filtered build that
+/// somehow drops glGetString generates a load function that returns 0).
+fn bootstrap_names(spec: Spec) -> &'static [&'static str] {
+    match spec {
+        Spec::Gl => &["glGetString"],
+        Spec::Egl => &["eglGetString", "eglQueryString"],
+        Spec::Glx => &["glXQueryVersion"],
+        Spec::Wgl => &["wglGetExtensionsStringARB", "wglGetExtensionsStringEXT"],
+        // Vulkan bootstraps through GetInstanceProcAddr, spelled out directly
+        // in the template — no name-table lookups.
+        Spec::Vk => &[],
     }
 }
 

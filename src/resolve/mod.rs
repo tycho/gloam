@@ -288,6 +288,7 @@ fn resolve_feature_set(
     };
 
     Ok(FeatureSet {
+        spec: spec_kind,
         spec_name: spec_kind.as_str().to_string(),
         display_name: spec.display_name.to_string(),
         apis: api_names,

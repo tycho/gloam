@@ -695,11 +695,11 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg(', ') }}GloamLoadFunc g
     memset(context, 0, sizeof(*context));
 
     /* Bootstrap: glGetString must be loaded before find_core can run. */
-{%- for cmd in fs.commands %}{% if cmd.name == "glGetString" %}
-    context->{{ cmd.short_name }} = ({{ cmd.pfn_type }})getProcAddr("glGetString");
+{%- for cmd in m.bootstrap_cmds %}
+    context->{{ cmd.short_name }} = ({{ cmd.pfn_type }})getProcAddr("{{ cmd.name }}");
     if (!context->{{ cmd.short_name }})
         return 0;
-{% endif %}{%- endfor %}
+{% endfor %}
     version = gloam_{{ fs.spec_name }}_find_core_{{ api }}(context);
     if (!version)
         return 0;
@@ -729,9 +729,9 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_par
     memset(context, 0, sizeof(*context));
 
     /* Bootstrap: QueryString must be loaded before version detection. */
-{%- for cmd in fs.commands %}{% if cmd.name == "eglGetString" or cmd.name == "eglQueryString" %}
+{%- for cmd in m.bootstrap_cmds %}
     context->{{ cmd.short_name }} = ({{ cmd.pfn_type }})getProcAddr("{{ cmd.name }}");
-{% endif %}{%- endfor %}
+{% endfor %}
     version = gloam_{{ fs.spec_name }}_find_core_{{ api }}(context, display);
     if (!version)
         return 0;
@@ -757,9 +757,9 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_par
     int version;
     uint32_t i;
     memset(context, 0, sizeof(*context));
-{% for cmd in fs.commands %}{% if cmd.name == "glXQueryVersion" %}
+{% for cmd in m.bootstrap_cmds %}
     context->{{ cmd.short_name }} = ({{ cmd.pfn_type }})getProcAddr("{{ cmd.name }}");
-{% endif %}{%- endfor %}
+{% endfor %}
     version = gloam_{{ fs.spec_name }}_find_core_{{ api }}(context, &display, &screen);
     if (!version)
         return 0;
@@ -801,10 +801,8 @@ int gloamLoad{{ api | api_display }}Context({{ u.ctx_arg() }}{{ u.extra_load_par
     memset(context, 0, sizeof(*context));
 
     /* WGL mandatory extensions must be loaded first for extension detection. */
-{%- for cmd in fs.commands %}
-{%- if cmd.name in ["wglGetExtensionsStringARB", "wglGetExtensionsStringEXT"] %}
+{%- for cmd in m.bootstrap_cmds %}
     context->{{ cmd.short_name }} = ({{ cmd.pfn_type }})getProcAddr("{{ cmd.name }}");
-{%- endif %}
 {%- endfor %}
 
     version = gloam_{{ fs.spec_name }}_find_core_{{ api }}(context);
