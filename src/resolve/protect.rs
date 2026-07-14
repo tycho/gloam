@@ -5,7 +5,11 @@
 //! coalesces consecutive items with identical guards into single groups,
 //! minimizing `#ifdef`/`#endif` pairs in the generated header.
 
+use std::collections::HashMap;
+
 use serde::Serialize;
+
+use crate::ir::{RawExtension, Require};
 
 use super::types::ProtectedGroup;
 
@@ -68,6 +72,49 @@ impl Protection {
     pub fn is_unconditional(&self) -> bool {
         matches!(self, Self::Unconditional)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Extension-derived item protections
+// ---------------------------------------------------------------------------
+
+/// Build a map from item name → protection macros derived from the extensions
+/// that require that item.  `items` selects which require-list contributes
+/// (`|r| &r.enums` for enum constants, `|r| &r.types` for types).
+///
+/// This covers the common Vulkan pattern where a struct or constant has no
+/// `protect=` attribute of its own but is required only inside an extension
+/// with `platform="win32"` (or similar), making its protection implicit.
+///
+/// Deliberately scoped to ALL extensions in the spec, not just the selected
+/// ones: Vulkan emits every flat enum and every auto-category type regardless
+/// of selection, so these guards are what keep platform-only and
+/// Vulkan-SC-only items behind their `VK_USE_PLATFORM_*` macros — mirroring
+/// upstream vulkan_core.h, where every extension's constants are defined and
+/// platform items live in guarded platform headers.  Scoping this to selected
+/// extensions would strip those guards while the items stay emitted.
+pub(super) fn build_ext_protections<F>(
+    extensions: &[RawExtension],
+    items: F,
+) -> HashMap<String, Vec<String>>
+where
+    F: Fn(&Require) -> &[String],
+{
+    let mut tmp: HashMap<&str, Protection> = HashMap::new();
+
+    for ext in extensions {
+        for require in &ext.requires {
+            for name in items(require) {
+                tmp.entry(name.as_str())
+                    .or_insert_with(Protection::new_guarded)
+                    .add_extension(&ext.protect);
+            }
+        }
+    }
+
+    tmp.into_iter()
+        .map(|(name, prot)| (name.to_string(), prot.into_vec()))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +247,72 @@ mod tests {
     fn protection_unconditional_into_vec_is_empty() {
         let p = Protection::Unconditional;
         assert!(p.into_vec().is_empty());
+    }
+
+    // ---- build_ext_protections ----
+
+    fn make_ext(name: &str, protect: &[&str], enums: &[&str], types: &[&str]) -> RawExtension {
+        RawExtension {
+            name: name.to_string(),
+            supported: vec![],
+            requires: vec![Require {
+                enums: enums.iter().map(|s| s.to_string()).collect(),
+                types: types.iter().map(|s| s.to_string()).collect(),
+                ..Default::default()
+            }],
+            protect: protect.iter().map(|s| s.to_string()).collect(),
+            number: None,
+            depends: vec![],
+        }
+    }
+
+    #[test]
+    fn ext_protections_guarded_by_protected_extension() {
+        let exts = vec![make_ext(
+            "VK_KHR_win32_surface",
+            &["VK_USE_PLATFORM_WIN32_KHR"],
+            &["VK_KHR_WIN32_SURFACE_SPEC_VERSION"],
+            &["VkWin32SurfaceCreateInfoKHR"],
+        )];
+        let by_enum = build_ext_protections(&exts, |r| &r.enums);
+        let by_type = build_ext_protections(&exts, |r| &r.types);
+        assert_eq!(
+            by_enum["VK_KHR_WIN32_SURFACE_SPEC_VERSION"],
+            vec!["VK_USE_PLATFORM_WIN32_KHR"]
+        );
+        assert_eq!(
+            by_type["VkWin32SurfaceCreateInfoKHR"],
+            vec!["VK_USE_PLATFORM_WIN32_KHR"]
+        );
+        // The accessor selects the list: enums don't leak into the type map.
+        assert!(!by_type.contains_key("VK_KHR_WIN32_SURFACE_SPEC_VERSION"));
+    }
+
+    #[test]
+    fn ext_protections_unprotected_extension_absorbs_to_unconditional() {
+        // An item required by both a protected and an unprotected extension
+        // must end up unconditional (empty guard list), regardless of order.
+        let exts = vec![
+            make_ext(
+                "VK_KHR_win32_surface",
+                &["VK_USE_PLATFORM_WIN32_KHR"],
+                &["VK_SHARED_CONSTANT"],
+                &[],
+            ),
+            make_ext("VK_KHR_surface", &[], &["VK_SHARED_CONSTANT"], &[]),
+        ];
+        let map = build_ext_protections(&exts, |r| &r.enums);
+        assert!(map["VK_SHARED_CONSTANT"].is_empty());
+    }
+
+    #[test]
+    fn ext_protections_guards_union_and_sort_across_extensions() {
+        let exts = vec![
+            make_ext("ext_b", &["MACRO_B"], &["SHARED"], &[]),
+            make_ext("ext_a", &["MACRO_A"], &["SHARED"], &[]),
+        ];
+        let map = build_ext_protections(&exts, |r| &r.enums);
+        assert_eq!(map["SHARED"], vec!["MACRO_A", "MACRO_B"]);
     }
 
     // ---- is_gl_auto_excluded ----

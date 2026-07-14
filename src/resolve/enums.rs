@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::ir::RawSpec;
 
-use super::protect::Protection;
+use super::protect::build_ext_protections;
 use super::types::{EnumGroup, FlatEnum};
 
 // ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ pub(super) fn build_flat_enums(
     req_enums: &HashSet<String>,
     is_vulkan: bool,
 ) -> Vec<FlatEnum> {
-    let enum_protect = build_ext_enum_protections(raw);
+    let enum_protect = build_ext_protections(&raw.extensions, |r| &r.enums);
     raw.flat_enums
         .iter()
         // For Vulkan, all flat enums are API constants (VK_MAX_DESCRIPTION_SIZE
@@ -41,25 +41,6 @@ pub(super) fn build_flat_enums(
                 protect,
             })
         })
-        .collect()
-}
-
-/// Build a map from enum constant name → platform protection macros.
-fn build_ext_enum_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
-    let mut tmp: HashMap<&str, Protection> = HashMap::new();
-
-    for ext in &raw.extensions {
-        for require in &ext.requires {
-            for enum_name in &require.enums {
-                tmp.entry(enum_name.as_str())
-                    .or_insert_with(Protection::new_guarded)
-                    .add_extension(&ext.protect);
-            }
-        }
-    }
-
-    tmp.into_iter()
-        .map(|(name, prot)| (name.to_string(), prot.into_vec()))
         .collect()
 }
 

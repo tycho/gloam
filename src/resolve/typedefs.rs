@@ -12,7 +12,7 @@ use crate::identity::Spec;
 use crate::ir::{RawSpec, TypeCategory};
 use crate::parse::types::ident_words;
 
-use super::protect::{Protection, is_gl_auto_excluded};
+use super::protect::{Protection, build_ext_protections, is_gl_auto_excluded};
 use super::selection::SelectedExt;
 use super::types::TypeDef;
 
@@ -31,7 +31,7 @@ pub(super) fn build_type_list(
     // Scoped to selected extensions so that includes are only emitted when
     // an extension actually in the feature set depends on them.
     let include_protections = infer_include_protections(raw, selected_exts);
-    let ext_type_protect = build_ext_type_protections(raw);
+    let ext_type_protect = build_ext_protections(&raw.extensions, |r| &r.types);
 
     let type_list: Vec<TypeDef> = raw
         .types
@@ -228,34 +228,6 @@ fn topo_sort_typedefs(types: Vec<TypeDef>) -> Vec<TypeDef> {
 
     let mut out: Vec<Option<TypeDef>> = types.into_iter().map(Some).collect();
     order.into_iter().map(|i| out[i].take().unwrap()).collect()
-}
-
-// ---------------------------------------------------------------------------
-// Extension-derived type protections
-// ---------------------------------------------------------------------------
-
-/// Build a map from type name → protection macros derived purely from the
-/// extensions that require that type.
-///
-/// This covers the common Vulkan pattern where a struct has no `protect=`
-/// attribute on its `<type>` element but is required only inside an extension
-/// with `platform="win32"` (or similar), making its protection implicit.
-fn build_ext_type_protections(raw: &RawSpec) -> HashMap<String, Vec<String>> {
-    let mut tmp: HashMap<&str, Protection> = HashMap::new();
-
-    for ext in &raw.extensions {
-        for require in &ext.requires {
-            for type_name in &require.types {
-                tmp.entry(type_name.as_str())
-                    .or_insert_with(Protection::new_guarded)
-                    .add_extension(&ext.protect);
-            }
-        }
-    }
-
-    tmp.into_iter()
-        .map(|(name, prot)| (name.to_string(), prot.into_vec()))
-        .collect()
 }
 
 // ---------------------------------------------------------------------------
