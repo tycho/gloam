@@ -5,6 +5,7 @@
 use indexmap::IndexMap;
 
 use super::SpecDocs;
+use super::xml::NodeExt;
 use crate::diag::Diag;
 use crate::ir::{CommandScope, RawCommand, RawParam};
 
@@ -49,21 +50,16 @@ fn parse_command_node(
     // Command-level alias: either an `alias=` attribute (Vulkan form) or a
     // child `<alias name="..."/>` element (GL form).  Check both.
     let cmd_alias = node.attribute("alias").map(str::to_string).or_else(|| {
-        node.children()
-            .find(|n| n.is_element() && n.tag_name().name() == "alias")
+        node.child("alias")
             .and_then(|n| n.attribute("name"))
             .map(str::to_string)
     });
 
-    if let Some(proto) = node
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "proto")
-    {
+    if let Some(proto) = node.child("proto") {
         // Full command with prototype.
         let (name, return_type) = parse_proto(proto);
         let params = node
-            .children()
-            .filter(|n| n.is_element() && n.tag_name().name() == "param")
+            .children_named("param")
             .filter(|n| {
                 // Skip params restricted to a non-Vulkan API variant (e.g. api="vulkansc").
                 n.attribute("api").is_none_or(|a| {
@@ -134,8 +130,7 @@ fn parse_proto(proto: roxmltree::Node<'_, '_>) -> (String, String) {
 fn parse_param(param: roxmltree::Node<'_, '_>) -> RawParam {
     // Extract the param name from the <n> child.
     let param_name = param
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "name")
+        .child("name")
         .and_then(|n| n.text())
         .unwrap_or("")
         .trim_start_matches('*')

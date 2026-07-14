@@ -10,6 +10,7 @@ pub mod commands;
 pub mod enums;
 pub mod features;
 pub mod types;
+mod xml;
 
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
@@ -18,6 +19,8 @@ use crate::diag::Diag;
 use crate::fetch::SpecSources;
 use crate::identity::Spec;
 use crate::ir::{RawSpec, Version};
+
+use xml::NodeExt;
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -96,28 +99,16 @@ impl<'a, 'input> SpecDocs<'a, 'input> {
     /// All `<enums>` elements that are direct children of the root (GL style:
     /// multiple `<enums>` blocks, each potentially with namespace/group attrs).
     pub fn all_enums_blocks(&self) -> Vec<roxmltree::Node<'a, 'input>> {
-        let mut nodes = Vec::new();
-        for doc in self.all_docs() {
-            for child in doc.root_element().children() {
-                if child.is_element() && child.tag_name().name() == "enums" {
-                    nodes.push(child);
-                }
-            }
-        }
-        nodes
+        self.all_docs()
+            .flat_map(|doc| doc.root_element().children_named("enums"))
+            .collect()
     }
 
     /// All `<feature>` elements (direct root children) across all docs.
     pub fn all_features(&self) -> Vec<roxmltree::Node<'a, 'input>> {
-        let mut nodes = Vec::new();
-        for doc in self.all_docs() {
-            for child in doc.root_element().children() {
-                if child.is_element() && child.tag_name().name() == "feature" {
-                    nodes.push(child);
-                }
-            }
-        }
-        nodes
+        self.all_docs()
+            .flat_map(|doc| doc.root_element().children_named("feature"))
+            .collect()
     }
 
     /// All `<platform>` elements inside any `<platforms>` block.

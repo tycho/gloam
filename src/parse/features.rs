@@ -4,6 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use indexmap::IndexMap;
 
 use super::SpecDocs;
+use super::xml::NodeExt;
 use crate::diag::Diag;
 use crate::identity::Spec;
 use crate::ir::{RawExtension, RawFeature, Remove, Require};
@@ -73,13 +74,11 @@ fn parse_features(docs: &SpecDocs<'_, '_>) -> Result<Vec<RawFeature>> {
         let (name, api_raw, version) = feature_identity(node)?;
 
         let requires = node
-            .children()
-            .filter(|n| n.is_element() && n.tag_name().name() == "require")
+            .children_named("require")
             .map(parse_require)
             .collect::<Vec<_>>();
         let removes = node
-            .children()
-            .filter(|n| n.is_element() && n.tag_name().name() == "remove")
+            .children_named("remove")
             .map(parse_remove)
             .collect::<Vec<_>>();
 
@@ -113,11 +112,7 @@ fn parse_features(docs: &SpecDocs<'_, '_>) -> Result<Vec<RawFeature>> {
 
         let (_name, api_raw, version) = feature_identity(node)?;
 
-        let extra_requires: Vec<_> = node
-            .children()
-            .filter(|n| n.is_element() && n.tag_name().name() == "require")
-            .map(parse_require)
-            .collect();
+        let extra_requires: Vec<_> = node.children_named("require").map(parse_require).collect();
 
         for api in api_raw.split(',') {
             let api = api.trim();
@@ -211,8 +206,7 @@ fn parse_extensions(
         let depends = parse_extension_depends(node);
 
         let requires = node
-            .children()
-            .filter(|n| n.is_element() && n.tag_name().name() == "require")
+            .children_named("require")
             .map(parse_require)
             .collect::<Vec<_>>();
 

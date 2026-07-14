@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use indexmap::IndexMap;
+use indexmap::IndexSet;
 
 use crate::cli::ApiRequest;
 use crate::ir::RawSpec;
@@ -24,11 +24,13 @@ use super::selection::{SelectedExt, SelectedFeature, api_profile_matches, profil
 pub(super) struct RequirementCollector {
     pub req_types: HashSet<String>,
     pub req_enums: HashSet<String>,
-    req_commands: IndexMap<String, ()>,
+    /// Insertion-ordered — pfnArray order derives from it.
+    req_commands: IndexSet<String>,
     removed_commands: HashSet<String>,
     removed_enums: HashSet<String>,
     pub per_api_core_cmds: HashMap<String, HashSet<String>>,
-    ext_commands: IndexMap<String, ()>,
+    /// Insertion-ordered — pfnArray order derives from it.
+    ext_commands: IndexSet<String>,
 }
 
 impl RequirementCollector {
@@ -36,11 +38,11 @@ impl RequirementCollector {
         Self {
             req_types: HashSet::new(),
             req_enums: HashSet::new(),
-            req_commands: IndexMap::new(),
+            req_commands: IndexSet::new(),
             removed_commands: HashSet::new(),
             removed_enums: HashSet::new(),
             per_api_core_cmds: HashMap::new(),
-            ext_commands: IndexMap::new(),
+            ext_commands: IndexSet::new(),
         }
     }
 
@@ -72,7 +74,7 @@ impl RequirementCollector {
                 self.req_types.extend(require.types.iter().cloned());
                 self.req_enums.extend(require.enums.iter().cloned());
                 for cmd in &require.commands {
-                    self.req_commands.entry(cmd.clone()).or_insert(());
+                    self.req_commands.insert(cmd.clone());
                 }
             }
             for remove in &feat.raw.removes {
@@ -112,8 +114,8 @@ impl RequirementCollector {
                     }
                     for cmd in &require.commands {
                         // Core commands already in req_commands stay there.
-                        if !self.req_commands.contains_key(cmd.as_str()) {
-                            self.ext_commands.entry(cmd.clone()).or_insert(());
+                        if !self.req_commands.contains(cmd.as_str()) {
+                            self.ext_commands.insert(cmd.clone());
                         }
                     }
                 }
@@ -146,7 +148,7 @@ impl RequirementCollector {
             ext_commands,
             ..
         } = self;
-        for cmd_name in req_commands.keys().chain(ext_commands.keys()) {
+        for cmd_name in req_commands.iter().chain(ext_commands.iter()) {
             if let Some(raw_cmd) = raw.commands.get(cmd_name.as_str()) {
                 for param in &raw_cmd.params {
                     if !param.type_name.is_empty() {
@@ -179,12 +181,12 @@ impl RequirementCollector {
 
     /// Core command names in insertion order.
     pub fn core_command_names(&self) -> Vec<String> {
-        self.req_commands.keys().cloned().collect()
+        self.req_commands.iter().cloned().collect()
     }
 
     /// Extension command names in insertion order.
     pub fn ext_command_names(&self) -> Vec<String> {
-        self.ext_commands.keys().cloned().collect()
+        self.ext_commands.iter().cloned().collect()
     }
 }
 

@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use indexmap::IndexMap;
+use indexmap::IndexSet;
 
 use crate::identity::Spec;
 use crate::ir::{RawSpec, TypeCategory};
@@ -403,7 +403,7 @@ pub(super) fn collect_required_headers(
     req_types: &HashSet<String>,
     spec: Spec,
 ) -> Vec<String> {
-    let mut headers: IndexMap<String, ()> = IndexMap::new();
+    let mut headers: IndexSet<String> = IndexSet::new();
 
     for t in &raw.types {
         let selected = if spec.is_vulkan() {
@@ -420,12 +420,12 @@ pub(super) fn collect_required_headers(
         if let Some(ref req) = t.requires
             && let Some(hdr) = requires_to_bundled_header(req)
         {
-            headers.insert(hdr.to_string(), ());
+            headers.insert(hdr.to_string());
         }
     }
 
     if spec.is_vulkan() {
-        headers.insert("vulkan/vk_platform.h".to_string(), ());
+        headers.insert("vulkan/vk_platform.h".to_string());
 
         let vk_video_includes: HashSet<&str> = raw
             .types
@@ -442,12 +442,12 @@ pub(super) fn collect_required_headers(
                 && vk_video_includes.contains(req.as_str())
                 && (t.category.is_vulkan_auto() || req_types.contains(&t.name))
             {
-                headers.insert(req.clone(), ());
+                headers.insert(req.clone());
             }
         }
     }
 
-    headers.into_keys().collect()
+    headers.into_iter().collect()
 }
 
 // ---------------------------------------------------------------------------

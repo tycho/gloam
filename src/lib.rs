@@ -38,33 +38,8 @@ pub fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    // Capture the effective command line for the preamble comment in generated
-    // files.  Replace argv[0] with just "gloam", and drop `--lock <manifest>`:
-    // locking only pins provenance, so a locked reproduction with otherwise
-    // identical args produces byte-identical output to the original.
-    let command_line: String = {
-        let raw: Vec<String> = std::env::args().collect();
-        let mut args: Vec<String> = Vec::with_capacity(raw.len());
-        let mut i = 0;
-        while i < raw.len() {
-            let a = &raw[i];
-            if a == "--lock" {
-                i += 2; // skip the flag and its value
-                continue;
-            }
-            if a.starts_with("--lock=") {
-                i += 1;
-                continue;
-            }
-            args.push(if i == 0 {
-                "gloam".to_string()
-            } else {
-                a.clone()
-            });
-            i += 1;
-        }
-        args.join(" ")
-    };
+    let argv: Vec<String> = std::env::args().collect();
+    let command_line = reconstruct_command_line(&argv);
 
     // A --lock manifest pins upstream sources to recorded provenance.  Only its
     // `provenance` section is used; everything else is regenerated.  Unlike the
@@ -154,6 +129,34 @@ fn run() -> Result<()> {
     diag.info("done.");
 
     Ok(())
+}
+
+/// Reconstruct the effective command line for the preamble comment in
+/// generated files.  argv[0] becomes just "gloam", and `--lock <manifest>` /
+/// `--lock=<manifest>` are dropped: locking only pins provenance, so a locked
+/// reproduction with otherwise identical args produces byte-identical output
+/// to the original.
+fn reconstruct_command_line(argv: &[String]) -> String {
+    let mut args: Vec<String> = Vec::with_capacity(argv.len());
+    let mut i = 0;
+    while i < argv.len() {
+        let a = &argv[i];
+        if a == "--lock" {
+            i += 2; // skip the flag and its value
+            continue;
+        }
+        if a.starts_with("--lock=") {
+            i += 1;
+            continue;
+        }
+        args.push(if i == 0 {
+            "gloam".to_string()
+        } else {
+            a.clone()
+        });
+        i += 1;
+    }
+    args.join(" ")
 }
 
 /// gloam self-metadata for a manifest.
@@ -291,4 +294,57 @@ fn write_manifest(
     std::fs::create_dir_all(&dir)?;
     std::fs::write(dir.join("manifest.json"), manifest.to_json_pretty() + "\n")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reconstruct_command_line;
+
+    fn argv(args: &[&str]) -> Vec<String> {
+        args.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn command_line_replaces_argv0() {
+        let line = reconstruct_command_line(&argv(&[
+            r"C:\somewhere\gloam.exe",
+            "--api",
+            "gl:core=3.3",
+            "c",
+        ]));
+        assert_eq!(line, "gloam --api gl:core=3.3 c");
+    }
+
+    #[test]
+    fn command_line_drops_lock_flag_and_value() {
+        let line = reconstruct_command_line(&argv(&[
+            "gloam",
+            "--api",
+            "vk=1.0",
+            "--lock",
+            "manifest.json",
+            "c",
+        ]));
+        assert_eq!(line, "gloam --api vk=1.0 c");
+    }
+
+    #[test]
+    fn command_line_drops_lock_equals_form() {
+        let line = reconstruct_command_line(&argv(&[
+            "gloam",
+            "--lock=manifest.json",
+            "--api",
+            "vk=1.0",
+            "c",
+        ]));
+        assert_eq!(line, "gloam --api vk=1.0 c");
+    }
+
+    #[test]
+    fn command_line_lock_at_end_without_value() {
+        // Malformed but must not panic: `--lock` as the final token skips
+        // past the end cleanly.
+        let line = reconstruct_command_line(&argv(&["gloam", "c", "--lock"]));
+        assert_eq!(line, "gloam c");
+    }
 }

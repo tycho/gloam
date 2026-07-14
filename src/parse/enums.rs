@@ -4,6 +4,7 @@
 use anyhow::Result;
 use indexmap::IndexMap;
 
+use super::xml::NodeExt;
 use super::{SpecDocs, compute_ext_enum_value};
 use crate::identity::Spec;
 use crate::ir::{RawEnum, RawEnumGroup};
@@ -41,15 +42,8 @@ pub fn parse_enums(
         let _parent_group = block.attribute("group").unwrap_or("");
         let _comment = block.attribute("comment").unwrap_or("");
 
-        for child in block.children().filter(|n| n.is_element()) {
-            let tag = child.tag_name().name();
-            if tag == "unused" || tag == "comment" {
-                continue;
-            }
-            if tag != "enum" {
-                continue;
-            }
-
+        // Non-<enum> children (<unused>, <comment>) are deliberately ignored.
+        for child in block.children_named("enum") {
             let enum_val = parse_flat_enum(child, None)?;
             flat_enums.entry(enum_val.name.clone()).or_insert(enum_val);
         }
@@ -86,10 +80,7 @@ fn parse_enum_group(
 
     let mut values: IndexMap<String, RawEnum> = IndexMap::new();
 
-    for child in block.children().filter(|n| n.is_element()) {
-        if child.tag_name().name() != "enum" {
-            continue;
-        }
+    for child in block.children_named("enum") {
         let e = parse_flat_enum(child, None)?;
         values.entry(e.name.clone()).or_insert(e);
     }
@@ -122,11 +113,7 @@ fn collect_vulkan_extending_enums(
                            groups: &mut Vec<RawEnumGroup>,
                            flat_enums: &mut IndexMap<String, RawEnum>|
      -> Result<()> {
-        for child in require.children().filter(|n| n.is_element()) {
-            if child.tag_name().name() != "enum" {
-                continue;
-            }
-
+        for child in require.children_named("enum") {
             let _api_attr = child.attribute("api"); // reserved for per-api filtering in resolver
 
             if let Some(extends) = child.attribute("extends") {
@@ -175,10 +162,7 @@ fn collect_vulkan_extending_enums(
     // Process <feature> blocks.
     for feat in docs.all_features() {
         let extnumber = feat.attribute("number").and_then(|s| s.parse::<u32>().ok());
-        for require in feat
-            .children()
-            .filter(|n| n.is_element() && n.tag_name().name() == "require")
-        {
+        for require in feat.children_named("require") {
             process_require(require, extnumber, groups, flat_enums)?;
         }
     }
@@ -186,10 +170,7 @@ fn collect_vulkan_extending_enums(
     // Process <extension> blocks.
     for ext in docs.all_extensions() {
         let extnumber = ext.attribute("number").and_then(|s| s.parse::<u32>().ok());
-        for require in ext
-            .children()
-            .filter(|n| n.is_element() && n.tag_name().name() == "require")
-        {
+        for require in ext.children_named("require") {
             process_require(require, extnumber, groups, flat_enums)?;
         }
     }

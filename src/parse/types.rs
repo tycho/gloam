@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use super::xml::NodeExt;
 use super::{SpecDocs, extract_raw_c};
 use crate::diag::Diag;
 use crate::ir::{RawType, TypeCategory};
@@ -17,16 +18,11 @@ fn type_name(node: roxmltree::Node<'_, '_>) -> Option<String> {
     if let Some(n) = node.attribute("name") {
         return Some(n.to_string());
     }
-    if let Some(name_elem) = node
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "name")
-    {
+    if let Some(name_elem) = node.child("name") {
         return Some(name_elem.text().unwrap_or("").to_string());
     }
-    node.children()
-        .find(|n| n.is_element() && n.tag_name().name() == "proto")?
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "name")
+    node.child("proto")?
+        .child("name")
         .map(|n| n.text().unwrap_or("").to_string())
 }
 
@@ -120,10 +116,7 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, diag: Diag) -> Vec<RawType> {
             // New (VulkanBase-era): structured <proto> and <param> children,
             //   analogous to <command> elements.  extract_raw_c would produce
             //   garbled output here since it concatenates all child text naively.
-            if node
-                .children()
-                .any(|n| n.is_element() && n.tag_name().name() == "proto")
-            {
+            if node.child("proto").is_some() {
                 extract_funcpointer_c(*node, &name)
             } else {
                 extract_raw_c(*node).trim().to_string()
@@ -226,10 +219,7 @@ fn extract_struct_c(node: roxmltree::Node<'_, '_>, name: &str, category: TypeCat
     };
 
     let mut members: Vec<String> = Vec::new();
-    for child in node.children().filter(|n| n.is_element()) {
-        if child.tag_name().name() != "member" {
-            continue;
-        }
+    for child in node.children_named("member") {
         // Skip members restricted to a non-Vulkan API variant.
         // e.g. api="vulkansc" members must not appear in the vulkan header.
         if let Some(api) = child.attribute("api") {
@@ -269,10 +259,7 @@ fn extract_struct_c(node: roxmltree::Node<'_, '_>, name: &str, category: TypeCat
 fn extract_funcpointer_c(node: roxmltree::Node<'_, '_>, name: &str) -> String {
     // Extract return type from <proto>: everything before <name>.
     let mut ret = String::new();
-    if let Some(proto) = node
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "proto")
-    {
+    if let Some(proto) = node.child("proto") {
         for child in proto.children() {
             if child.is_text() {
                 ret.push_str(child.text().unwrap_or(""));
@@ -289,10 +276,7 @@ fn extract_funcpointer_c(node: roxmltree::Node<'_, '_>, name: &str) -> String {
 
     // Build parameter list from <param> children.
     let mut params: Vec<String> = Vec::new();
-    for param in node
-        .children()
-        .filter(|n| n.is_element() && n.tag_name().name() == "param")
-    {
+    for param in node.children_named("param") {
         let param_text = super::extract_raw_c(param);
         let trimmed = param_text.trim();
         if !trimmed.is_empty() {
