@@ -6,12 +6,17 @@
 //! views that coalesce consecutive same-guard items into one `#if`/`#endif`
 //! pair, and the packed function-name blob layout.  A future non-C backend
 //! would build its own model from the same `FeatureSet`.
+//!
+//! The model borrows from the `FeatureSet` it views: grouped items are
+//! references into the flat arrays (plus per-command C naming computed
+//! here), never copies.  Serialization into the template context flattens
+//! the references, so templates see plain objects either way.
 
 use serde::Serialize;
 
 use crate::identity::Spec;
 use crate::ir::TypeCategory;
-use crate::resolve::{FeatureSet, FlatEnum, Param, TypeDef};
+use crate::resolve::{Extension, FeatureSet, FlatEnum, Param, TypeDef};
 
 // ---------------------------------------------------------------------------
 // Render model
@@ -19,59 +24,50 @@ use crate::resolve::{FeatureSet, FlatEnum, Param, TypeDef};
 
 /// Per-render precomputed template data.  Exposed to templates as `m`.
 #[derive(Debug, Serialize)]
-pub struct RenderModel {
+pub struct RenderModel<'a> {
     /// C context struct name, e.g. "GloamGLContext", "GloamVulkanContext".
     pub context_name: String,
     /// Include-category types, grouped by consecutive protection.
-    pub include_type_groups: Vec<ProtectedGroup<TypeDef>>,
+    pub include_type_groups: Vec<ProtectedGroup<&'a TypeDef>>,
     /// Non-include types, grouped by consecutive protection.
-    pub type_groups: Vec<ProtectedGroup<TypeDef>>,
+    pub type_groups: Vec<ProtectedGroup<&'a TypeDef>>,
     /// Extensions, grouped by consecutive protection (for #define guards and
     /// presence macros).
-    pub ext_guard_groups: Vec<ProtectedGroup<ExtGuardEntry>>,
+    pub ext_guard_groups: Vec<ProtectedGroup<&'a Extension>>,
     /// Commands, grouped by consecutive protection (for PFN typedefs,
     /// IntelliSense prototypes, and dispatch macros).
-    pub cmd_pfn_groups: Vec<ProtectedGroup<CmdPfnEntry>>,
+    pub cmd_pfn_groups: Vec<ProtectedGroup<CmdPfnEntry<'a>>>,
     /// Flat enum constants grouped by consecutive protection, for the
     /// constants section of the header.
-    pub flat_enum_groups: Vec<ProtectedGroup<FlatEnum>>,
+    pub flat_enum_groups: Vec<ProtectedGroup<&'a FlatEnum>>,
     /// Commands the per-spec load functions must resolve by hand before the
     /// version/extension detection machinery can run (see
     /// [`bootstrap_names`]), in pfnArray order.
-    pub bootstrap_cmds: Vec<BootstrapCmd>,
+    pub bootstrap_cmds: Vec<BootstrapCmd<'a>>,
     /// Packed function-name blob layout (offsets passed to templates as
     /// separate context keys — the table loops index it by cmd.index).
     #[serde(skip)]
     pub fn_names: FnNameLayout,
 }
 
-impl RenderModel {
-    pub fn new(fs: &FeatureSet) -> Self {
+impl<'a> RenderModel<'a> {
+    pub fn new(fs: &'a FeatureSet) -> Self {
         let include_type_groups = group_by_protection(
             fs.types
                 .iter()
-                .filter(|t| t.category == TypeCategory::Include && !t.raw_c.is_empty())
-                .cloned(),
+                .filter(|t| t.category == TypeCategory::Include && !t.raw_c.is_empty()),
             |t| t.protect.clone(),
         );
 
         let type_groups = group_by_protection(
             fs.types
                 .iter()
-                .filter(|t| t.category != TypeCategory::Include && !t.raw_c.is_empty())
-                .cloned(),
+                .filter(|t| t.category != TypeCategory::Include && !t.raw_c.is_empty()),
             |t| t.protect.clone(),
         );
 
-        let ext_guard_groups = group_by_protection_pairs(fs.extensions.iter().map(|e| {
-            (
-                e.protect.clone(),
-                ExtGuardEntry {
-                    name: e.name.clone(),
-                    short_name: e.short_name.clone(),
-                },
-            )
-        }));
+        let ext_guard_groups =
+            group_by_protection_pairs(fs.extensions.iter().map(|e| (e.protect.clone(), e)));
 
         let cmd_pfn_groups = group_by_protection_pairs(fs.commands.iter().map(|c| {
             let protect = c
@@ -83,18 +79,17 @@ impl RenderModel {
                 protect,
                 CmdPfnEntry {
                     index: c.index,
-                    name: c.name.clone(),
-                    short_name: c.short_name.clone(),
+                    name: &c.name,
+                    short_name: &c.short_name,
                     pfn_type: pfn_type_name(fs.spec, &c.name),
-                    return_type: c.return_type.clone(),
+                    return_type: &c.return_type,
                     params_str: params_str(&c.params),
-                    params: c.params.clone(),
+                    params: &c.params,
                 },
             )
         }));
 
-        let flat_enum_groups =
-            group_by_protection(fs.flat_enums.iter().cloned(), |e| e.protect.clone());
+        let flat_enum_groups = group_by_protection(fs.flat_enums.iter(), |e| e.protect.clone());
 
         let names = bootstrap_names(fs.spec);
         let bootstrap_cmds = fs
@@ -102,8 +97,8 @@ impl RenderModel {
             .iter()
             .filter(|c| names.contains(&c.name.as_str()))
             .map(|c| BootstrapCmd {
-                name: c.name.clone(),
-                short_name: c.short_name.clone(),
+                name: &c.name,
+                short_name: &c.short_name,
                 pfn_type: pfn_type_name(fs.spec, &c.name),
             })
             .collect();
@@ -169,9 +164,9 @@ fn params_str(params: &[Param]) -> String {
 /// A command the generated load function assigns by hand from getProcAddr
 /// before the generic range loader can run.
 #[derive(Debug, Serialize)]
-pub struct BootstrapCmd {
-    pub name: String,
-    pub short_name: String,
+pub struct BootstrapCmd<'a> {
+    pub name: &'a str,
+    pub short_name: &'a str,
     pub pfn_type: String,
 }
 
@@ -265,29 +260,19 @@ pub struct ProtectedGroup<T: std::fmt::Debug + Serialize> {
     pub items: Vec<T>,
 }
 
-/// Lightweight extension entry for protection-grouped header sections.
-/// Carries only the fields needed by the `#define` guard and presence macro
-/// sections, avoiding a full `Extension` clone.
+/// Command entry for protection-grouped header sections: the resolved
+/// command's fields by reference, plus the C naming computed here (PFN
+/// typedef name and parameter list text).
 #[derive(Debug, Serialize)]
-pub struct ExtGuardEntry {
-    pub name: String,
-    pub short_name: String,
-}
-
-/// Lightweight command entry for protection-grouped header sections.
-/// Carries only the fields needed by PFN typedefs, IntelliSense prototypes,
-/// dispatch macros, and the context struct (which needs `index` for pad slot
-/// naming).
-#[derive(Debug, Serialize)]
-pub struct CmdPfnEntry {
+pub struct CmdPfnEntry<'a> {
     pub index: u16,
-    pub name: String,
-    pub short_name: String,
+    pub name: &'a str,
+    pub short_name: &'a str,
     pub pfn_type: String,
-    pub return_type: String,
+    pub return_type: &'a str,
     pub params_str: String,
     /// Individual parameters for inline function dispatch wrappers.
-    pub params: Vec<Param>,
+    pub params: &'a [Param],
 }
 
 // ---------------------------------------------------------------------------

@@ -134,9 +134,6 @@ pub struct Command {
     pub scope: String,
     /// Platform guard macro (if any).
     pub protect: Option<String>,
-    /// Byte offset of this command's name within the packed name blob.
-    /// Computed after the command list is finalized.
-    pub name_offset: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]

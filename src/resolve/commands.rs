@@ -45,7 +45,6 @@ pub(super) fn build_command(
         params,
         scope: scope.to_string(),
         protect,
-        name_offset: 0, // computed after command list is finalized
     }
 }
 
