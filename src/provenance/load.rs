@@ -30,6 +30,16 @@ use indexmap::IndexMap;
 use super::manifest::{ProvenancePin, git_blob_sha1};
 use crate::bundled;
 
+/// How to resolve a source the bundle can't satisfy.  Suggesting `--fetch`
+/// is only honest when this build can actually fetch; a no-fetch build must
+/// point at the missing feature instead.
+const FETCH_HINT: &str = if cfg!(feature = "fetch") {
+    "use --fetch"
+} else {
+    "this gloam was built without fetch support (rebuild with the `fetch` feature to \
+     retrieve upstream content)"
+};
+
 /// A loaded source: its provenance pin plus shared content bytes.
 /// Cloning is cheap (the content is `Arc`-shared with the store's memo).
 #[derive(Debug, Clone)]
@@ -195,13 +205,13 @@ impl SourceStore {
                 if bundled::content_by_key(key).is_some() {
                     bail!(
                         "--lock without --fetch: bundled '{key}' does not match the \
-                         locked blob ({}); use --fetch",
+                         locked blob ({}); {FETCH_HINT}",
                         &pin.blob[..7.min(pin.blob.len())]
                     );
                 }
                 bail!(
                     "--lock without --fetch: '{key}' is not in this gloam build's bundle; \
-                     use --fetch"
+                     {FETCH_HINT}"
                 )
             })?;
             out.insert(key.to_string(), LoadedSource { pin, content });
