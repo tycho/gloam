@@ -205,7 +205,7 @@ fn extension_summary(fs: &FeatureSet) -> String {
 mod tests {
     use super::*;
     use crate::identity::Spec;
-    use crate::resolve::Extension;
+    use crate::resolve::{Extension, Protect};
 
     /// Build a preamble with no resolved pins (sources block empty) — for tests
     /// that only assert on copyright/extension content.
@@ -251,7 +251,7 @@ mod tests {
             name: name.to_string(),
             short_name: name.to_string(),
             hash: String::new(),
-            protect: vec![],
+            protect: Protect::default(),
             reason,
         }
     }

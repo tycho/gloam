@@ -11,6 +11,28 @@ use serde::Serialize;
 use crate::identity::Spec;
 
 // ---------------------------------------------------------------------------
+// Protection
+// ---------------------------------------------------------------------------
+
+/// Platform protection for a resolved item: the macros guarding its emission
+/// (`#if defined(...)`), empty = unconditional.
+///
+/// Serializes transparently as a list of macro names, so templates see a
+/// plain array.  Equality is what the render model groups by.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct Protect(pub Vec<String>);
+
+impl Protect {
+    /// Test-side assertion helper; at render time the templates do the
+    /// equivalent emptiness check on the serialized list.
+    #[cfg(test)]
+    pub fn is_unconditional(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // FeatureSet — the resolved, indexed output
 // ---------------------------------------------------------------------------
 
@@ -113,8 +135,8 @@ pub struct Extension {
     pub short_name: String,
     /// Pre-baked XXH3_64 hash as "0x...ULL" literal.
     pub hash: String,
-    /// Platform protection macros (if any).
-    pub protect: Vec<String>,
+    /// Platform protection.
+    pub protect: Protect,
     /// Why this extension was included in the feature set.
     pub reason: SelectionReason,
 }
@@ -132,8 +154,8 @@ pub struct Command {
     pub params: Vec<Param>,
     /// Vulkan scope name (empty string for non-Vulkan).
     pub scope: String,
-    /// Platform guard macro (if any).
-    pub protect: Option<String>,
+    /// Platform protection.
+    pub protect: Protect,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -149,8 +171,8 @@ pub struct TypeDef {
     pub raw_c: String,
     /// Serialized as the XML category string (`"include"`, `"struct"`, ...).
     pub category: crate::ir::TypeCategory,
-    /// Platform protection macros.  Empty = unconditional.
-    pub protect: Vec<String>,
+    /// Platform protection.
+    pub protect: Protect,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,8 +184,8 @@ pub struct FlatEnum {
     /// constant expression on some compilers (MSVC C2099).
     pub literal_value: String,
     pub comment: String,
-    /// Platform protection macros.  Empty = unconditional.
-    pub protect: Vec<String>,
+    /// Platform protection.
+    pub protect: Protect,
 }
 
 #[derive(Debug, Serialize)]

@@ -9,6 +9,8 @@ use std::collections::HashMap;
 
 use crate::ir::{RawExtension, Require};
 
+use super::types::Protect;
+
 // ---------------------------------------------------------------------------
 // Protection lattice
 // ---------------------------------------------------------------------------
@@ -52,14 +54,15 @@ impl Protection {
         }
     }
 
-    /// Convert to the final representation: empty Vec = unconditional.
-    pub fn into_vec(self) -> Vec<String> {
+    /// Convert to the final representation: guards sorted, empty =
+    /// unconditional.
+    pub fn into_protect(self) -> Protect {
         match self {
-            Self::Unconditional => Vec::new(),
-            Self::Guarded(v) if v.is_empty() => Vec::new(),
+            Self::Unconditional => Protect::default(),
+            Self::Guarded(v) if v.is_empty() => Protect::default(),
             Self::Guarded(mut v) => {
                 v.sort();
-                v
+                Protect(v)
             }
         }
     }
@@ -92,7 +95,7 @@ impl Protection {
 pub(super) fn build_ext_protections<F>(
     extensions: &[RawExtension],
     items: F,
-) -> HashMap<String, Vec<String>>
+) -> HashMap<String, Protect>
 where
     F: Fn(&Require) -> &[String],
 {
@@ -109,7 +112,7 @@ where
     }
 
     tmp.into_iter()
-        .map(|(name, prot)| (name.to_string(), prot.into_vec()))
+        .map(|(name, prot)| (name.to_string(), prot.into_protect()))
         .collect()
 }
 
@@ -157,9 +160,9 @@ mod tests {
         let mut p = Protection::new_guarded();
         p.add_extension(&["VK_USE_PLATFORM_WIN32_KHR".to_string()]);
         p.add_extension(&["VK_USE_PLATFORM_XLIB_KHR".to_string()]);
-        let v = p.into_vec();
+        let v = p.into_protect().0;
         assert_eq!(v.len(), 2);
-        // into_vec sorts
+        // into_protect sorts
         assert_eq!(v[0], "VK_USE_PLATFORM_WIN32_KHR");
         assert_eq!(v[1], "VK_USE_PLATFORM_XLIB_KHR");
     }
@@ -169,21 +172,21 @@ mod tests {
         let mut p = Protection::new_guarded();
         p.add_extension(&["VK_USE_PLATFORM_WIN32_KHR".to_string()]);
         p.add_extension(&["VK_USE_PLATFORM_WIN32_KHR".to_string()]);
-        let v = p.into_vec();
+        let v = p.into_protect().0;
         assert_eq!(v.len(), 1);
     }
 
     #[test]
-    fn protection_empty_guarded_into_vec_is_empty() {
-        // A Guarded with no guards is treated as unconditional (empty Vec).
+    fn protection_empty_guarded_is_unconditional() {
+        // A Guarded with no guards is treated as unconditional.
         let p = Protection::new_guarded();
-        assert!(p.into_vec().is_empty());
+        assert!(p.into_protect().is_unconditional());
     }
 
     #[test]
-    fn protection_unconditional_into_vec_is_empty() {
+    fn protection_unconditional_converts_to_unconditional() {
         let p = Protection::Unconditional;
-        assert!(p.into_vec().is_empty());
+        assert!(p.into_protect().is_unconditional());
     }
 
     // ---- build_ext_protections ----
@@ -214,11 +217,11 @@ mod tests {
         let by_enum = build_ext_protections(&exts, |r| &r.enums);
         let by_type = build_ext_protections(&exts, |r| &r.types);
         assert_eq!(
-            by_enum["VK_KHR_WIN32_SURFACE_SPEC_VERSION"],
+            by_enum["VK_KHR_WIN32_SURFACE_SPEC_VERSION"].0,
             vec!["VK_USE_PLATFORM_WIN32_KHR"]
         );
         assert_eq!(
-            by_type["VkWin32SurfaceCreateInfoKHR"],
+            by_type["VkWin32SurfaceCreateInfoKHR"].0,
             vec!["VK_USE_PLATFORM_WIN32_KHR"]
         );
         // The accessor selects the list: enums don't leak into the type map.
@@ -239,7 +242,7 @@ mod tests {
             make_ext("VK_KHR_surface", &[], &["VK_SHARED_CONSTANT"], &[]),
         ];
         let map = build_ext_protections(&exts, |r| &r.enums);
-        assert!(map["VK_SHARED_CONSTANT"].is_empty());
+        assert!(map["VK_SHARED_CONSTANT"].is_unconditional());
     }
 
     #[test]
@@ -249,7 +252,7 @@ mod tests {
             make_ext("ext_a", &["MACRO_A"], &["SHARED"], &[]),
         ];
         let map = build_ext_protections(&exts, |r| &r.enums);
-        assert_eq!(map["SHARED"], vec!["MACRO_A", "MACRO_B"]);
+        assert_eq!(map["SHARED"].0, vec!["MACRO_A", "MACRO_B"]);
     }
 
     // ---- is_gl_auto_excluded ----

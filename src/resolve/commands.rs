@@ -14,7 +14,7 @@ use crate::parse::commands::infer_vulkan_scope;
 
 use super::requirements::RequirementCollector;
 use super::selection::{SelectedExt, SelectedFeature, api_profile_matches};
-use super::types::{AliasPair, Command, Param};
+use super::types::{AliasPair, Command, Param, Protect};
 
 // ---------------------------------------------------------------------------
 // Materialize the indexed command array
@@ -61,7 +61,10 @@ pub(super) fn materialize_commands(
         } else {
             String::new()
         };
-        let protect = cmd_protect_map.get(cmd_name.as_str()).cloned();
+        let protect = cmd_protect_map
+            .get(cmd_name.as_str())
+            .cloned()
+            .unwrap_or_default();
         commands.push(build_command(
             idx as u16,
             raw_cmd,
@@ -89,7 +92,7 @@ fn build_command(
     index: u16,
     raw: &RawCommand,
     scope: &str,
-    protect: Option<String>,
+    protect: Protect,
     name_prefix: &str,
 ) -> Command {
     let short_name = raw
@@ -122,16 +125,19 @@ fn build_command(
 // Command → platform protect mapping
 // ---------------------------------------------------------------------------
 
-/// Build a map from command name → platform protection macro, derived from
-/// extensions.  A single pass over all extensions replaces the previous
-/// per-command linear scan (O(cmds × exts × requires) → O(exts × requires)).
-pub(super) fn build_command_protect_map<'a>(exts: &[SelectedExt<'a>]) -> HashMap<&'a str, String> {
+/// Build a map from command name → platform protection, derived from
+/// extensions: each command gets the protection of the first protected
+/// extension that requires it.  A single pass over all extensions replaces
+/// the previous per-command linear scan (O(cmds × exts × requires) →
+/// O(exts × requires)).
+fn build_command_protect_map<'a>(exts: &[SelectedExt<'a>]) -> HashMap<&'a str, Protect> {
     let mut map = HashMap::new();
     for ext in exts {
-        if let Some(protect) = ext.raw.protect.first() {
+        if !ext.raw.protect.is_empty() {
             for require in &ext.raw.requires {
                 for cmd in &require.commands {
-                    map.entry(cmd.as_str()).or_insert_with(|| protect.clone());
+                    map.entry(cmd.as_str())
+                        .or_insert_with(|| Protect(ext.raw.protect.clone()));
                 }
             }
         }

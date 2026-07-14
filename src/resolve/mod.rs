@@ -25,7 +25,8 @@ mod typedefs;
 // Public types — re-exported so external callers use `crate::resolve::FeatureSet` etc.
 pub mod types;
 pub use types::{
-    Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, SelectionReason, SerVersion, TypeDef,
+    Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, Protect, SelectionReason,
+    SerVersion, TypeDef,
 };
 
 use std::collections::HashMap;
@@ -327,7 +328,7 @@ fn build_extension(index: u16, e: &SelectedExt<'_>) -> Extension {
         name: e.raw.name.clone(),
         short_name: short,
         hash,
-        protect: e.raw.protect.clone(),
+        protect: Protect(e.raw.protect.clone()),
         reason: e.reason,
     }
 }

@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::ir::RawSpec;
 
 use super::protect::build_ext_protections;
-use super::types::{EnumGroup, FlatEnum};
+use super::types::{EnumGroup, FlatEnum, Protect};
 
 // ---------------------------------------------------------------------------
 // Flat enums
@@ -62,7 +62,7 @@ pub(super) fn build_enum_groups(raw: &RawSpec) -> Vec<EnumGroup> {
                         value: val.to_string(),
                         literal_value: String::new(), // resolved below
                         comment: v.comment.clone(),
-                        protect: vec![],
+                        protect: Protect::default(),
                     })
                 })
                 .collect();
@@ -180,7 +180,7 @@ mod tests {
             value: value.to_string(),
             literal_value: String::new(),
             comment: String::new(),
-            protect: vec![],
+            protect: Protect::default(),
         }
     }
 

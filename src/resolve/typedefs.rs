@@ -14,7 +14,7 @@ use crate::parse::types::ident_words;
 
 use super::protect::{Protection, build_ext_protections, is_gl_auto_excluded};
 use super::selection::SelectedExt;
-use super::types::TypeDef;
+use super::types::{Protect, TypeDef};
 
 // ---------------------------------------------------------------------------
 // Build type list
@@ -87,7 +87,7 @@ pub(super) fn build_type_list(
                 if let Some(p) = ext_type_protect.get(t.name.as_str()) {
                     p.clone()
                 } else {
-                    t.protect.iter().cloned().collect()
+                    Protect(t.protect.iter().cloned().collect())
                 }
             };
             TypeDef {
@@ -256,7 +256,7 @@ fn record_protect<'a>(
 fn infer_include_protections(
     raw: &RawSpec,
     selected_exts: &[SelectedExt<'_>],
-) -> HashMap<String, Vec<String>> {
+) -> HashMap<String, Protect> {
     // Step 1: include_name → set of type names that `requires=` it.
     let include_names: HashSet<&str> = raw
         .types
@@ -365,7 +365,7 @@ fn infer_include_protections(
     }
 
     // Step 3: for each include, union its dep types' protections.
-    let mut result: HashMap<String, Vec<String>> = HashMap::new();
+    let mut result: HashMap<String, Protect> = HashMap::new();
 
     for (include_name, dep_names) in &include_to_deps {
         let mut merged = Protection::new_guarded();
@@ -385,7 +385,7 @@ fn infer_include_protections(
         }
 
         if any_found {
-            result.insert(include_name.to_string(), merged.into_vec());
+            result.insert(include_name.to_string(), merged.into_protect());
         }
     }
 
@@ -489,13 +489,13 @@ mod tests {
                 name: "B".to_string(),
                 raw_c: "typedef struct { A member; } B;".to_string(),
                 category: TypeCategory::Struct,
-                protect: vec![],
+                protect: Protect::default(),
             },
             TypeDef {
                 name: "A".to_string(),
                 raw_c: "typedef struct { int x; } A;".to_string(),
                 category: TypeCategory::Struct,
-                protect: vec![],
+                protect: Protect::default(),
             },
         ];
         let sorted = topo_sort_typedefs(types);
@@ -511,13 +511,13 @@ mod tests {
                 name: "A".to_string(),
                 raw_c: "typedef struct { B* ptr; } A;".to_string(),
                 category: TypeCategory::Struct,
-                protect: vec![],
+                protect: Protect::default(),
             },
             TypeDef {
                 name: "B".to_string(),
                 raw_c: "typedef struct { A* ptr; } B;".to_string(),
                 category: TypeCategory::Struct,
-                protect: vec![],
+                protect: Protect::default(),
             },
         ];
         let sorted = topo_sort_typedefs(types);
@@ -533,13 +533,13 @@ mod tests {
                 name: "D".to_string(),
                 raw_c: "#define D C".to_string(),
                 category: TypeCategory::Define,
-                protect: vec![],
+                protect: Protect::default(),
             },
             TypeDef {
                 name: "C".to_string(),
                 raw_c: "typedef int C;".to_string(),
                 category: TypeCategory::Basetype,
-                protect: vec![],
+                protect: Protect::default(),
             },
         ];
         let sorted = topo_sort_typedefs(types);

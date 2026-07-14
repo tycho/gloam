@@ -16,7 +16,7 @@ use serde::Serialize;
 
 use crate::identity::Spec;
 use crate::ir::TypeCategory;
-use crate::resolve::{Extension, FeatureSet, FlatEnum, Param, TypeDef};
+use crate::resolve::{Extension, FeatureSet, FlatEnum, Param, Protect, TypeDef};
 
 // ---------------------------------------------------------------------------
 // Render model
@@ -70,13 +70,8 @@ impl<'a> RenderModel<'a> {
             group_by_protection_pairs(fs.extensions.iter().map(|e| (e.protect.clone(), e)));
 
         let cmd_pfn_groups = group_by_protection_pairs(fs.commands.iter().map(|c| {
-            let protect = c
-                .protect
-                .as_ref()
-                .map(|p| vec![p.clone()])
-                .unwrap_or_default();
             (
-                protect,
+                c.protect.clone(),
                 CmdPfnEntry {
                     index: c.index,
                     name: &c.name,
@@ -254,8 +249,8 @@ mod tests {
 /// run of identically-protected items, rather than one per item.
 #[derive(Debug, Serialize)]
 pub struct ProtectedGroup<T: std::fmt::Debug + Serialize> {
-    /// Protection macros for this group.  Empty = unconditional (no guard).
-    pub protect: Vec<String>,
+    /// Protection for this group.  Unconditional = no guard emitted.
+    pub protect: Protect,
     /// Items in this group, in their original order.
     pub items: Vec<T>,
 }
@@ -280,14 +275,14 @@ pub struct CmdPfnEntry<'a> {
 // ---------------------------------------------------------------------------
 
 /// Coalesce items into groups of consecutive items that share the same
-/// protection macro set.  A single linear pass — O(n) in the item count.
+/// protection.  A single linear pass — O(n) in the item count.
 ///
-/// Takes `(Vec<String>, T)` pairs where the first element is the protection
-/// list for that item.  This signature avoids a closure parameter and
-/// eliminates the duplicated manual grouping loops that existed for
-/// ext_guard_groups and cmd_pfn_groups.
+/// Takes `(Protect, T)` pairs where the first element is the protection for
+/// that item.  This signature avoids a closure parameter and eliminates the
+/// duplicated manual grouping loops that existed for ext_guard_groups and
+/// cmd_pfn_groups.
 fn group_by_protection_pairs<T>(
-    items: impl IntoIterator<Item = (Vec<String>, T)>,
+    items: impl IntoIterator<Item = (Protect, T)>,
 ) -> Vec<ProtectedGroup<T>>
 where
     T: std::fmt::Debug + Serialize,
@@ -315,7 +310,7 @@ fn group_by_protection<T, F>(
 ) -> Vec<ProtectedGroup<T>>
 where
     T: std::fmt::Debug + Serialize,
-    F: Fn(&T) -> Vec<String>,
+    F: Fn(&T) -> Protect,
 {
     let mut groups: Vec<ProtectedGroup<T>> = Vec::new();
     for item in items {
