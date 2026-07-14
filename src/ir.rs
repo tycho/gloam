@@ -160,19 +160,13 @@ pub struct RawType {
 /// A single enum value, either from a flat `<enums>` block or from an
 /// `<enum extends=...>` inside an `<extension>`.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct RawEnum {
     pub name: String,
     /// Computed string value (decimal or 0x-hex). None for pure alias enums.
     pub value: Option<String>,
-    pub api: Option<String>,
-    /// "u" or "ull" etc., as present in the XML `type=` attr.
-    pub type_suffix: Option<String>,
     /// This enum is an alias of another enum name.
     pub alias: Option<String>,
     pub comment: String,
-    /// For Vulkan typed enums: the enum type this value belongs to.
-    pub parent_type: Option<String>,
 }
 
 /// A Vulkan typed enum group (the `<enums type="enum"|"bitmask">` element).
@@ -189,7 +183,6 @@ pub struct RawEnumGroup {
 
 /// A single parsed command parameter.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct RawParam {
     pub name: String,
     /// Full C type text for the parameter (e.g. "const GLubyte *", "GLenum").
@@ -197,16 +190,12 @@ pub struct RawParam {
     /// The base type name extracted from `<ptype>` or from the text,
     /// used for Vulkan command-scope inference.
     pub type_name: String,
-    /// Only set for multi-API commands where a param differs between APIs.
-    pub api: Option<String>,
 }
 
 /// A single parsed command.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct RawCommand {
     pub name: String,
-    pub api: Option<String>,
     /// C return type text (e.g. "void", "const GLubyte *", "VkResult").
     pub return_type: String,
     pub params: Vec<RawParam>,
@@ -276,7 +265,6 @@ pub struct RawFeature {
 
 /// An `<extension>` element.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct RawExtension {
     /// e.g. "GL_ARB_sync"
     pub name: String,
@@ -285,8 +273,6 @@ pub struct RawExtension {
     pub requires: Vec<Require>,
     /// Platform protection macros (may be multiple).
     pub protect: Vec<String>,
-    /// Extension registry number, used for enum offset calculation.
-    pub number: Option<u32>,
     /// Extensions this one depends on (from `requires=` or `depends=` attribute).
     /// All referenced extension names, regardless of AND/OR semantics in the
     /// original attribute — if a name appears at all, it's a prerequisite the

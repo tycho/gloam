@@ -67,7 +67,9 @@ impl Protection {
         }
     }
 
-    #[allow(dead_code)]
+    /// Test-side assertion helper (production code branches on the variants
+    /// directly).
+    #[cfg(test)]
     pub fn is_unconditional(&self) -> bool {
         matches!(self, Self::Unconditional)
     }
@@ -201,7 +203,6 @@ mod tests {
                 ..Default::default()
             }],
             protect: protect.iter().map(|s| s.to_string()).collect(),
-            number: None,
             depends: vec![],
         }
     }

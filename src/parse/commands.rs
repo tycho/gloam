@@ -54,7 +54,6 @@ fn parse_command_node(
             .and_then(|n| n.attribute("name"))
             .map(str::to_string)
     });
-    let cmd_api = node.attribute("api").map(str::to_string);
 
     if let Some(proto) = node
         .children()
@@ -77,7 +76,6 @@ fn parse_command_node(
 
         let cmd = RawCommand {
             name: name.clone(),
-            api: cmd_api,
             return_type,
             params,
             alias: cmd_alias,
@@ -93,7 +91,6 @@ fn parse_command_node(
         };
         let cmd = RawCommand {
             name: name.clone(),
-            api: cmd_api,
             return_type: String::new(), // to be filled by alias fixup
             params: Vec::new(),
             alias: cmd_alias,
@@ -135,8 +132,6 @@ fn parse_proto(proto: roxmltree::Node<'_, '_>) -> (String, String) {
 // ---------------------------------------------------------------------------
 
 fn parse_param(param: roxmltree::Node<'_, '_>) -> RawParam {
-    let api = param.attribute("api").map(str::to_string);
-
     // Extract the param name from the <n> child.
     let param_name = param
         .children()
@@ -191,7 +186,6 @@ fn parse_param(param: roxmltree::Node<'_, '_>) -> RawParam {
         name: param_name,
         type_raw,
         type_name,
-        api,
     }
 }
 

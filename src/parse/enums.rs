@@ -50,7 +50,7 @@ pub fn parse_enums(
                 continue;
             }
 
-            let enum_val = parse_flat_enum(child, None, None)?;
+            let enum_val = parse_flat_enum(child, None)?;
             flat_enums.entry(enum_val.name.clone()).or_insert(enum_val);
         }
     }
@@ -90,7 +90,7 @@ fn parse_enum_group(
         if child.tag_name().name() != "enum" {
             continue;
         }
-        let e = parse_flat_enum(child, None, Some(&name))?;
+        let e = parse_flat_enum(child, None)?;
         values.entry(e.name.clone()).or_insert(e);
     }
 
@@ -131,7 +131,7 @@ fn collect_vulkan_extending_enums(
 
             if let Some(extends) = child.attribute("extends") {
                 // This value extends an existing typed enum group.
-                let e = parse_flat_enum(child, extnumber, Some(extends))?;
+                let e = parse_flat_enum(child, extnumber)?;
 
                 if let Some(&gi) = group_index.get(extends) {
                     // Check for duplicate with conflicting value (spec gotcha #13).
@@ -165,7 +165,7 @@ fn collect_vulkan_extending_enums(
                 if !has_value {
                     continue;
                 }
-                let e = parse_flat_enum(child, extnumber, None)?;
+                let e = parse_flat_enum(child, extnumber)?;
                 flat_enums.entry(e.name.clone()).or_insert(e);
             }
         }
@@ -204,15 +204,12 @@ fn collect_vulkan_extending_enums(
 fn parse_flat_enum(
     node: roxmltree::Node<'_, '_>,
     parent_extnumber: Option<u32>,
-    parent_type: Option<&str>,
 ) -> Result<RawEnum> {
     let name = node
         .attribute("name")
         .ok_or_else(|| anyhow::anyhow!("<enum> element has no name"))?
         .to_string();
 
-    let api = node.attribute("api").map(str::to_string);
-    let type_suffix = node.attribute("type").map(str::to_string);
     let alias = node.attribute("alias").map(str::to_string);
     let comment = node.attribute("comment").unwrap_or("").to_string();
 
@@ -247,10 +244,7 @@ fn parse_flat_enum(
     Ok(RawEnum {
         name,
         value,
-        api,
-        type_suffix,
         alias,
         comment,
-        parent_type: parent_type.map(str::to_string),
     })
 }

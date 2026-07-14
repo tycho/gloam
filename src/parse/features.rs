@@ -203,8 +203,6 @@ fn parse_extensions(
             protect.push(p.clone());
         }
 
-        let number = node.attribute("number").and_then(|s| s.parse().ok());
-
         // Extension-to-extension dependencies: GL uses `requires=` (comma-
         // separated), Vulkan uses `depends=` with `+` (AND), `,` (OR), and
         // parentheses.  We extract every extension-name-looking token from
@@ -223,7 +221,6 @@ fn parse_extensions(
             supported,
             requires,
             protect,
-            number,
             depends,
         });
     }

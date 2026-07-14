@@ -92,7 +92,6 @@ pub(super) fn extension(
         supported: strs(supported),
         requires,
         protect: strs(protect),
-        number: None,
         depends: vec![],
     }
 }
@@ -102,7 +101,6 @@ pub(super) fn add_command(raw: &mut RawSpec, name: &str, alias: Option<&str>) {
         name.to_string(),
         RawCommand {
             name: name.to_string(),
-            api: None,
             return_type: "void".to_string(),
             params: vec![],
             alias: alias.map(str::to_string),
