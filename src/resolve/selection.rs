@@ -10,6 +10,7 @@ use crate::cli::{ApiRequest, ExtensionFilter};
 use crate::identity::{Api, Spec, canonical_api_name};
 use crate::ir::RawSpec;
 
+use super::requirements::per_api_core_commands;
 use super::spec_info::{ResolveConfig, build_api_set};
 use super::types::SelectionReason;
 
@@ -183,26 +184,16 @@ pub(super) fn select_extensions<'a>(
     // Build the bidirectional alias maps once — they're used by both the
     // --promoted and --predecessors passes.
     let cmd_to_alias: HashMap<&str, &str> = if want_promoted || want_predecessors {
-        let mut m = HashMap::new();
-        for (name, cmd) in &raw.commands {
-            if let Some(ref alias) = cmd.alias {
-                m.insert(name.as_str(), alias.as_str());
-                m.insert(alias.as_str(), name.as_str());
-            }
-        }
-        m
+        cmd_alias_map(raw)
     } else {
         HashMap::new()
     };
     let enum_to_alias: HashMap<&str, &str> = if want_predecessors {
-        let mut m = HashMap::new();
-        for (name, e) in &raw.flat_enums {
-            if let Some(ref alias) = e.alias {
-                m.insert(name.as_str(), alias.as_str());
-                m.insert(alias.as_str(), name.as_str());
-            }
-        }
-        m
+        bidirectional_alias_map(
+            raw.flat_enums
+                .iter()
+                .map(|(name, e)| (name.as_str(), e.alias.as_deref())),
+        )
     } else {
         HashMap::new()
     };
@@ -232,6 +223,44 @@ pub(super) fn select_extensions<'a>(
         excluded_explicit,
         excluded_baseline,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Alias lookup helpers
+// ---------------------------------------------------------------------------
+
+/// Bidirectional name↔alias lookup: both directions of every alias
+/// relationship map to the other name.
+fn bidirectional_alias_map<'a>(
+    entries: impl Iterator<Item = (&'a str, Option<&'a str>)>,
+) -> HashMap<&'a str, &'a str> {
+    let mut m = HashMap::new();
+    for (name, alias) in entries {
+        if let Some(alias) = alias {
+            m.insert(name, alias);
+            m.insert(alias, name);
+        }
+    }
+    m
+}
+
+/// Bidirectional command↔alias lookup for the whole spec.
+fn cmd_alias_map(raw: &RawSpec) -> HashMap<&str, &str> {
+    bidirectional_alias_map(
+        raw.commands
+            .iter()
+            .map(|(name, cmd)| (name.as_str(), cmd.alias.as_deref())),
+    )
+}
+
+/// True if `cmd` — or its cross-version alias — is in the core command set.
+///
+/// This is the shared kernel of the --promoted and --baseline checks; the
+/// passes differ only in the quantifier applied over an extension's
+/// commands: promotion needs ANY command in core, baseline domination needs
+/// ALL of them.
+fn cmd_in_core(core_cmds: &HashSet<String>, aliases: &HashMap<&str, &str>, cmd: &str) -> bool {
+    core_cmds.contains(cmd) || aliases.get(cmd).is_some_and(|a| core_cmds.contains(*a))
 }
 
 // ---------------------------------------------------------------------------
@@ -266,12 +295,9 @@ fn promoted_pass<'a>(
                     .iter()
                     .filter(|req| api_profile_matches(req.api.as_deref(), None, api, None))
                     .any(|req| {
-                        req.commands.iter().any(|c| {
-                            core_cmds.contains(c.as_str())
-                                || cmd_to_alias
-                                    .get(c.as_str())
-                                    .is_some_and(|a| core_cmds.contains(*a))
-                        })
+                        req.commands
+                            .iter()
+                            .any(|c| cmd_in_core(core_cmds, cmd_to_alias, c))
                     })
             });
 
@@ -423,49 +449,8 @@ fn compute_baseline_excludes(
     baseline: &[ApiRequest],
 ) -> HashSet<String> {
     let baseline_features = select_features(raw, baseline);
-    let mut baseline_core_cmds: HashMap<String, HashSet<String>> = HashMap::new();
-
-    for feat in &baseline_features {
-        let req_for_api = baseline.iter().find(|r| r.api == feat.api);
-        let profile = req_for_api.and_then(|r| r.profile.as_deref());
-        let api_cmds = baseline_core_cmds
-            .entry(feat.api.as_str().to_string())
-            .or_default();
-
-        for require in &feat.raw.requires {
-            if !api_profile_matches(
-                require.api.as_deref(),
-                require.profile.as_deref(),
-                feat.api.as_str(),
-                profile,
-            ) {
-                continue;
-            }
-            for cmd in &require.commands {
-                api_cmds.insert(cmd.clone());
-            }
-        }
-        for remove in &feat.raw.removes {
-            if !profile_matches(remove.profile.as_deref(), profile) {
-                continue;
-            }
-            for cmd in &remove.commands {
-                api_cmds.remove(cmd.as_str());
-            }
-        }
-    }
-
-    // Build bidirectional alias map for baseline promotion checks.
-    let baseline_cmd_aliases: HashMap<&str, &str> = {
-        let mut m = HashMap::new();
-        for (name, cmd) in &raw.commands {
-            if let Some(ref alias) = cmd.alias {
-                m.insert(name.as_str(), alias.as_str());
-                m.insert(alias.as_str(), name.as_str());
-            }
-        }
-        m
-    };
+    let baseline_core_cmds = per_api_core_commands(&baseline_features, baseline);
+    let baseline_cmd_aliases = cmd_alias_map(raw);
 
     let request_api_set: HashSet<&str> = requests.iter().map(|r| r.api.as_str()).collect();
     let mut excludes: HashSet<String> = HashSet::new();
@@ -493,12 +478,9 @@ fn compute_baseline_excludes(
                 .flat_map(|req| req.commands.iter().map(String::as_str))
                 .collect();
             !ext_cmds.is_empty()
-                && ext_cmds.iter().all(|c| {
-                    core_cmds.contains(*c)
-                        || baseline_cmd_aliases
-                            .get(c)
-                            .is_some_and(|a| core_cmds.contains(*a))
-                })
+                && ext_cmds
+                    .iter()
+                    .all(|c| cmd_in_core(core_cmds, &baseline_cmd_aliases, c))
         });
 
         if dominated {

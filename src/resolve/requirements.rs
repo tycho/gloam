@@ -54,13 +54,11 @@ impl RequirementCollector {
         features: &[SelectedFeature<'_>],
         requests: &[ApiRequest],
     ) {
+        self.per_api_core_cmds = per_api_core_commands(features, requests);
+
         for feat in features {
             let req_for_api = requests.iter().find(|r| r.api == feat.api);
             let profile = req_for_api.and_then(|r| r.profile.as_deref());
-            let api_cmds = self
-                .per_api_core_cmds
-                .entry(feat.api.as_str().to_string())
-                .or_default();
 
             for require in &feat.raw.requires {
                 if !api_profile_matches(
@@ -75,7 +73,6 @@ impl RequirementCollector {
                 self.req_enums.extend(require.enums.iter().cloned());
                 for cmd in &require.commands {
                     self.req_commands.entry(cmd.clone()).or_insert(());
-                    api_cmds.insert(cmd.clone());
                 }
             }
             for remove in &feat.raw.removes {
@@ -85,11 +82,6 @@ impl RequirementCollector {
                 self.removed_commands
                     .extend(remove.commands.iter().cloned());
                 self.removed_enums.extend(remove.enums.iter().cloned());
-                // Apply removes inline — features are processed in version order so
-                // each version's removes are applied immediately after its requires.
-                for cmd in &remove.commands {
-                    api_cmds.remove(cmd.as_str());
-                }
             }
         }
         // Apply command removes to the master req_commands set.
@@ -194,4 +186,50 @@ impl RequirementCollector {
     pub fn ext_command_names(&self) -> Vec<String> {
         self.ext_commands.keys().cloned().collect()
     }
+}
+
+// ---------------------------------------------------------------------------
+// Per-API core command sets
+// ---------------------------------------------------------------------------
+
+/// Derive each API's core command set from its selected features: requires
+/// add, removes subtract, interleaved per feature — features arrive in
+/// version order, so each version's removes apply immediately after its
+/// requires.
+///
+/// Used for the build's own selection (via the collector) and again by the
+/// --baseline pass against the baseline's feature selection.
+pub(super) fn per_api_core_commands(
+    features: &[SelectedFeature<'_>],
+    requests: &[ApiRequest],
+) -> HashMap<String, HashSet<String>> {
+    let mut per_api: HashMap<String, HashSet<String>> = HashMap::new();
+    for feat in features {
+        let req_for_api = requests.iter().find(|r| r.api == feat.api);
+        let profile = req_for_api.and_then(|r| r.profile.as_deref());
+        let api_cmds = per_api.entry(feat.api.as_str().to_string()).or_default();
+
+        for require in &feat.raw.requires {
+            if !api_profile_matches(
+                require.api.as_deref(),
+                require.profile.as_deref(),
+                feat.api.as_str(),
+                profile,
+            ) {
+                continue;
+            }
+            for cmd in &require.commands {
+                api_cmds.insert(cmd.clone());
+            }
+        }
+        for remove in &feat.raw.removes {
+            if !profile_matches(remove.profile.as_deref(), profile) {
+                continue;
+            }
+            for cmd in &remove.commands {
+                api_cmds.remove(cmd.as_str());
+            }
+        }
+    }
+    per_api
 }
