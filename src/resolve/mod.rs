@@ -15,6 +15,8 @@
 
 mod commands;
 mod enums;
+#[cfg(test)]
+mod fixtures;
 mod pfn;
 mod protect;
 mod requirements;

@@ -284,3 +284,65 @@ pub(super) fn build_alias_pairs(raw: &RawSpec, commands: &[Command]) -> Vec<Alia
     pairs.sort_by_key(|p| (p.canonical, p.secondary));
     pairs
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixtures::*;
+    use super::*;
+    use crate::identity::Api;
+
+    #[test]
+    fn optimize_groups_commands_by_shared_consumers() {
+        // GL 1.0 requires {a, c}; GLES2 2.0 requires {a, b, c}.  Consumer
+        // signatures: a=[0,1], b=[1], c=[0,1] — so a and c must become
+        // adjacent (same signature, alphabetical within), and b sorts after
+        // them ([0,1] < [1] lexicographically).
+        let f_gl = feature(
+            "gl",
+            "GL_VERSION_1_0",
+            (1, 0),
+            vec![require_cmds(&["a", "c"])],
+        );
+        let f_es = feature(
+            "gles2",
+            "GL_ES_VERSION_2_0",
+            (2, 0),
+            vec![require_cmds(&["a", "b", "c"])],
+        );
+        let features = vec![
+            selected_feature(Api::Gl, &f_gl),
+            selected_feature(Api::Gles2, &f_es),
+        ];
+        let requests = vec![
+            api_request(Api::Gl, None, Some("core")),
+            api_request(Api::Gles2, None, None),
+        ];
+
+        let core = strs(&["b", "a", "c"]); // deliberately scrambled input
+        let (sorted_core, sorted_ext) =
+            optimize_command_order(&core, &[], &features, &[], &requests);
+
+        assert_eq!(sorted_core, strs(&["a", "c", "b"]));
+        assert!(sorted_ext.is_empty());
+    }
+
+    #[test]
+    fn optimize_orders_extension_commands_by_extension_index() {
+        // Two single-command extensions: each command's signature is its
+        // extension's consumer index, so commands follow extension order
+        // regardless of input order.
+        let ext_x = extension("GL_X_one", &["gl"], &[], vec![require_cmds(&["p"])]);
+        let ext_y = extension("GL_X_two", &["gl"], &[], vec![require_cmds(&["q"])]);
+        let exts = vec![selected_ext(&ext_x), selected_ext(&ext_y)];
+        let requests = vec![api_request(Api::Gl, None, Some("core"))];
+
+        let ext_cmds = strs(&["q", "p"]);
+        let (_, sorted_ext) = optimize_command_order(&[], &ext_cmds, &[], &exts, &requests);
+
+        assert_eq!(sorted_ext, strs(&["p", "q"]));
+    }
+}

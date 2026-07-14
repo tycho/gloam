@@ -480,7 +480,96 @@ pub(super) fn normalize_raw_c(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::fixtures::*;
     use super::*;
+
+    // ---- infer_include_protections ----
+
+    /// windows.h include + a HANDLE basetype that `requires=` it.
+    fn include_fixture() -> RawSpec {
+        let mut raw = raw_spec(Spec::Vk);
+        raw.types.push(raw_type(
+            "windows.h",
+            TypeCategory::Include,
+            None,
+            "#include <windows.h>",
+            None,
+        ));
+        raw.types.push(raw_type(
+            "HANDLE",
+            TypeCategory::Basetype,
+            Some("windows.h"),
+            "typedef void *HANDLE;",
+            None,
+        ));
+        raw
+    }
+
+    #[test]
+    fn include_protection_inferred_from_protected_extension() {
+        let mut raw = include_fixture();
+        raw.extensions.push(extension(
+            "VK_KHR_win32_surface",
+            &["vulkan"],
+            &["VK_USE_PLATFORM_WIN32_KHR"],
+            vec![require_types(&["HANDLE"])],
+        ));
+        let selected = vec![selected_ext(&raw.extensions[0])];
+
+        let map = infer_include_protections(&raw, &selected);
+        assert_eq!(map["windows.h"].0, vec!["VK_USE_PLATFORM_WIN32_KHR"]);
+    }
+
+    #[test]
+    fn include_protection_unprotected_extension_absorbs_to_unconditional() {
+        let mut raw = include_fixture();
+        raw.extensions.push(extension(
+            "VK_KHR_win32_surface",
+            &["vulkan"],
+            &["VK_USE_PLATFORM_WIN32_KHR"],
+            vec![require_types(&["HANDLE"])],
+        ));
+        raw.extensions.push(extension(
+            "VK_KHR_everywhere",
+            &["vulkan"],
+            &[],
+            vec![require_types(&["HANDLE"])],
+        ));
+        let selected: Vec<_> = raw.extensions.iter().map(selected_ext).collect();
+
+        let map = infer_include_protections(&raw, &selected);
+        assert!(map["windows.h"].is_unconditional());
+    }
+
+    #[test]
+    fn include_protection_inferred_from_protected_struct_body() {
+        // No extension requires HANDLE directly, but a struct with its own
+        // protect= attribute references it in raw_c — source (b) of the
+        // inference.
+        let mut raw = include_fixture();
+        raw.types.push(raw_type(
+            "VkImportMemoryWin32HandleInfoKHR",
+            TypeCategory::Struct,
+            None,
+            "typedef struct { HANDLE handle; } VkImportMemoryWin32HandleInfoKHR;",
+            Some("VK_USE_PLATFORM_WIN32_KHR"),
+        ));
+
+        let map = infer_include_protections(&raw, &[]);
+        assert_eq!(map["windows.h"].0, vec!["VK_USE_PLATFORM_WIN32_KHR"]);
+    }
+
+    #[test]
+    fn include_without_any_referencing_selection_is_absent() {
+        // Nothing selected references HANDLE — the include must not appear
+        // in the map at all (its absence is what keeps it out of the
+        // emitted header).
+        let raw = include_fixture();
+        let map = infer_include_protections(&raw, &[]);
+        assert!(!map.contains_key("windows.h"));
+    }
+
+    // ---- topo_sort_typedefs ----
 
     #[test]
     fn topo_sort_typedefs_simple_dependency_order() {

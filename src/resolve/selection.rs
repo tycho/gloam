@@ -525,7 +525,257 @@ pub(super) fn profile_matches(elem_profile: Option<&str>, target_profile: Option
 
 #[cfg(test)]
 mod tests {
+    use super::super::fixtures::*;
     use super::*;
+
+    fn names<'a>(selected: &'a [SelectedExt<'_>]) -> Vec<&'a str> {
+        selected.iter().map(|e| e.raw.name.as_str()).collect()
+    }
+
+    // ---- promoted_pass ----
+
+    #[test]
+    fn promoted_selects_same_name_and_alias_promotions_only() {
+        let mut raw = raw_spec(Spec::Gl);
+        add_command(&mut raw, "glCoreCmd", None);
+        add_command(&mut raw, "glCmdARB", Some("glCoreCmd"));
+        add_command(&mut raw, "glOther", None);
+        raw.extensions.push(extension(
+            "GL_ARB_same_name",
+            &["gl"],
+            &[],
+            vec![require_cmds(&["glCoreCmd"])],
+        ));
+        raw.extensions.push(extension(
+            "GL_ARB_renamed",
+            &["gl"],
+            &[],
+            vec![require_cmds(&["glCmdARB"])],
+        ));
+        raw.extensions.push(extension(
+            "GL_ARB_unrelated",
+            &["gl"],
+            &[],
+            vec![require_cmds(&["glOther"])],
+        ));
+
+        let api_set: HashSet<&str> = ["gl"].into_iter().collect();
+        let core: HashMap<String, HashSet<String>> =
+            HashMap::from([("gl".to_string(), HashSet::from(["glCoreCmd".to_string()]))]);
+        let aliases = cmd_alias_map(&raw);
+
+        let mut selected = Vec::new();
+        promoted_pass(&raw, &api_set, &core, &aliases, &mut selected);
+
+        // Same-name promotion and alias-mediated promotion are in; an
+        // extension whose commands never reached core is not.
+        assert_eq!(names(&selected), ["GL_ARB_same_name", "GL_ARB_renamed"]);
+        assert!(
+            selected
+                .iter()
+                .all(|e| matches!(e.reason, SelectionReason::Promoted))
+        );
+    }
+
+    // ---- predecessors_pass ----
+
+    #[test]
+    fn predecessors_follow_shared_commands_transitively() {
+        // EXT_new (selected) shares a command with EXT_old, which shares a
+        // different command with EXT_older — the fixed-point loop must pull
+        // in both.
+        let mut raw = raw_spec(Spec::Gl);
+        raw.extensions.push(extension(
+            "GL_EXT_new",
+            &["gl"],
+            &[],
+            vec![require_cmds(&["glShared"])],
+        ));
+        raw.extensions.push(extension(
+            "GL_EXT_old",
+            &["gl"],
+            &[],
+            vec![require_cmds(&["glShared", "glOlder"])],
+        ));
+        raw.extensions.push(extension(
+            "GL_EXT_older",
+            &["gl"],
+            &[],
+            vec![require_cmds(&["glOlder"])],
+        ));
+
+        let api_set: HashSet<&str> = ["gl"].into_iter().collect();
+        let mut selected = vec![selected_ext(&raw.extensions[0])];
+        predecessors_pass(
+            &raw,
+            &api_set,
+            &HashMap::new(),
+            &HashMap::new(),
+            &mut selected,
+        );
+
+        assert_eq!(
+            names(&selected),
+            ["GL_EXT_new", "GL_EXT_old", "GL_EXT_older"]
+        );
+    }
+
+    #[test]
+    fn predecessors_match_on_shared_enums_too() {
+        let mut raw = raw_spec(Spec::Gl);
+        raw.extensions.push(extension(
+            "GL_EXT_selected",
+            &["gl"],
+            &[],
+            vec![require_enums(&["GL_SOME_TOKEN"])],
+        ));
+        raw.extensions.push(extension(
+            "GL_EXT_enum_only",
+            &["gl"],
+            &[],
+            vec![require_enums(&["GL_SOME_TOKEN"])],
+        ));
+
+        let api_set: HashSet<&str> = ["gl"].into_iter().collect();
+        let mut selected = vec![selected_ext(&raw.extensions[0])];
+        predecessors_pass(
+            &raw,
+            &api_set,
+            &HashMap::new(),
+            &HashMap::new(),
+            &mut selected,
+        );
+
+        assert_eq!(names(&selected), ["GL_EXT_selected", "GL_EXT_enum_only"]);
+    }
+
+    // ---- compute_baseline_excludes ----
+
+    #[test]
+    fn baseline_excludes_require_all_commands_dominated() {
+        let mut raw = raw_spec(Spec::Gl);
+        add_command(&mut raw, "a", None);
+        add_command(&mut raw, "b", None);
+        add_command(&mut raw, "z", None);
+        add_command(&mut raw, "aARB", Some("a"));
+        raw.features.push(feature(
+            "gl",
+            "GL_VERSION_3_0",
+            (3, 0),
+            vec![require_cmds(&["a", "b"])],
+        ));
+        raw.extensions.push(extension(
+            "GL_EXT_dominated",
+            &["gl"],
+            &[],
+            vec![require_cmds(&["a"])],
+        ));
+        raw.extensions.push(extension(
+            "GL_EXT_alias_dominated",
+            &["gl"],
+            &[],
+            vec![require_cmds(&["aARB"])],
+        ));
+        raw.extensions.push(extension(
+            "GL_EXT_partial",
+            &["gl"],
+            &[],
+            vec![require_cmds(&["a", "z"])],
+        ));
+        raw.extensions
+            .push(extension("GL_EXT_no_cmds", &["gl"], &[], vec![]));
+        raw.extensions.push(extension(
+            "GL_EXT_multi_api",
+            &["gl", "gles2"],
+            &[],
+            vec![require_cmds(&["a"])],
+        ));
+
+        let requests = vec![
+            api_request(Api::Gl, Some((4, 6)), Some("core")),
+            api_request(Api::Gles2, Some((3, 2)), None),
+        ];
+        let baseline = vec![api_request(Api::Gl, Some((3, 0)), Some("core"))];
+
+        let excludes = compute_baseline_excludes(&raw, &requests, &baseline);
+
+        // ALL of an extension's commands must be in baseline core (directly
+        // or via alias) — and every requested API it supports must dominate.
+        // GL_EXT_partial fails on `z`; GL_EXT_no_cmds has nothing to
+        // dominate; GL_EXT_multi_api fails because gles2 has no baseline.
+        assert!(excludes.contains("GL_EXT_dominated"));
+        assert!(excludes.contains("GL_EXT_alias_dominated"));
+        assert!(!excludes.contains("GL_EXT_partial"));
+        assert!(!excludes.contains("GL_EXT_no_cmds"));
+        assert!(!excludes.contains("GL_EXT_multi_api"));
+    }
+
+    // ---- apply_exclusions ----
+
+    fn exclusion_fixture() -> RawSpec {
+        let mut raw = raw_spec(Spec::Gl);
+        add_command(&mut raw, "a", None);
+        raw.features.push(feature(
+            "gl",
+            "GL_VERSION_3_0",
+            (3, 0),
+            vec![require_cmds(&["a"])],
+        ));
+        for name in ["GL_X_alpha", "GL_X_beta", "GL_X_gamma"] {
+            raw.extensions
+                .push(extension(name, &["gl"], &[], vec![require_cmds(&["a"])]));
+        }
+        raw
+    }
+
+    #[test]
+    fn exclusion_precedence_explicit_beats_baseline_keep_beats_baseline() {
+        let raw = exclusion_fixture();
+        let mut selected: Vec<SelectedExt<'_>> = raw.extensions.iter().map(selected_ext).collect();
+
+        // All three extensions are baseline-dominated; alpha is explicitly
+        // excluded, beta is kept.
+        let filter = ExtensionFilter {
+            include: None,
+            exclude: HashSet::from(["GL_X_alpha".to_string()]),
+            keep: HashSet::from(["GL_X_beta".to_string()]),
+        };
+        let requests = vec![api_request(Api::Gl, Some((4, 6)), Some("core"))];
+        let baseline = vec![api_request(Api::Gl, Some((3, 0)), Some("core"))];
+
+        let (excluded_explicit, excluded_baseline) =
+            apply_exclusions(&raw, &requests, &filter, &baseline, &mut selected);
+
+        // Only the kept extension survives.
+        assert_eq!(names(&selected), ["GL_X_beta"]);
+        assert_eq!(excluded_explicit, vec!["GL_X_alpha".to_string()]);
+        // The baseline report drops kept names but keeps explicit ones
+        // (alpha was both explicitly and baseline excluded).
+        assert_eq!(
+            excluded_baseline,
+            vec!["GL_X_alpha".to_string(), "GL_X_gamma".to_string()]
+        );
+    }
+
+    #[test]
+    fn exclusion_explicit_exclude_beats_keep() {
+        let raw = exclusion_fixture();
+        let mut selected: Vec<SelectedExt<'_>> = raw.extensions.iter().map(selected_ext).collect();
+
+        let filter = ExtensionFilter {
+            include: None,
+            exclude: HashSet::from(["GL_X_alpha".to_string()]),
+            keep: HashSet::from(["GL_X_alpha".to_string()]),
+        };
+        let requests = vec![api_request(Api::Gl, Some((4, 6)), Some("core"))];
+
+        // No baseline — only the explicit exclude applies, and keeping the
+        // same name does not rescue it.
+        let (excluded_explicit, _) = apply_exclusions(&raw, &requests, &filter, &[], &mut selected);
+
+        assert_eq!(names(&selected), ["GL_X_beta", "GL_X_gamma"]);
+        assert_eq!(excluded_explicit, vec!["GL_X_alpha".to_string()]);
+    }
 
     // ---- profile_matches ----
 
