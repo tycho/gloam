@@ -7,11 +7,7 @@
 
 use std::collections::HashMap;
 
-use serde::Serialize;
-
 use crate::ir::{RawExtension, Require};
-
-use super::types::ProtectedGroup;
 
 // ---------------------------------------------------------------------------
 // Protection lattice
@@ -115,65 +111,6 @@ where
     tmp.into_iter()
         .map(|(name, prot)| (name.to_string(), prot.into_vec()))
         .collect()
-}
-
-// ---------------------------------------------------------------------------
-// Group-by-protection coalescing
-// ---------------------------------------------------------------------------
-
-/// Coalesce items into groups of consecutive items that share the same
-/// protection macro set.  A single linear pass — O(n) in the item count.
-///
-/// Takes `(Vec<String>, T)` pairs where the first element is the protection
-/// list for that item.  This signature avoids a closure parameter and
-/// eliminates the duplicated manual grouping loops that existed for
-/// ext_guard_groups and cmd_pfn_groups.
-pub(super) fn group_by_protection_pairs<T>(
-    items: impl IntoIterator<Item = (Vec<String>, T)>,
-) -> Vec<ProtectedGroup<T>>
-where
-    T: std::fmt::Debug + Serialize,
-{
-    let mut groups: Vec<ProtectedGroup<T>> = Vec::new();
-    for (protect, item) in items {
-        if let Some(last) = groups.last_mut()
-            && last.protect == protect
-        {
-            last.items.push(item);
-            continue;
-        }
-        groups.push(ProtectedGroup {
-            protect,
-            items: vec![item],
-        });
-    }
-    groups
-}
-
-/// Convenience wrapper: coalesce items using a closure to extract protection.
-pub(super) fn group_by_protection<T, F>(
-    items: impl IntoIterator<Item = T>,
-    get_protect: F,
-) -> Vec<ProtectedGroup<T>>
-where
-    T: std::fmt::Debug + Serialize,
-    F: Fn(&T) -> Vec<String>,
-{
-    let mut groups: Vec<ProtectedGroup<T>> = Vec::new();
-    for item in items {
-        let protect = get_protect(&item);
-        if let Some(last) = groups.last_mut()
-            && last.protect == protect
-        {
-            last.items.push(item);
-            continue;
-        }
-        groups.push(ProtectedGroup {
-            protect,
-            items: vec![item],
-        });
-    }
-    groups
 }
 
 // ---------------------------------------------------------------------------

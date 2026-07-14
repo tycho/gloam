@@ -240,11 +240,6 @@ mod tests {
                 .unwrap_or_default(),
             excluded_explicit: vec![],
             excluded_baseline: vec![],
-            include_type_groups: vec![],
-            type_groups: vec![],
-            ext_guard_groups: vec![],
-            cmd_pfn_groups: vec![],
-            flat_enum_groups: vec![],
         }
     }
 

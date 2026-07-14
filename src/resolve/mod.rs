@@ -21,8 +21,8 @@ mod typedefs;
 // Public types — re-exported so external callers use `crate::resolve::FeatureSet` etc.
 pub mod types;
 pub use types::{
-    CmdPfnEntry, Command, ExtGuardEntry, Extension, Feature, FeatureSet, PfnRange, SelectionReason,
-    SerVersion,
+    Command, Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, SelectionReason,
+    SerVersion, TypeDef,
 };
 
 use std::collections::HashMap;
@@ -33,7 +33,7 @@ use indexmap::IndexMap;
 use crate::cli::{ApiRequest, Cli};
 use crate::fetch;
 use crate::identity::Spec;
-use crate::ir::{RawSpec, TypeCategory};
+use crate::ir::RawSpec;
 use crate::parse;
 use crate::parse::commands::infer_vulkan_scope;
 
@@ -42,7 +42,6 @@ use commands::{
 };
 use enums::{build_enum_groups, build_flat_enums};
 use pfn::{build_ext_pfn_ranges, build_feature_pfn_ranges};
-use protect::{group_by_protection, group_by_protection_pairs};
 use requirements::RequirementCollector;
 use selection::{ExtensionSelection, SelectedExt, select_extensions, select_features};
 use spec_info::{
@@ -288,57 +287,6 @@ fn resolve_feature_set(
         keys
     };
 
-    // ==================================================================
-    // Phase 3: Protection grouping
-    // ==================================================================
-    let include_type_groups = group_by_protection(
-        types
-            .iter()
-            .filter(|t| t.category == TypeCategory::Include && !t.raw_c.is_empty())
-            .cloned(),
-        |t| t.protect.clone(),
-    );
-
-    let type_groups = group_by_protection(
-        types
-            .iter()
-            .filter(|t| t.category != TypeCategory::Include && !t.raw_c.is_empty())
-            .cloned(),
-        |t| t.protect.clone(),
-    );
-
-    let ext_guard_groups = group_by_protection_pairs(extensions.iter().map(|e| {
-        (
-            e.protect.clone(),
-            ExtGuardEntry {
-                name: e.name.clone(),
-                short_name: e.short_name.clone(),
-            },
-        )
-    }));
-
-    let cmd_pfn_groups = group_by_protection_pairs(commands.iter().map(|c| {
-        let protect = c
-            .protect
-            .as_ref()
-            .map(|p| vec![p.clone()])
-            .unwrap_or_default();
-        (
-            protect,
-            CmdPfnEntry {
-                index: c.index,
-                name: c.name.clone(),
-                short_name: c.short_name.clone(),
-                pfn_type: c.pfn_type.clone(),
-                return_type: c.return_type.clone(),
-                params_str: c.params_str.clone(),
-                params: c.params.clone(),
-            },
-        )
-    }));
-
-    let flat_enum_groups = group_by_protection(flat_enums.iter().cloned(), |e| e.protect.clone());
-
     Ok(FeatureSet {
         spec_name: spec_kind.as_str().to_string(),
         display_name: spec.display_name.to_string(),
@@ -361,11 +309,6 @@ fn resolve_feature_set(
         source_keys,
         excluded_explicit,
         excluded_baseline,
-        include_type_groups,
-        type_groups,
-        ext_guard_groups,
-        cmd_pfn_groups,
-        flat_enum_groups,
     })
 }
 

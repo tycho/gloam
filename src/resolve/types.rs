@@ -78,25 +78,6 @@ pub struct FeatureSet {
     pub excluded_explicit: Vec<String>,
     /// Extensions excluded because they are fully promoted into --baseline versions.
     pub excluded_baseline: Vec<String>,
-
-    // -- Protection-grouped lists for header emission -------------------------
-    // These coalesce consecutive items with identical platform guards into a
-    // single ProtectedGroup, minimizing #ifdef/#endif pairs in the generated
-    // header.  The flat lists above are retained for the source template and
-    // context struct, which need per-element access.
-    /// Include-category types, grouped by consecutive protection.
-    pub include_type_groups: Vec<ProtectedGroup<TypeDef>>,
-    /// Non-include types, grouped by consecutive protection.
-    pub type_groups: Vec<ProtectedGroup<TypeDef>>,
-    /// Extensions, grouped by consecutive protection (for #define guards and
-    /// presence macros).
-    pub ext_guard_groups: Vec<ProtectedGroup<ExtGuardEntry>>,
-    /// Commands, grouped by consecutive protection (for PFN typedefs,
-    /// IntelliSense prototypes, and dispatch macros).
-    pub cmd_pfn_groups: Vec<ProtectedGroup<CmdPfnEntry>>,
-    /// Flat enum constants grouped by consecutive protection, for the
-    /// constants section of the header.
-    pub flat_enum_groups: Vec<ProtectedGroup<FlatEnum>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -211,48 +192,6 @@ pub struct PfnRange {
 pub struct AliasPair {
     pub canonical: u16,
     pub secondary: u16,
-}
-
-// ---------------------------------------------------------------------------
-// Protection grouping types
-// ---------------------------------------------------------------------------
-
-/// A group of items that share the same platform protection macros.
-///
-/// Adjacent items with identical protection are coalesced into a single
-/// group so that the generated header emits one `#ifdef`/`#endif` pair per
-/// run of identically-protected items, rather than one per item.
-#[derive(Debug, Serialize)]
-pub struct ProtectedGroup<T: std::fmt::Debug + Serialize> {
-    /// Protection macros for this group.  Empty = unconditional (no guard).
-    pub protect: Vec<String>,
-    /// Items in this group, in their original order.
-    pub items: Vec<T>,
-}
-
-/// Lightweight extension entry for protection-grouped header sections.
-/// Carries only the fields needed by the `#define` guard and presence macro
-/// sections, avoiding a full `Extension` clone.
-#[derive(Debug, Serialize)]
-pub struct ExtGuardEntry {
-    pub name: String,
-    pub short_name: String,
-}
-
-/// Lightweight command entry for protection-grouped header sections.
-/// Carries only the fields needed by PFN typedefs, IntelliSense prototypes,
-/// dispatch macros, and the context struct (which needs `index` for pad slot
-/// naming).
-#[derive(Debug, Serialize)]
-pub struct CmdPfnEntry {
-    pub index: u16,
-    pub name: String,
-    pub short_name: String,
-    pub pfn_type: String,
-    pub return_type: String,
-    pub params_str: String,
-    /// Individual parameters for inline function dispatch wrappers.
-    pub params: Vec<Param>,
 }
 
 // ---------------------------------------------------------------------------

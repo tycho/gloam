@@ -2,7 +2,10 @@
 //!
 //! All generation logic lives in the `.j2` template files under
 //! `src/generator/c/templates/`.  This module handles environment setup,
-//! pre-computation of template data, filter registration, and file I/O.
+//! filter registration, and file I/O; per-render precomputed template data
+//! lives in [`model::RenderModel`].
+
+mod model;
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -16,6 +19,7 @@ use crate::provenance::load::{LoadedSource, SourceStore};
 use crate::provenance::manifest::{OutputEntry, ProvenancePin, git_blob_sha1};
 use crate::resolve::FeatureSet;
 use indexmap::IndexMap;
+use model::RenderModel;
 
 /// What one `generate()` call produced: the provenance pins for every source it
 /// used and an output-BOM entry for every file it wrote.  The run loop merges
@@ -50,7 +54,7 @@ pub fn generate(
         .collect();
     let preamble = preamble::build_preamble(fs, &pins, command_line);
 
-    let names = FnNameLayout::build(fs);
+    let model = RenderModel::new(fs);
 
     let include_dir = out.join("include");
     let gloam_dir = include_dir.join("gloam");
@@ -60,14 +64,15 @@ pub fn generate(
 
     let ctx = context! {
         fs                    => fs,
+        m                     => &model,
         stem                  => &stem,
         guard                 => format!("{}_H", stem.to_uppercase()),
         alias                 => args.alias,
         loader                => args.loader,
         external_headers      => args.external_headers,
         preamble              => &preamble,
-        fn_name_offsets       => &names.offsets,
-        fn_name_offset_type   => names.offset_type,
+        fn_name_offsets       => &model.fn_names.offsets,
+        fn_name_offset_type   => model.fn_names.offset_type,
     };
 
     // The loader's .h/.c derive from every contributing source.
@@ -115,43 +120,6 @@ fn normalize_eof(mut rendered: String) -> String {
     rendered.truncate(rendered.trim_end_matches('\n').len());
     rendered.push('\n');
     rendered
-}
-
-// ---------------------------------------------------------------------------
-// Function name blob layout
-// ---------------------------------------------------------------------------
-
-/// Pre-computed function name string blob layout.
-///
-/// Each command name is stored as a NUL-terminated string in a single
-/// contiguous char array, with a parallel offset table for O(1) indexing.
-/// This avoids one pointer + relocation per command (~30 bytes/command on
-/// PIC builds).
-struct FnNameLayout {
-    /// Byte offset of each command's name within the blob.
-    offsets: Vec<u32>,
-    /// C type for the offset table: "uint16_t" or "uint32_t".
-    offset_type: &'static str,
-}
-
-impl FnNameLayout {
-    fn build(fs: &FeatureSet) -> Self {
-        let mut offsets = Vec::with_capacity(fs.commands.len());
-        let mut pos = 0u32;
-        for cmd in &fs.commands {
-            offsets.push(pos);
-            pos += cmd.name.len() as u32 + 1; // +1 for NUL
-        }
-        let offset_type = if pos <= u16::MAX as u32 {
-            "uint16_t"
-        } else {
-            "uint32_t"
-        };
-        Self {
-            offsets,
-            offset_type,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
