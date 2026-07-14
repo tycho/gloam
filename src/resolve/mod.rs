@@ -74,50 +74,37 @@ pub fn build_feature_sets(
         crate::cli::Generator::Lock(_) => false, // never reached: lock skips resolution
     };
 
-    let mut feature_sets = Vec::new();
-
-    if cli.merge {
+    // Batch the requests: a merged build resolves one feature set per spec
+    // family (all of that spec's requests together); a non-merged build
+    // resolves one feature set per request.  Batch order follows request
+    // order either way (IndexMap keys by first occurrence).
+    let batches: Vec<Vec<ApiRequest>> = if cli.merge {
         let mut by_spec: IndexMap<Spec, Vec<ApiRequest>> = IndexMap::new();
         for req in requests {
             by_spec.entry(req.spec()).or_default().push(req);
         }
-        for (spec, reqs) in &by_spec {
-            let apis: Vec<&str> = reqs.iter().map(|r| r.api.as_str()).collect();
-            let sources = fetch::load_spec(spec.as_str(), &apis, store)?;
-            let raw = parse::parse(&sources, *spec, diag)?;
-            let config = ResolveConfig {
-                ext_filter: &ext_filter,
-                baseline: &baseline,
-                is_merged: true,
-                want_aliases: alias,
-                want_promoted: promoted,
-                want_predecessors: predecessors,
-            };
-            let fs = resolve_feature_set(&raw, reqs, &config, &sources.source_keys)?;
-            feature_sets.push(fs);
-        }
+        by_spec.into_values().collect()
     } else {
-        for req in &requests {
-            let spec = req.spec();
-            let apis = [req.api.as_str()];
-            let sources = fetch::load_spec(spec.as_str(), &apis, store)?;
-            let raw = parse::parse(&sources, spec, diag)?;
-            let config = ResolveConfig {
-                ext_filter: &ext_filter,
-                baseline: &baseline,
-                is_merged: false,
-                want_aliases: alias,
-                want_promoted: promoted,
-                want_predecessors: predecessors,
-            };
-            let fs = resolve_feature_set(
-                &raw,
-                std::slice::from_ref(req),
-                &config,
-                &sources.source_keys,
-            )?;
-            feature_sets.push(fs);
-        }
+        requests.into_iter().map(|req| vec![req]).collect()
+    };
+
+    let config = ResolveConfig {
+        ext_filter: &ext_filter,
+        baseline: &baseline,
+        is_merged: cli.merge,
+        want_aliases: alias,
+        want_promoted: promoted,
+        want_predecessors: predecessors,
+    };
+
+    let mut feature_sets = Vec::new();
+    for batch in &batches {
+        let spec = batch[0].spec();
+        let apis: Vec<&str> = batch.iter().map(|r| r.api.as_str()).collect();
+        let sources = fetch::load_spec(spec.as_str(), &apis, store)?;
+        let raw = parse::parse(&sources, spec, diag)?;
+        let fs = resolve_feature_set(&raw, batch, &config, &sources.source_keys)?;
+        feature_sets.push(fs);
     }
 
     Ok(feature_sets)
