@@ -20,6 +20,8 @@ use crate::resolve::{FeatureSet, FlatEnum, Param, TypeDef};
 /// Per-render precomputed template data.  Exposed to templates as `m`.
 #[derive(Debug, Serialize)]
 pub struct RenderModel {
+    /// C context struct name, e.g. "GloamGLContext", "GloamVulkanContext".
+    pub context_name: String,
     /// Include-category types, grouped by consecutive protection.
     pub include_type_groups: Vec<ProtectedGroup<TypeDef>>,
     /// Non-include types, grouped by consecutive protection.
@@ -83,9 +85,9 @@ impl RenderModel {
                     index: c.index,
                     name: c.name.clone(),
                     short_name: c.short_name.clone(),
-                    pfn_type: c.pfn_type.clone(),
+                    pfn_type: pfn_type_name(fs.spec, &c.name),
                     return_type: c.return_type.clone(),
-                    params_str: c.params_str.clone(),
+                    params_str: params_str(&c.params),
                     params: c.params.clone(),
                 },
             )
@@ -102,11 +104,12 @@ impl RenderModel {
             .map(|c| BootstrapCmd {
                 name: c.name.clone(),
                 short_name: c.short_name.clone(),
-                pfn_type: c.pfn_type.clone(),
+                pfn_type: pfn_type_name(fs.spec, &c.name),
             })
             .collect();
 
         Self {
+            context_name: fs.spec.context_name(),
             include_type_groups,
             type_groups,
             ext_guard_groups,
@@ -116,6 +119,47 @@ impl RenderModel {
             fn_names: FnNameLayout::build(fs),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// C naming policy
+// ---------------------------------------------------------------------------
+
+/// PFN typedef name for a command: `PFN_vkFoo` for Vulkan, `PFNGLFOOPROC`
+/// for the GL family (the lowercase api prefix is stripped before
+/// uppercasing so we don't get PFNGLGLFOOPROC).
+fn pfn_type_name(spec: Spec, cmd_name: &str) -> String {
+    if spec == Spec::Vk {
+        format!("PFN_{cmd_name}")
+    } else {
+        let stem = cmd_name
+            .strip_prefix(spec.name_prefix())
+            .unwrap_or(cmd_name);
+        format!("{}{}PROC", spec.pfn_prefix(), stem.to_uppercase())
+    }
+}
+
+/// C parameter list text for PFN typedefs and prototypes (empty → "void").
+fn params_str(params: &[Param]) -> String {
+    if params.is_empty() {
+        return "void".to_string();
+    }
+    params
+        .iter()
+        .map(|p| {
+            if p.name.is_empty() {
+                p.type_raw.clone()
+            } else if p.type_raw.trim_end().ends_with(']') {
+                // Array param: type_raw already contains the name and
+                // array suffix, e.g. "float blendConstants[4]".
+                // Emit verbatim — don't append the name again.
+                p.type_raw.trim().to_string()
+            } else {
+                format!("{} {}", p.type_raw, p.name)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +190,61 @@ fn bootstrap_names(spec: Spec) -> &'static [&'static str] {
         // Vulkan bootstraps through GetInstanceProcAddr, spelled out directly
         // in the template — no name-table lookups.
         Spec::Vk => &[],
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pfn_type_vulkan_keeps_command_case() {
+        assert_eq!(
+            pfn_type_name(Spec::Vk, "vkCreateInstance"),
+            "PFN_vkCreateInstance"
+        );
+    }
+
+    #[test]
+    fn pfn_type_gl_family_strips_prefix_before_uppercasing() {
+        assert_eq!(pfn_type_name(Spec::Gl, "glCullFace"), "PFNGLCULLFACEPROC");
+        assert_eq!(
+            pfn_type_name(Spec::Glx, "glXQueryVersion"),
+            "PFNGLXQUERYVERSIONPROC"
+        );
+    }
+
+    fn param(type_raw: &str, name: &str) -> Param {
+        Param {
+            type_raw: type_raw.to_string(),
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn params_str_empty_is_void() {
+        assert_eq!(params_str(&[]), "void");
+    }
+
+    #[test]
+    fn params_str_joins_type_and_name() {
+        assert_eq!(
+            params_str(&[param("GLenum", "mode"), param("const GLuint *", "ids")]),
+            "GLenum mode, const GLuint * ids"
+        );
+    }
+
+    #[test]
+    fn params_str_array_param_emitted_verbatim() {
+        // type_raw already carries the name and array suffix.
+        assert_eq!(
+            params_str(&[param("float blendConstants[4]", "blendConstants")]),
+            "float blendConstants[4]"
+        );
     }
 }
 

@@ -199,7 +199,6 @@ fn resolve_feature_set(
             raw_cmd,
             &scope,
             protect,
-            spec.pfn_prefix,
             spec.name_prefix,
         ));
     }
@@ -295,7 +294,6 @@ fn resolve_feature_set(
         is_merged: config.is_merged,
         is_vulkan: spec.is_vulkan,
         is_gl_family: spec.is_gl_family,
-        context_name: spec.context_name,
         features,
         extensions,
         commands,

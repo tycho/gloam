@@ -381,7 +381,7 @@ typedef {{ cmd.return_type }} (VKAPI_PTR *{{ cmd.pfn_type }})({{ cmd.params_str 
  * Anonymous structs inside the unions are a C11 / GCC extension; they are
  * universally supported on our target compilers.
  */
-typedef struct {{ fs.context_name }} {
+typedef struct {{ m.context_name }} {
     union {
         unsigned char featArray[{{ fs.features | length }}];
         struct {
@@ -448,12 +448,12 @@ typedef struct {{ fs.context_name }} {
     uint8_t  vk_found_instance_exts; /* set once instance extensions enumerated       */
     uint8_t  vk_found_device_exts;   /* set once device extensions enumerated         */
 {% endif -%}
-} {{ fs.context_name }};
+} {{ m.context_name }};
 
 /* Global context instance — a value, not a pointer, so the compiler knows
  * its address is fixed and does not re-load it on every access.
  */
-extern {{ fs.context_name }} gloam_{{ fs.spec_name }}_context;
+extern {{ m.context_name }} gloam_{{ fs.spec_name }}_context;
 
 /* ---- Feature presence macros --------------------------------------------
  * Test whether a versioned feature was detected at load time.

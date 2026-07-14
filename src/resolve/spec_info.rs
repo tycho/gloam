@@ -21,9 +21,7 @@ pub(super) struct SpecInfo {
     pub display_name: &'static str,
     pub is_vulkan: bool,
     pub is_gl_family: bool,
-    pub pfn_prefix: &'static str,
     pub name_prefix: &'static str,
-    pub context_name: String,
 }
 
 impl SpecInfo {
@@ -32,9 +30,7 @@ impl SpecInfo {
             display_name: spec.display(),
             is_vulkan: spec.is_vulkan(),
             is_gl_family: !spec.is_vulkan(),
-            pfn_prefix: spec.pfn_prefix(),
             name_prefix: spec.name_prefix(),
-            context_name: spec.context_name(),
         }
     }
 }
@@ -159,8 +155,7 @@ mod tests {
         let s = SpecInfo::new(Spec::Vk);
         assert!(s.is_vulkan);
         assert!(!s.is_gl_family);
-        assert_eq!(s.context_name, "GloamVulkanContext");
-        assert_eq!(s.pfn_prefix, "PFN_");
+        assert_eq!(s.name_prefix, "vk");
     }
 
     #[test]

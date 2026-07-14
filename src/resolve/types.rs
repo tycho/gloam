@@ -30,9 +30,6 @@ pub struct FeatureSet {
     pub is_merged: bool,
     pub is_vulkan: bool,
     pub is_gl_family: bool,
-    /// C context struct name, e.g. "GloamGLContext", "GloamGLES2Context".
-    /// Precomputed so templates can use it directly without a filter.
-    pub context_name: String,
 
     /// Version features, in ascending version order.
     /// featArray index = position in this Vec.
@@ -129,13 +126,9 @@ pub struct Command {
     pub name: String,
     /// Member name in the context struct e.g. "CullFace"
     pub short_name: String,
-    /// PFN typedef name e.g. "PFNGLCULLFACEPROC"
-    pub pfn_type: String,
     /// C return type text e.g. "void", "const GLubyte *"
     pub return_type: String,
-    /// Formatted parameter list for PFN typedef (empty → "void").
-    pub params_str: String,
-    /// Full params for IntelliSense prototypes.
+    /// Parameters as declared in the spec (raw C type text + name).
     pub params: Vec<Param>,
     /// Vulkan scope name (empty string for non-Vulkan).
     pub scope: String,

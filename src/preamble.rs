@@ -224,7 +224,6 @@ mod tests {
             is_merged: false,
             is_vulkan: false,
             is_gl_family: false,
-            context_name: String::new(),
             features: vec![],
             extensions: vec![],
             commands: vec![],

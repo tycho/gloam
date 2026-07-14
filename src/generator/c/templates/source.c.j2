@@ -84,9 +84,9 @@ static const char * const gloam_vk_lib_names[] = {
 {% endif -%}
 /* ---- Global context (zero-initialised at program startup) ---------------- */
 #ifdef __cplusplus
-{{ fs.context_name }} gloam_{{ fs.spec_name }}_context = {};
+{{ m.context_name }} gloam_{{ fs.spec_name }}_context = {};
 #else
-{{ fs.context_name }} gloam_{{ fs.spec_name }}_context = { 0 };
+{{ m.context_name }} gloam_{{ fs.spec_name }}_context = { 0 };
 #endif
 
 /* ---- Function name table -------------------------------------------------

@@ -20,7 +20,6 @@ pub(super) fn build_command(
     raw: &RawCommand,
     scope: &str,
     protect: Option<String>,
-    pfn_prefix: &str,
     name_prefix: &str,
 ) -> Command {
     let short_name = raw
@@ -28,16 +27,6 @@ pub(super) fn build_command(
         .strip_prefix(name_prefix)
         .unwrap_or(&raw.name)
         .to_string();
-
-    let pfn_type = if pfn_prefix == "PFN_" {
-        // Vulkan: PFN_vkFoo
-        format!("PFN_{}", raw.name)
-    } else {
-        // GL family: PFNGLFOOPROC — strip the lowercase api prefix (e.g. "gl")
-        // before uppercasing so we don't get PFNGLGLFOOPROC.
-        let stem = raw.name.strip_prefix(name_prefix).unwrap_or(&raw.name);
-        format!("{}{}PROC", pfn_prefix, stem.to_uppercase())
-    };
 
     let params: Vec<Param> = raw
         .params
@@ -48,34 +37,11 @@ pub(super) fn build_command(
         })
         .collect();
 
-    let params_str = if params.is_empty() {
-        "void".to_string()
-    } else {
-        params
-            .iter()
-            .map(|p| {
-                if p.name.is_empty() {
-                    p.type_raw.clone()
-                } else if p.type_raw.trim_end().ends_with(']') {
-                    // Array param: type_raw already contains the name and
-                    // array suffix, e.g. "float blendConstants[4]".
-                    // Emit verbatim — don't append the name again.
-                    p.type_raw.trim().to_string()
-                } else {
-                    format!("{} {}", p.type_raw, p.name)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-
     Command {
         index,
         name: raw.name.clone(),
         short_name,
-        pfn_type,
         return_type: raw.return_type.clone(),
-        params_str,
         params,
         scope: scope.to_string(),
         protect,

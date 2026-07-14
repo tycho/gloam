@@ -4,7 +4,7 @@
 -#}
 
 {#- Context struct type name, from the precomputed field on FeatureSet. -#}
-{%- macro ctx_type() -%}{{ fs.context_name }}{%- endmacro -%}
+{%- macro ctx_type() -%}{{ m.context_name }}{%- endmacro -%}
 
 {#- "GloamGLContext *context" with an optional suffix (e.g. ", " for mid-param-list). -#}
 {%- macro ctx_arg(suffix="") -%}
