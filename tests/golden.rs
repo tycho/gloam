@@ -60,6 +60,15 @@ fn assert_preprocessor_balance(name: &str, rel: &str, content: &str) {
     );
 }
 
+/// Structural invariant: generated files end with exactly one newline —
+/// no blank lines before EOF, no missing final newline.
+fn assert_single_trailing_newline(name: &str, rel: &str, content: &str) {
+    assert!(
+        content.ends_with('\n') && !content.ends_with("\n\n"),
+        "[{name}/{rel}] generated file must end with exactly one newline"
+    );
+}
+
 fn assert_matches_golden(name: &str, rel: &str, actual: &str) {
     let path = golden_root().join(name).join(rel);
 
@@ -121,6 +130,9 @@ fn check(name: &str, global_args: &[&str], c_flags: &[&str], stem: &str) {
 
     assert_preprocessor_balance(name, &format!("{stem}.h"), &header);
     assert_preprocessor_balance(name, &format!("{stem}.c"), &source);
+
+    assert_single_trailing_newline(name, &format!("{stem}.h"), &header);
+    assert_single_trailing_newline(name, &format!("{stem}.c"), &source);
 
     assert_matches_golden(name, &format!("{stem}.h"), strip_preamble(&header));
     assert_matches_golden(name, &format!("{stem}.c"), strip_preamble(&source));

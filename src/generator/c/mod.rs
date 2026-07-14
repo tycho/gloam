@@ -74,7 +74,7 @@ pub fn generate(
     let derived_from = fs.source_keys.clone();
     let mut files: Vec<OutputEntry> = Vec::new();
 
-    let header = env.get_template("header.h.j2")?.render(&ctx)?;
+    let header = normalize_eof(env.get_template("header.h.j2")?.render(&ctx)?);
     std::fs::write(gloam_dir.join(format!("{stem}.h")), &header)?;
     files.push(OutputEntry {
         path: format!("include/gloam/{stem}.h"),
@@ -83,7 +83,7 @@ pub fn generate(
         derived_from: derived_from.clone(),
     });
 
-    let source = env.get_template("source.c.j2")?.render(&ctx)?;
+    let source = normalize_eof(env.get_template("source.c.j2")?.render(&ctx)?);
     std::fs::write(src_dir.join(format!("{stem}.c")), &source)?;
     files.push(OutputEntry {
         path: format!("src/{stem}.c"),
@@ -104,6 +104,17 @@ pub fn generate(
     }
 
     Ok(GeneratedTree { pins, files })
+}
+
+/// Rendered files end with exactly one newline.  Template whitespace control
+/// governs the interior, but no single template edit can own the end of the
+/// render: skipped `{% elif %}` branches, loop ends, and the conditional
+/// platform `#endif` each contribute to EOF on different spec paths, so the
+/// invariant is enforced here at the write boundary instead.
+fn normalize_eof(mut rendered: String) -> String {
+    rendered.truncate(rendered.trim_end_matches('\n').len());
+    rendered.push('\n');
+    rendered
 }
 
 // ---------------------------------------------------------------------------
