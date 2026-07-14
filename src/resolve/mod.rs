@@ -4,10 +4,14 @@
 //! with all arrays indexed, range tables built, and alias pairs computed.
 //! This is the bridge between the parser and the code generators.
 //!
-//! The resolution pipeline has three phases:
-//!   1. **Selection** — determine which features and extensions are "in"
-//!   2. **Materialization** — build indexed arrays from selected items
-//!   3. **Grouping** — coalesce items by protection for header emission
+//! The resolution pipeline has two phases, one function each:
+//!   1. **Selection** ([`phase1_select`]) — determine which features and
+//!      extensions are "in" and gather the requirement sets they imply
+//!   2. **Materialization** ([`phase2_materialize`]) — build the indexed
+//!      arrays from the frozen selection
+//!
+//! (Protection grouping for header emission is not a resolve concern — it
+//! lives in the C generator's `RenderModel`.)
 
 mod commands;
 mod enums;
@@ -21,8 +25,7 @@ mod typedefs;
 // Public types — re-exported so external callers use `crate::resolve::FeatureSet` etc.
 pub mod types;
 pub use types::{
-    Command, Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, SelectionReason,
-    SerVersion, TypeDef,
+    Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, SelectionReason, SerVersion, TypeDef,
 };
 
 use std::collections::HashMap;
@@ -35,15 +38,14 @@ use crate::fetch;
 use crate::identity::Spec;
 use crate::ir::RawSpec;
 use crate::parse;
-use crate::parse::commands::infer_vulkan_scope;
 
-use commands::{
-    build_alias_pairs, build_command, build_command_protect_map, optimize_command_order,
-};
+use commands::{build_alias_pairs, materialize_commands};
 use enums::{build_enum_groups, build_flat_enums};
 use pfn::{build_ext_pfn_ranges, build_feature_pfn_ranges};
 use requirements::RequirementCollector;
-use selection::{ExtensionSelection, SelectedExt, select_extensions, select_features};
+use selection::{
+    ExtensionSelection, SelectedExt, SelectedFeature, select_extensions, select_features,
+};
 use spec_info::{
     ResolveConfig, SpecInfo, api_names as request_api_names, ext_short_name, version_short_name,
 };
@@ -128,87 +130,85 @@ fn resolve_feature_set(
     config: &ResolveConfig<'_>,
     xml_source_keys: &[String],
 ) -> Result<FeatureSet> {
-    let spec_kind = raw.spec;
-    let spec = SpecInfo::new(spec_kind);
-    let api_names = request_api_names(requests);
+    let selection = phase1_select(raw, requests, config);
+    phase2_materialize(raw, requests, config, xml_source_keys, selection)
+}
 
-    // ==================================================================
-    // Phase 1: Selection + requirement gathering
-    // ==================================================================
+/// Phase 1 output: which features and extensions are "in", and the frozen
+/// requirement sets they imply.
+struct Selection<'a> {
+    selected_features: Vec<SelectedFeature<'a>>,
+    selected_exts: Vec<SelectedExt<'a>>,
+    excluded_explicit: Vec<String>,
+    excluded_baseline: Vec<String>,
+    reqs: RequirementCollector,
+}
+
+/// Phase 1: selection + requirement gathering.
+///
+/// All `RequirementCollector` mutation happens here — including the Vulkan
+/// type-closure expansion, which only widens `req_types` and needs nothing
+/// from materialization.
+fn phase1_select<'a>(
+    raw: &'a RawSpec,
+    requests: &[ApiRequest],
+    config: &ResolveConfig<'_>,
+) -> Selection<'a> {
+    let api_names = request_api_names(requests);
     let selected_features = select_features(raw, requests);
 
     let mut reqs = RequirementCollector::new();
     reqs.collect_from_features(&selected_features, requests);
 
-    let ext_sel = select_extensions(raw, requests, config, spec_kind, &reqs.per_api_core_cmds);
     let ExtensionSelection {
         selected: selected_exts,
         excluded_explicit,
         excluded_baseline,
-    } = ext_sel;
+    } = select_extensions(raw, requests, config, raw.spec, &reqs.per_api_core_cmds);
 
     reqs.collect_from_extensions(&selected_exts, &api_names);
 
-    // ==================================================================
-    // Phase 2: Materialize indexed arrays
-    // ==================================================================
+    if raw.spec.is_vulkan() {
+        reqs.expand_vulkan_types(raw);
+    }
+
+    Selection {
+        selected_features,
+        selected_exts,
+        excluded_explicit,
+        excluded_baseline,
+        reqs,
+    }
+}
+
+/// Phase 2: materialize the indexed arrays from the frozen selection.
+fn phase2_materialize(
+    raw: &RawSpec,
+    requests: &[ApiRequest],
+    config: &ResolveConfig<'_>,
+    xml_source_keys: &[String],
+    selection: Selection<'_>,
+) -> Result<FeatureSet> {
+    let spec_kind = raw.spec;
+    let spec = SpecInfo::new(spec_kind);
+    let api_names = request_api_names(requests);
+    let Selection {
+        selected_features,
+        selected_exts,
+        excluded_explicit,
+        excluded_baseline,
+        reqs,
+    } = selection;
 
     // -- Commands -------------------------------------------------------
-    let cmd_protect_map = build_command_protect_map(&selected_exts);
-
-    // Extract command name lists from the collector.
-    let core_names = reqs.core_command_names();
-    let ext_names = reqs.ext_command_names();
-
-    let (sorted_core, sorted_ext) = optimize_command_order(
-        &core_names,
-        &ext_names,
+    let commands = materialize_commands(
+        raw,
+        spec_kind,
+        &reqs,
         &selected_features,
         &selected_exts,
         requests,
-    );
-    let optimized_names: Vec<String> = sorted_core.into_iter().chain(sorted_ext).collect();
-    let all_cmd_names: Vec<&str> = optimized_names.iter().map(String::as_str).collect();
-
-    // Vulkan type expansion (needs all_cmd_names).
-    if spec.is_vulkan {
-        reqs.expand_vulkan_types(raw, &all_cmd_names);
-    }
-
-    let mut commands: Vec<Command> = Vec::with_capacity(all_cmd_names.len());
-    for (idx, &cmd_name) in all_cmd_names.iter().enumerate() {
-        // A required command missing from the spec is a hard error, not a
-        // warning: `Command.index` must equal its position in `commands`
-        // (pfnArray, the name blob, and the PFN range tables are all indexed
-        // in lockstep), so skipping an entry would silently desync every
-        // later command and corrupt the generated loader.
-        let raw_cmd = raw.commands.get(cmd_name).ok_or_else(|| {
-            anyhow::anyhow!(
-                "command '{cmd_name}' is required by the selected feature set \
-                 but is not defined in the spec"
-            )
-        })?;
-        let scope = if spec.is_vulkan {
-            infer_vulkan_scope(raw_cmd).c_name().to_string()
-        } else {
-            String::new()
-        };
-        let protect = cmd_protect_map.get(cmd_name).cloned();
-        commands.push(build_command(
-            idx as u16,
-            raw_cmd,
-            &scope,
-            protect,
-            spec.name_prefix,
-        ));
-    }
-    debug_assert!(
-        commands
-            .iter()
-            .enumerate()
-            .all(|(i, c)| c.index as usize == i),
-        "Command.index must equal its position in the commands vec"
-    );
+    )?;
 
     // -- Features -------------------------------------------------------
     let features: Vec<Feature> = selected_features

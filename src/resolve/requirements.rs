@@ -1,12 +1,11 @@
 //! Requirement collection — Phase 1 mutable state.
 //!
 //! `RequirementCollector` owns the 15+ mutable local variables that were
-//! previously spread across `resolve_feature_set`'s flat scope.  It is built,
-//! mutated during Phase 1 (feature + extension requirement gathering), then
-//! borrowed immutably during Phase 2 (materialization).
-//!
-//! The borrow checker enforces the phase boundary: once you stop calling
-//! `&mut self` methods, the collector is frozen.
+//! previously spread across `resolve_feature_set`'s flat scope.  It is built
+//! and mutated entirely inside `phase1_select` (feature + extension
+//! requirement gathering, plus the Vulkan type-closure expansion), then
+//! handed to `phase2_materialize` as part of the immutable `Selection` — the
+//! function boundary is the phase boundary.
 
 use std::collections::{HashMap, HashSet};
 
@@ -141,17 +140,25 @@ impl RequirementCollector {
     /// selected.  This catches member pointer types used inside required
     /// structs but never appearing in any <require><type> block.
     ///
-    /// Also seeds req_types from parameter/return types of all selected
-    /// commands, which catches types only referenced as command parameters.
-    pub fn expand_vulkan_types(&mut self, raw: &RawSpec, all_cmd_names: &[&str]) {
+    /// Also seeds req_types from parameter types of every collected command
+    /// (core and extension), which catches types only referenced as command
+    /// parameters.
+    pub fn expand_vulkan_types(&mut self, raw: &RawSpec) {
         let type_names: HashSet<&str> = raw.types.iter().map(|t| t.name.as_str()).collect();
 
-        // Seed from command parameter types.
-        for &cmd_name in all_cmd_names {
-            if let Some(raw_cmd) = raw.commands.get(cmd_name) {
+        // Seed from command parameter types.  Destructure for disjoint field
+        // borrows: we read the command sets while inserting into req_types.
+        let Self {
+            req_types,
+            req_commands,
+            ext_commands,
+            ..
+        } = self;
+        for cmd_name in req_commands.keys().chain(ext_commands.keys()) {
+            if let Some(raw_cmd) = raw.commands.get(cmd_name.as_str()) {
                 for param in &raw_cmd.params {
                     if !param.type_name.is_empty() {
-                        self.req_types.insert(param.type_name.clone());
+                        req_types.insert(param.type_name.clone());
                     }
                 }
             }

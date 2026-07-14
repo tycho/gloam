@@ -5,17 +5,87 @@
 
 use std::collections::HashMap;
 
-use crate::cli::ApiRequest;
-use crate::ir::{RawCommand, RawSpec};
+use anyhow::Result;
 
+use crate::cli::ApiRequest;
+use crate::identity::Spec;
+use crate::ir::{RawCommand, RawSpec};
+use crate::parse::commands::infer_vulkan_scope;
+
+use super::requirements::RequirementCollector;
 use super::selection::{SelectedExt, SelectedFeature, api_profile_matches};
 use super::types::{AliasPair, Command, Param};
+
+// ---------------------------------------------------------------------------
+// Materialize the indexed command array
+// ---------------------------------------------------------------------------
+
+/// Build the fully-indexed command array: optimize ordering to minimize PFN
+/// range fragmentation, then materialize one `Command` per name.
+pub(super) fn materialize_commands(
+    raw: &RawSpec,
+    spec: Spec,
+    reqs: &RequirementCollector,
+    selected_features: &[SelectedFeature<'_>],
+    selected_exts: &[SelectedExt<'_>],
+    requests: &[ApiRequest],
+) -> Result<Vec<Command>> {
+    let cmd_protect_map = build_command_protect_map(selected_exts);
+
+    let core_names = reqs.core_command_names();
+    let ext_names = reqs.ext_command_names();
+    let (sorted_core, sorted_ext) = optimize_command_order(
+        &core_names,
+        &ext_names,
+        selected_features,
+        selected_exts,
+        requests,
+    );
+    let all_cmd_names: Vec<String> = sorted_core.into_iter().chain(sorted_ext).collect();
+
+    let mut commands: Vec<Command> = Vec::with_capacity(all_cmd_names.len());
+    for (idx, cmd_name) in all_cmd_names.iter().enumerate() {
+        // A required command missing from the spec is a hard error, not a
+        // warning: `Command.index` must equal its position in `commands`
+        // (pfnArray, the name blob, and the PFN range tables are all indexed
+        // in lockstep), so skipping an entry would silently desync every
+        // later command and corrupt the generated loader.
+        let raw_cmd = raw.commands.get(cmd_name.as_str()).ok_or_else(|| {
+            anyhow::anyhow!(
+                "command '{cmd_name}' is required by the selected feature set \
+                 but is not defined in the spec"
+            )
+        })?;
+        let scope = if spec.is_vulkan() {
+            infer_vulkan_scope(raw_cmd).c_name().to_string()
+        } else {
+            String::new()
+        };
+        let protect = cmd_protect_map.get(cmd_name.as_str()).cloned();
+        commands.push(build_command(
+            idx as u16,
+            raw_cmd,
+            &scope,
+            protect,
+            spec.name_prefix(),
+        ));
+    }
+    debug_assert!(
+        commands
+            .iter()
+            .enumerate()
+            .all(|(i, c)| c.index as usize == i),
+        "Command.index must equal its position in the commands vec"
+    );
+
+    Ok(commands)
+}
 
 // ---------------------------------------------------------------------------
 // Build a single Command entry
 // ---------------------------------------------------------------------------
 
-pub(super) fn build_command(
+fn build_command(
     index: u16,
     raw: &RawCommand,
     scope: &str,
