@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/tycho/gloam/compare/0.4.13...0.5.0) - 2026-07-20
+
+### Added
+
+- feat!(provenance): ANGLE sourced from its canonical chromium.googlesource.com repo
+- *(provenance)* multi-endpoint clusters with ordered transport fallback
+- *(provenance)* fetch content via raw.githubusercontent.com
+- *(provenance)* ETag conditional requests for branch-ref resolution
+- source glsl_exts.xml from the gloam-registry repository
+- [**breaking**] drop the tag-derived describe from upstream provenance
+- *(diag)* GLOAM_DEBUG=1 traces network, cache, and resolve activity
+- [**breaking**] require canonical GL profile names (core | compatibility)
+- [**breaking**] standardize generated naming on canonical short API names
+- *(xtask)* add `regen` command for regenerating downstream trees
+- *(generate)* implicit provenance baseline from the output tree's manifest
+
+### Fixed
+
+- *(provenance)* honest hint when bundled content misses in no-fetch builds
+- *(generate)* end generated files with exactly one trailing newline
+- *(provenance)* halve the HEAD TTL to 12h to dodge the daily-CI race
+- *(diag)* endpoint-failover warning respects --quiet
+- *(generate)* emit the GLES1-only extension query for gles1 builds
+- *(parse)* harden extract_base_type and rewrite_line_comments
+- validate manifest schema_version on the --lock contract path
+- *(provenance)* propagate network errors in describe() instead of degrading
+- *(provenance)* verify blob content hashes at every cache and fetch boundary
+- *(resolve)* error out when a required command is missing from the spec
+
+### Other
+
+- *(cargo)* update dependencies
+- *(provenance)* supplemental_keys comment reflects all supported= mixes
+- *(generate)* emit the driver extension query once per body shape
+- NodeExt XML helpers, IndexSet sets, command_line extraction
+- *(ir)* delete dead IR fields and their struct-level dead_code allows
+- *(resolve)* unify build_feature_sets merged/non-merged branches
+- *(resolve)* fixture-built unit tests for selection and ordering
+- *(resolve)* unified Protect type on all resolved items
+- *(resolve)* deduplicate the selection passes' shared derivations
+- *(resolve)* split resolve_feature_set into honest phases
+- *(generate)* grouped views borrow from the FeatureSet flat arrays
+- migrate C naming policy from resolve to the RenderModel
+- *(generate)* precompute bootstrap command lookups in RenderModel
+- *(generate)* move protection grouping into a RenderModel
+- *(resolve)* unify the extension-derived protection builders
+- *(cleanup)* 'cargo fmt' and 'cargo clippy --fix'
+- *(provenance)* run-scoped SourceStore replaces per-call LoadCtx
+- integration coverage for gloam lock and --lock reproduction
+- *(provenance)* stop redundantly re-seeding the bundle on every resolve
+- remove Spec::from_name, dead since RawSpec carries a typed Spec
+- *(templates)* hoist repeated computed names into set variables
+- *(templates)* extract repeated load-path blocks in source.c.j2
+- *(templates)* extract loader Unload/Reset quad into a macro
+- *(templates)* route per-spec signature tails through extra_load_* macros
+- *(templates)* add AND-form group_protect_begin/end guard macros
+- *(templates)* remove dead macros and dead spec-name list tests
+- *(parse)* one malformed-input policy behind a Diag handle
+- replace stringly-typed type categories with a TypeCategory enum
+- [**breaking**] introduce typed Api/Spec identity layer
+- re-bless golden snapshots in the weekly bundle-update PR
+- add golden snapshot tests for generated output
+- *(tests)* extract shared integration-test harness into tests/common
+
 ## [0.4.13](https://github.com/tycho/gloam/compare/0.4.12...0.4.13) - 2026-07-10
 
 ### Added
