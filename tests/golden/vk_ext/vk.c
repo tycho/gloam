@@ -799,26 +799,9 @@ static void gloam_vk_load_global_pfns(GloamVulkanContext *context, PFN_vkGetInst
 }
 
 /* ==========================================================================
- * Per-API sections
+ * Driver extension query (shared across per-API sections)
  * ==========================================================================
  */
-
-/* --------------------------------------------------------------------------
- * API: vk
- * --------------------------------------------------------------------------
- */
-
-/* Extension index subset for vk: extArray indices this API supports. */
-static const uint16_t kExtIdx_vk[] = {
-       0, /* VK_KHR_surface */
-       1, /* VK_KHR_swapchain */
-};
-
-/* Extension PFN range table for vk. */
-static const GloamPfnRange_t kExtPfnRanges_vk[] = {
-    {    1,  137,    9 }, /* VK_KHR_swapchain */
-    {    0,  146,    5 }, /* VK_KHR_surface */
-};
 
 /* Enumerate Vulkan extensions and return a heap-allocated, sorted array of
  * XXH3-64 hashes. Only enumerates scopes not yet cached on the context:
@@ -826,7 +809,7 @@ static const GloamPfnRange_t kExtPfnRanges_vk[] = {
  * extensions are skipped if vk_found_device_exts is set. The caller
  * (find_extensions) uses |= when merging results so bits only accumulate.
  */
-static int gloam_vk_get_extensions_vk(GloamVulkanContext *context,  VkPhysicalDevice physical_device, uint64_t **out_exts, uint32_t *out_num_exts)
+static int gloam_vk_get_extensions(GloamVulkanContext *context,  VkPhysicalDevice physical_device, uint64_t **out_exts, uint32_t *out_num_exts)
 {
     uint32_t inst_count = 0, dev_count = 0, total, i;
     VkExtensionProperties *props = NULL;
@@ -883,6 +866,28 @@ static int gloam_vk_get_extensions_vk(GloamVulkanContext *context,  VkPhysicalDe
     return 1;
 }
 
+/* ==========================================================================
+ * Per-API sections
+ * ==========================================================================
+ */
+
+/* --------------------------------------------------------------------------
+ * API: vk
+ * --------------------------------------------------------------------------
+ */
+
+/* Extension index subset for vk: extArray indices this API supports. */
+static const uint16_t kExtIdx_vk[] = {
+       0, /* VK_KHR_surface */
+       1, /* VK_KHR_swapchain */
+};
+
+/* Extension PFN range table for vk. */
+static const GloamPfnRange_t kExtPfnRanges_vk[] = {
+    {    1,  137,    9 }, /* VK_KHR_swapchain */
+    {    0,  146,    5 }, /* VK_KHR_surface */
+};
+
 /* Search pre-baked kExtHashes_Vulkan against the sorted driver hash list and set
  * extArray flags for every matching extension.
  */
@@ -896,7 +901,7 @@ static int gloam_vk_find_extensions_vk(GloamVulkanContext *context, VkPhysicalDe
         (physical_device == NULL || context->vk_found_device_exts))
         return 1;
 
-    if (!gloam_vk_get_extensions_vk(context, physical_device, &exts, &num_exts))
+    if (!gloam_vk_get_extensions(context, physical_device, &exts, &num_exts))
         return 0;
 
     /* |= so that bits from a previous call (instance-only) are preserved

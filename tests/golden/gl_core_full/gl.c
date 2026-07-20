@@ -942,31 +942,14 @@ static void gloam_load_pfn_range_gl(GloamGLContext *context, GloamLoadFunc getPr
 
 
 /* ==========================================================================
- * Per-API sections
+ * Driver extension query (shared across per-API sections)
  * ==========================================================================
  */
-
-/* --------------------------------------------------------------------------
- * API: gl
- * --------------------------------------------------------------------------
- */
-
-/* Extension index subset for gl: extArray indices this API supports. */
-static const uint16_t kExtIdx_gl[] = {
-       0, /* GL_ARB_sync */
-       1, /* GL_KHR_debug */
-};
-
-/* Extension PFN range table for gl. */
-static const GloamPfnRange_t kExtPfnRanges_gl[] = {
-    {    0,  309,    7 }, /* GL_ARB_sync */
-    {    1,  344,   11 }, /* GL_KHR_debug */
-};
 
 /* Query driver-reported extension names, hash them, and fill *out_exts.
  * Returns 1 on success, 0 on failure. Caller must free(*out_exts).
  */
-static int gloam_gl_get_extensions_gl(GloamGLContext *context, uint64_t **out_exts, uint32_t *out_num_exts)
+static int gloam_gl_get_extensions(GloamGLContext *context, uint64_t **out_exts, uint32_t *out_num_exts)
 {
 #if defined(GL_ES_VERSION_3_0) || defined(GL_VERSION_3_0)
     /* Modern path: glGetIntegerv(GL_NUM_EXTENSIONS) + glGetStringi. */
@@ -1007,6 +990,28 @@ static int gloam_gl_get_extensions_gl(GloamGLContext *context, uint64_t **out_ex
     }
 }
 
+/* ==========================================================================
+ * Per-API sections
+ * ==========================================================================
+ */
+
+/* --------------------------------------------------------------------------
+ * API: gl
+ * --------------------------------------------------------------------------
+ */
+
+/* Extension index subset for gl: extArray indices this API supports. */
+static const uint16_t kExtIdx_gl[] = {
+       0, /* GL_ARB_sync */
+       1, /* GL_KHR_debug */
+};
+
+/* Extension PFN range table for gl. */
+static const GloamPfnRange_t kExtPfnRanges_gl[] = {
+    {    0,  309,    7 }, /* GL_ARB_sync */
+    {    1,  344,   11 }, /* GL_KHR_debug */
+};
+
 /* Search pre-baked kExtHashes_GL against the sorted driver hash list and set
  * extArray flags for every matching extension.
  */
@@ -1015,7 +1020,7 @@ static int gloam_gl_find_extensions_gl(GloamGLContext *context)
     uint64_t *exts = NULL;
     uint32_t  num_exts = 0, i;
 
-    if (!gloam_gl_get_extensions_gl(context, &exts, &num_exts))
+    if (!gloam_gl_get_extensions(context, &exts, &num_exts))
         return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_gl); ++i) {

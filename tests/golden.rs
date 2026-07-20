@@ -173,10 +173,16 @@ fn golden_gl_core_full() {
 
 #[test]
 fn golden_gles1() {
-    // GLES1 exercises the legacy-only (glGetString) extension-query branch.
+    // GLES1 exercises the legacy-only (glGetString) extension-query branch;
+    // the extension keeps that branch emitted (no extensions, no query).
     check(
         "gles1",
-        &["--api", "gles1", "--extensions", ""],
+        &[
+            "--api",
+            "gles1",
+            "--extensions",
+            "GL_OES_framebuffer_object",
+        ],
         &["--loader"],
         "gles1",
     );

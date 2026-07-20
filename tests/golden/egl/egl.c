@@ -309,29 +309,14 @@ static void gloam_load_pfn_range_egl(GloamEGLContext *context, GloamLoadFunc get
 
 
 /* ==========================================================================
- * Per-API sections
+ * Driver extension query (shared across per-API sections)
  * ==========================================================================
  */
-
-/* --------------------------------------------------------------------------
- * API: egl
- * --------------------------------------------------------------------------
- */
-
-/* Extension index subset for egl: extArray indices this API supports. */
-static const uint16_t kExtIdx_egl[] = {
-       0, /* EGL_KHR_debug */
-};
-
-/* Extension PFN range table for egl. */
-static const GloamPfnRange_t kExtPfnRanges_egl[] = {
-    {    0,   44,    3 }, /* EGL_KHR_debug */
-};
 
 /* EGL: concatenate client extensions (EGL_NO_DISPLAY) and display
  * extensions, then hash the combined space-separated list.
  */
-static int gloam_egl_get_extensions_egl(GloamEGLContext *context, EGLDisplay display, uint64_t **out_exts, uint32_t *out_num_exts)
+static int gloam_egl_get_extensions(GloamEGLContext *context, EGLDisplay display, uint64_t **out_exts, uint32_t *out_num_exts)
 {
     const char *client_str, *display_str;
     char *concat = NULL;
@@ -373,6 +358,26 @@ static int gloam_egl_get_extensions_egl(GloamEGLContext *context, EGLDisplay dis
     return result;
 }
 
+/* ==========================================================================
+ * Per-API sections
+ * ==========================================================================
+ */
+
+/* --------------------------------------------------------------------------
+ * API: egl
+ * --------------------------------------------------------------------------
+ */
+
+/* Extension index subset for egl: extArray indices this API supports. */
+static const uint16_t kExtIdx_egl[] = {
+       0, /* EGL_KHR_debug */
+};
+
+/* Extension PFN range table for egl. */
+static const GloamPfnRange_t kExtPfnRanges_egl[] = {
+    {    0,   44,    3 }, /* EGL_KHR_debug */
+};
+
 /* Search pre-baked kExtHashes_EGL against the sorted driver hash list and set
  * extArray flags for every matching extension.
  */
@@ -381,7 +386,7 @@ static int gloam_egl_find_extensions_egl(GloamEGLContext *context, EGLDisplay di
     uint64_t *exts = NULL;
     uint32_t  num_exts = 0, i;
 
-    if (!gloam_egl_get_extensions_egl(context, display, &exts, &num_exts))
+    if (!gloam_egl_get_extensions(context, display, &exts, &num_exts))
         return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_egl); ++i) {

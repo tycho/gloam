@@ -44,6 +44,15 @@ pub struct RenderModel<'a> {
     /// version/extension detection machinery can run (see
     /// [`bootstrap_names`]), in pfnArray order.
     pub bootstrap_cmds: Vec<BootstrapCmd<'a>>,
+    /// True when at least one API other than gles1 selects extensions.  The
+    /// driver extension query has no per-API content — in merged builds the
+    /// per-API copies would be byte-identical — so the template emits one
+    /// shared `gloam_<spec>_get_extensions` serving every such API.
+    pub needs_get_extensions: bool,
+    /// True when the gles1 API selects extensions.  gles1 keeps its own
+    /// `gloam_gl_get_extensions_gles1` variant: ES 1.x has no glGetStringi,
+    /// so its body is the legacy glGetString path only.
+    pub needs_get_extensions_gles1: bool,
     /// Packed function-name blob layout (offsets passed to templates as
     /// separate context keys — the table loops index it by cmd.index).
     #[serde(skip)]
@@ -86,6 +95,14 @@ impl<'a> RenderModel<'a> {
 
         let flat_enum_groups = group_by_protection(fs.flat_enums.iter(), |e| e.protect.clone());
 
+        let api_has_exts = |api: &str| {
+            fs.ext_subset_indices
+                .get(api)
+                .is_some_and(|s| !s.is_empty())
+        };
+        let needs_get_extensions = fs.apis.iter().any(|a| a != "gles1" && api_has_exts(a));
+        let needs_get_extensions_gles1 = fs.apis.iter().any(|a| a == "gles1" && api_has_exts(a));
+
         let names = bootstrap_names(fs.spec);
         let bootstrap_cmds = fs
             .commands
@@ -106,6 +123,8 @@ impl<'a> RenderModel<'a> {
             cmd_pfn_groups,
             flat_enum_groups,
             bootstrap_cmds,
+            needs_get_extensions,
+            needs_get_extensions_gles1,
             fn_names: FnNameLayout::build(fs),
         }
     }

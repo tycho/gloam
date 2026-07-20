@@ -261,6 +261,28 @@ static void gloam_load_pfn_range_wgl(GloamWGLContext *context, GloamLoadFunc get
 
 
 /* ==========================================================================
+ * Driver extension query (shared across per-API sections)
+ * ==========================================================================
+ */
+
+/* WGL: wglGetExtensionsStringARB / wglGetExtensionsStringEXT. */
+static int gloam_wgl_get_extensions(GloamWGLContext *context, HDC hdc, uint64_t **out_exts, uint32_t *out_num_exts)
+{
+    const char *ext_str = NULL;
+
+    if (context->GetExtensionsStringARB)
+        ext_str = (const char *)context->GetExtensionsStringARB(hdc);
+
+    if (!ext_str && context->GetExtensionsStringEXT)
+        ext_str = (const char *)context->GetExtensionsStringEXT();
+
+    if (!ext_str)
+        return 0;
+
+    return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
+}
+
+/* ==========================================================================
  * Per-API sections
  * ==========================================================================
  */
@@ -282,23 +304,6 @@ static const GloamPfnRange_t kExtPfnRanges_wgl[] = {
     {    1,   27,    1 }, /* WGL_EXT_extensions_string */
 };
 
-/* WGL: wglGetExtensionsStringARB / wglGetExtensionsStringEXT. */
-static int gloam_wgl_get_extensions_wgl(GloamWGLContext *context, HDC hdc, uint64_t **out_exts, uint32_t *out_num_exts)
-{
-    const char *ext_str = NULL;
-
-    if (context->GetExtensionsStringARB)
-        ext_str = (const char *)context->GetExtensionsStringARB(hdc);
-
-    if (!ext_str && context->GetExtensionsStringEXT)
-        ext_str = (const char *)context->GetExtensionsStringEXT();
-
-    if (!ext_str)
-        return 0;
-
-    return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
-}
-
 /* Search pre-baked kExtHashes_WGL against the sorted driver hash list and set
  * extArray flags for every matching extension.
  */
@@ -307,7 +312,7 @@ static int gloam_wgl_find_extensions_wgl(GloamWGLContext *context, HDC hdc)
     uint64_t *exts = NULL;
     uint32_t  num_exts = 0, i;
 
-    if (!gloam_wgl_get_extensions_wgl(context, hdc, &exts, &num_exts))
+    if (!gloam_wgl_get_extensions(context, hdc, &exts, &num_exts))
         return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_wgl); ++i) {

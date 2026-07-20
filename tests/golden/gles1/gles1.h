@@ -89,6 +89,14 @@ struct _cl_event;
  * header.
  */
 #define GL_VERSION_ES_CM_1_0 1
+
+/* ---- Extension compile-time guards ---------------------------------------
+ * These mirror the definitions in standard glext.h/gl2ext.h/eglext.h so
+ * that code guarded by e.g. #ifdef GL_ARB_draw_indirect compiles correctly
+ * against this header.
+ */
+#define GL_OES_framebuffer_object 1
+
 /* ---- Constants ----------------------------------------------------------- */
 #define GL_DEPTH_BUFFER_BIT 0x00000100
 #define GL_STENCIL_BUFFER_BIT 0x00000400
@@ -96,6 +104,7 @@ struct _cl_event;
 #define GL_FALSE 0
 #define GL_NO_ERROR 0
 #define GL_ZERO 0
+#define GL_NONE_OES 0
 #define GL_TRUE 1
 #define GL_ONE 1
 #define GL_VERSION_ES_CL_1_0 1 /* Not an API enum. API definition macro for ES 1.0/1.1 headers */
@@ -135,6 +144,7 @@ struct _cl_event;
 #define GL_STACK_OVERFLOW 0x0503
 #define GL_STACK_UNDERFLOW 0x0504
 #define GL_OUT_OF_MEMORY 0x0505
+#define GL_INVALID_FRAMEBUFFER_OPERATION_OES 0x0506
 #define GL_EXP 0x0800
 #define GL_EXP2 0x0801
 #define GL_CW 0x0900
@@ -312,6 +322,8 @@ struct _cl_event;
 #define GL_POLYGON_OFFSET_FILL 0x8037
 #define GL_POLYGON_OFFSET_FACTOR 0x8038
 #define GL_RESCALE_NORMAL 0x803A
+#define GL_RGBA4_OES 0x8056
+#define GL_RGB5_A1_OES 0x8057
 #define GL_TEXTURE_BINDING_2D 0x8069
 #define GL_VERTEX_ARRAY 0x8074
 #define GL_NORMAL_ARRAY 0x8075
@@ -347,6 +359,7 @@ struct _cl_event;
 #define GL_CLAMP_TO_EDGE 0x812F
 #define GL_GENERATE_MIPMAP 0x8191
 #define GL_GENERATE_MIPMAP_HINT 0x8192
+#define GL_DEPTH_COMPONENT16_OES 0x81A5
 #define GL_UNSIGNED_SHORT_5_6_5 0x8363
 #define GL_ALIASED_POINT_SIZE_RANGE 0x846D
 #define GL_ALIASED_LINE_WIDTH_RANGE 0x846E
@@ -386,6 +399,7 @@ struct _cl_event;
 #define GL_CLIENT_ACTIVE_TEXTURE 0x84E1
 #define GL_MAX_TEXTURE_UNITS 0x84E2
 #define GL_SUBTRACT 0x84E7
+#define GL_MAX_RENDERBUFFER_SIZE_OES 0x84E8
 #define GL_COMBINE 0x8570
 #define GL_COMBINE_RGB 0x8571
 #define GL_COMBINE_ALPHA 0x8572
@@ -423,6 +437,33 @@ struct _cl_event;
 #define GL_TEXTURE_COORD_ARRAY_BUFFER_BINDING 0x889A
 #define GL_STATIC_DRAW 0x88E4
 #define GL_DYNAMIC_DRAW 0x88E8
+#define GL_FRAMEBUFFER_BINDING_OES 0x8CA6
+#define GL_RENDERBUFFER_BINDING_OES 0x8CA7
+#define GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE_OES 0x8CD0
+#define GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME_OES 0x8CD1
+#define GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL_OES 0x8CD2
+#define GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE_OES 0x8CD3
+#define GL_FRAMEBUFFER_COMPLETE_OES 0x8CD5
+#define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_OES 0x8CD6
+#define GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_OES 0x8CD7
+#define GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_OES 0x8CD9
+#define GL_FRAMEBUFFER_INCOMPLETE_FORMATS_OES 0x8CDA
+#define GL_FRAMEBUFFER_UNSUPPORTED_OES 0x8CDD
+#define GL_COLOR_ATTACHMENT0_OES 0x8CE0
+#define GL_DEPTH_ATTACHMENT_OES 0x8D00
+#define GL_STENCIL_ATTACHMENT_OES 0x8D20
+#define GL_FRAMEBUFFER_OES 0x8D40
+#define GL_RENDERBUFFER_OES 0x8D41
+#define GL_RENDERBUFFER_WIDTH_OES 0x8D42
+#define GL_RENDERBUFFER_HEIGHT_OES 0x8D43
+#define GL_RENDERBUFFER_INTERNAL_FORMAT_OES 0x8D44
+#define GL_RENDERBUFFER_RED_SIZE_OES 0x8D50
+#define GL_RENDERBUFFER_GREEN_SIZE_OES 0x8D51
+#define GL_RENDERBUFFER_BLUE_SIZE_OES 0x8D52
+#define GL_RENDERBUFFER_ALPHA_SIZE_OES 0x8D53
+#define GL_RENDERBUFFER_DEPTH_SIZE_OES 0x8D54
+#define GL_RENDERBUFFER_STENCIL_SIZE_OES 0x8D55
+#define GL_RGB565_OES 0x8D62
 
 /* ---- Types ----------------------------------------------------------------
  * Emitted in topological dependency order. Consecutive types sharing the
@@ -686,6 +727,21 @@ typedef void (APIENTRYP PFNGLTRANSLATEFPROC)(GLfloat x, GLfloat y, GLfloat z);
 typedef void (APIENTRYP PFNGLTRANSLATEXPROC)(GLfixed x, GLfixed y, GLfixed z);
 typedef void (APIENTRYP PFNGLVERTEXPOINTERPROC)(GLint size, GLenum type, GLsizei stride, const void * pointer);
 typedef void (APIENTRYP PFNGLVIEWPORTPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
+typedef void (APIENTRYP PFNGLBINDFRAMEBUFFEROESPROC)(GLenum target, GLuint framebuffer);
+typedef void (APIENTRYP PFNGLBINDRENDERBUFFEROESPROC)(GLenum target, GLuint renderbuffer);
+typedef GLenum (APIENTRYP PFNGLCHECKFRAMEBUFFERSTATUSOESPROC)(GLenum target);
+typedef void (APIENTRYP PFNGLDELETEFRAMEBUFFERSOESPROC)(GLsizei n, const GLuint * framebuffers);
+typedef void (APIENTRYP PFNGLDELETERENDERBUFFERSOESPROC)(GLsizei n, const GLuint * renderbuffers);
+typedef void (APIENTRYP PFNGLFRAMEBUFFERRENDERBUFFEROESPROC)(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+typedef void (APIENTRYP PFNGLFRAMEBUFFERTEXTURE2DOESPROC)(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+typedef void (APIENTRYP PFNGLGENFRAMEBUFFERSOESPROC)(GLsizei n, GLuint * framebuffers);
+typedef void (APIENTRYP PFNGLGENRENDERBUFFERSOESPROC)(GLsizei n, GLuint * renderbuffers);
+typedef void (APIENTRYP PFNGLGENERATEMIPMAPOESPROC)(GLenum target);
+typedef void (APIENTRYP PFNGLGETFRAMEBUFFERATTACHMENTPARAMETERIVOESPROC)(GLenum target, GLenum attachment, GLenum pname, GLint * params);
+typedef void (APIENTRYP PFNGLGETRENDERBUFFERPARAMETERIVOESPROC)(GLenum target, GLenum pname, GLint * params);
+typedef GLboolean (APIENTRYP PFNGLISFRAMEBUFFEROESPROC)(GLuint framebuffer);
+typedef GLboolean (APIENTRYP PFNGLISRENDERBUFFEROESPROC)(GLuint renderbuffer);
+typedef void (APIENTRYP PFNGLRENDERBUFFERSTORAGEOESPROC)(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
 
 
 /* ---- Context struct ------------------------------------------------------
@@ -707,7 +763,14 @@ typedef struct GloamGLContext {
     };
 
     union {
-        void *pfnArray[144];
+        unsigned char extArray[1];
+        struct {
+        /*    0 */ unsigned char OES_framebuffer_object;
+        };
+    };
+
+    union {
+        void *pfnArray[159];
         struct {
         /*    0 */ PFNGLACTIVETEXTUREPROC ActiveTexture;
         /*    1 */ PFNGLALPHAFUNCPROC AlphaFunc;
@@ -853,6 +916,21 @@ typedef struct GloamGLContext {
         /*  141 */ PFNGLTRANSLATEXPROC Translatex;
         /*  142 */ PFNGLVERTEXPOINTERPROC VertexPointer;
         /*  143 */ PFNGLVIEWPORTPROC Viewport;
+        /*  144 */ PFNGLBINDFRAMEBUFFEROESPROC BindFramebufferOES;
+        /*  145 */ PFNGLBINDRENDERBUFFEROESPROC BindRenderbufferOES;
+        /*  146 */ PFNGLCHECKFRAMEBUFFERSTATUSOESPROC CheckFramebufferStatusOES;
+        /*  147 */ PFNGLDELETEFRAMEBUFFERSOESPROC DeleteFramebuffersOES;
+        /*  148 */ PFNGLDELETERENDERBUFFERSOESPROC DeleteRenderbuffersOES;
+        /*  149 */ PFNGLFRAMEBUFFERRENDERBUFFEROESPROC FramebufferRenderbufferOES;
+        /*  150 */ PFNGLFRAMEBUFFERTEXTURE2DOESPROC FramebufferTexture2DOES;
+        /*  151 */ PFNGLGENFRAMEBUFFERSOESPROC GenFramebuffersOES;
+        /*  152 */ PFNGLGENRENDERBUFFERSOESPROC GenRenderbuffersOES;
+        /*  153 */ PFNGLGENERATEMIPMAPOESPROC GenerateMipmapOES;
+        /*  154 */ PFNGLGETFRAMEBUFFERATTACHMENTPARAMETERIVOESPROC GetFramebufferAttachmentParameterivOES;
+        /*  155 */ PFNGLGETRENDERBUFFERPARAMETERIVOESPROC GetRenderbufferParameterivOES;
+        /*  156 */ PFNGLISFRAMEBUFFEROESPROC IsFramebufferOES;
+        /*  157 */ PFNGLISRENDERBUFFEROESPROC IsRenderbufferOES;
+        /*  158 */ PFNGLRENDERBUFFERSTORAGEOESPROC RenderbufferStorageOES;
         };
     };
 
@@ -881,6 +959,7 @@ extern GloamGLContext gloam_gl_context;
 #define GLOAM_GL_VERSION_ES_CM_1_0 (gloam_gl_context.VERSION_ES_CM_1_0)
 
 /* ---- Extension presence macros ------------------------------------------ */
+#define GLOAM_GL_OES_framebuffer_object (gloam_gl_context.OES_framebuffer_object)
 
 
 /* ---- Dispatch ------------------------------------------------------------ */
@@ -1030,6 +1109,21 @@ void glTranslatef(GLfloat x, GLfloat y, GLfloat z);
 void glTranslatex(GLfixed x, GLfixed y, GLfixed z);
 void glVertexPointer(GLint size, GLenum type, GLsizei stride, const void * pointer);
 void glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
+void glBindFramebufferOES(GLenum target, GLuint framebuffer);
+void glBindRenderbufferOES(GLenum target, GLuint renderbuffer);
+GLenum glCheckFramebufferStatusOES(GLenum target);
+void glDeleteFramebuffersOES(GLsizei n, const GLuint * framebuffers);
+void glDeleteRenderbuffersOES(GLsizei n, const GLuint * renderbuffers);
+void glFramebufferRenderbufferOES(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+void glFramebufferTexture2DOES(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+void glGenFramebuffersOES(GLsizei n, GLuint * framebuffers);
+void glGenRenderbuffersOES(GLsizei n, GLuint * renderbuffers);
+void glGenerateMipmapOES(GLenum target);
+void glGetFramebufferAttachmentParameterivOES(GLenum target, GLenum attachment, GLenum pname, GLint * params);
+void glGetRenderbufferParameterivOES(GLenum target, GLenum pname, GLint * params);
+GLboolean glIsFramebufferOES(GLuint framebuffer);
+GLboolean glIsRenderbufferOES(GLuint renderbuffer);
+void glRenderbufferStorageOES(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
 #else
 #define glActiveTexture (gloam_gl_context.ActiveTexture)
 #define glAlphaFunc (gloam_gl_context.AlphaFunc)
@@ -1175,6 +1269,21 @@ void glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
 #define glTranslatex (gloam_gl_context.Translatex)
 #define glVertexPointer (gloam_gl_context.VertexPointer)
 #define glViewport (gloam_gl_context.Viewport)
+#define glBindFramebufferOES (gloam_gl_context.BindFramebufferOES)
+#define glBindRenderbufferOES (gloam_gl_context.BindRenderbufferOES)
+#define glCheckFramebufferStatusOES (gloam_gl_context.CheckFramebufferStatusOES)
+#define glDeleteFramebuffersOES (gloam_gl_context.DeleteFramebuffersOES)
+#define glDeleteRenderbuffersOES (gloam_gl_context.DeleteRenderbuffersOES)
+#define glFramebufferRenderbufferOES (gloam_gl_context.FramebufferRenderbufferOES)
+#define glFramebufferTexture2DOES (gloam_gl_context.FramebufferTexture2DOES)
+#define glGenFramebuffersOES (gloam_gl_context.GenFramebuffersOES)
+#define glGenRenderbuffersOES (gloam_gl_context.GenRenderbuffersOES)
+#define glGenerateMipmapOES (gloam_gl_context.GenerateMipmapOES)
+#define glGetFramebufferAttachmentParameterivOES (gloam_gl_context.GetFramebufferAttachmentParameterivOES)
+#define glGetRenderbufferParameterivOES (gloam_gl_context.GetRenderbufferParameterivOES)
+#define glIsFramebufferOES (gloam_gl_context.IsFramebufferOES)
+#define glIsRenderbufferOES (gloam_gl_context.IsRenderbufferOES)
+#define glRenderbufferStorageOES (gloam_gl_context.RenderbufferStorageOES)
 #endif /* __INTELLISENSE__ */
 /* ---- API declarations ---------------------------------------------------- */
 

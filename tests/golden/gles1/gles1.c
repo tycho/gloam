@@ -15,6 +15,22 @@
 #include <stdio.h>   /* sscanf          */
 #include <string.h>  /* strlen, strncmp */
 
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64)
+#  ifndef XXH_VECTOR
+#    define XXH_VECTOR XXH_SSE2
+#  endif
+#  include <immintrin.h>
+#elif defined(__aarch64__) || defined(__arm__) || defined(_M_ARM) || defined(_M_ARM64)
+#  ifndef XXH_VECTOR
+#    define XXH_VECTOR XXH_NEON
+#  endif
+#  include <arm_neon.h>
+#endif
+#ifndef GLOAM_EXTERNAL_XXHASH
+#  define XXH_INLINE_ALL
+#  define XXH_NO_STREAM
+#endif
+#include "xxhash.h"
 
 #ifndef GLOAM_IMPL_UTIL_C_
 #define GLOAM_IMPL_UTIL_C_
@@ -50,6 +66,100 @@ typedef struct {
 #endif /* GLOAM_IMPL_UTIL_C_ */
 
 
+#ifndef GLOAM_IMPL_HASHSEARCH_C_
+#define GLOAM_IMPL_HASHSEARCH_C_
+
+/* gloam_sort_hashes — in-place Shellsort on a uint64_t array.
+ *
+ * Ciura (2001) gap sequence.  Gaps larger than n are skipped at runtime so
+ * small arrays (< 10 extensions) take only a couple of passes.  No heap
+ * allocation; code size is ~80 bytes on x86-64.
+ */
+GLOAM_NO_INLINE static void gloam_sort_hashes(uint64_t *a, size_t n)
+{
+    static const size_t kGaps[] = { 701, 301, 132, 57, 23, 10, 4, 1 };
+    size_t gi = 0;
+    if (!a || n < 2) return;
+    /* Skip gaps that are larger than the array. */
+    while (gi < GLOAM_ARRAYSIZE(kGaps) && kGaps[gi] >= n) ++gi;
+    for (; gi < GLOAM_ARRAYSIZE(kGaps); ++gi) {
+        size_t gap = kGaps[gi], i;
+        for (i = gap; i < n; ++i) {
+            uint64_t v = a[i];
+            size_t j = i;
+            while (j >= gap && a[j - gap] > v) {
+                a[j] = a[j - gap];
+                j -= gap;
+            }
+            a[j] = v;
+        }
+    }
+}
+
+/* gloam_hash_search — binary search for `target` in a sorted uint64_t array.
+ * Returns 1 if found, 0 otherwise.
+ */
+GLOAM_NO_INLINE static int gloam_hash_search(const uint64_t *arr, uint32_t size, uint64_t target)
+{
+    int32_t lo = 0, hi = (int32_t)size - 1;
+    while (lo <= hi) {
+        int32_t mid = lo + (hi - lo) / 2;
+        if (arr[mid] == target) return 1;
+        if (arr[mid] < target)  lo = mid + 1;
+        else                    hi = mid - 1;
+    }
+    return 0;
+}
+
+/* gloam_hash_string — hash a NUL-terminated string with XXH3-64.
+ * The same algorithm is used at generator time to pre-bake kExtHashes[],
+ * guaranteeing that driver-reported names and the embedded table match.
+ */
+GLOAM_NO_INLINE static uint64_t gloam_hash_string(const char *str, size_t length)
+{
+    return XXH3_64bits(str, length);
+}
+
+/* ---- Extension string tokenizer ------------------------------------------
+   Two-pass tokenize-and-hash for space-separated extension strings (GL, EGL,
+   GLX, WGL).  First pass counts tokens, second pass hashes them.  Result is
+   sorted for binary search in find_extensions. */
+GLOAM_NO_INLINE static int gloam_hash_ext_string(const char *ext_str, uint64_t **out_exts, uint32_t *out_num_exts)
+{
+    const char *cur, *next;
+    uint64_t *exts = NULL;
+    uint32_t num_exts = 0, j;
+
+    for (j = 0; j < 2; ++j) {
+        num_exts = 0;
+        cur  = ext_str;
+        next = cur + strcspn(cur, " ");
+        while (1) {
+            size_t len;
+            cur += strspn(cur, " ");
+            if (!cur[0])
+                break;
+            len = (size_t)(next - cur);
+            if (exts)
+                exts[num_exts] = gloam_hash_string(cur, len);
+            ++num_exts;
+            cur  = next + strspn(next, " ");
+            next = cur  + strcspn(cur,  " ");
+        }
+        if (!exts) {
+            exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
+            if (!exts)
+                return 0;
+        }
+    }
+
+    gloam_sort_hashes(exts, num_exts);
+    *out_exts     = exts;
+    *out_num_exts = num_exts;
+    return 1;
+}
+#endif /* GLOAM_IMPL_HASHSEARCH_C_ */
+
 
 /* ---- Global context (zero-initialised at program startup) ---------------- */
 #ifdef __cplusplus
@@ -64,7 +174,7 @@ GloamGLContext gloam_gl_context = { 0 };
  * plus one relocation entry (~24 bytes in PIC builds) per command compared to
  * the traditional const char * const [] approach.
  */
-static const uint32_t kFnCount_GL = 144;
+static const uint32_t kFnCount_GL = 159;
 
 static const char kFnNameData_GL[] =
     /*     0 */ "glActiveTexture\0"
@@ -211,6 +321,21 @@ static const char kFnNameData_GL[] =
     /*  1916 */ "glTranslatex\0"
     /*  1929 */ "glVertexPointer\0"
     /*  1945 */ "glViewport\0"
+    /*  1956 */ "glBindFramebufferOES\0"
+    /*  1977 */ "glBindRenderbufferOES\0"
+    /*  1999 */ "glCheckFramebufferStatusOES\0"
+    /*  2027 */ "glDeleteFramebuffersOES\0"
+    /*  2051 */ "glDeleteRenderbuffersOES\0"
+    /*  2076 */ "glFramebufferRenderbufferOES\0"
+    /*  2105 */ "glFramebufferTexture2DOES\0"
+    /*  2131 */ "glGenFramebuffersOES\0"
+    /*  2152 */ "glGenRenderbuffersOES\0"
+    /*  2174 */ "glGenerateMipmapOES\0"
+    /*  2194 */ "glGetFramebufferAttachmentParameterivOES\0"
+    /*  2235 */ "glGetRenderbufferParameterivOES\0"
+    /*  2267 */ "glIsFramebufferOES\0"
+    /*  2286 */ "glIsRenderbufferOES\0"
+    /*  2306 */ "glRenderbufferStorageOES\0"
 ;
 static const uint16_t kFnNameOffsets_GL[] = {
     /*    0 */     0, /* glActiveTexture */
@@ -356,7 +481,28 @@ static const uint16_t kFnNameOffsets_GL[] = {
     /*  140 */  1903, /* glTranslatef */
     /*  141 */  1916, /* glTranslatex */
     /*  142 */  1929, /* glVertexPointer */
-    /*  143 */  1945 /* glViewport */
+    /*  143 */  1945, /* glViewport */
+    /*  144 */  1956, /* glBindFramebufferOES */
+    /*  145 */  1977, /* glBindRenderbufferOES */
+    /*  146 */  1999, /* glCheckFramebufferStatusOES */
+    /*  147 */  2027, /* glDeleteFramebuffersOES */
+    /*  148 */  2051, /* glDeleteRenderbuffersOES */
+    /*  149 */  2076, /* glFramebufferRenderbufferOES */
+    /*  150 */  2105, /* glFramebufferTexture2DOES */
+    /*  151 */  2131, /* glGenFramebuffersOES */
+    /*  152 */  2152, /* glGenRenderbuffersOES */
+    /*  153 */  2174, /* glGenerateMipmapOES */
+    /*  154 */  2194, /* glGetFramebufferAttachmentParameterivOES */
+    /*  155 */  2235, /* glGetRenderbufferParameterivOES */
+    /*  156 */  2267, /* glIsFramebufferOES */
+    /*  157 */  2286, /* glIsRenderbufferOES */
+    /*  158 */  2306 /* glRenderbufferStorageOES */
+};
+/* ---- Extension hash table ------------------------------------------------
+   One XXH3-64 hash per extension, in extArray index order.
+   Pre-baked at generator time with the same algorithm used at load time. */
+static const uint64_t kExtHashes_GL[] = {
+    /*    0 */ 0x524fb8b90ca87839ULL  /* GL_OES_framebuffer_object */
 };
 
 /* ---- Feature PFN range table ---------------------------------------------
@@ -383,6 +529,26 @@ static void gloam_load_pfn_range_gl(GloamGLContext *context, GloamLoadFunc getPr
 
 
 /* ==========================================================================
+ * Driver extension query (shared across per-API sections)
+ * ==========================================================================
+ */
+
+/* GLES 1.x: only glGetString(GL_EXTENSIONS), space-separated. */
+static int gloam_gl_get_extensions_gles1(GloamGLContext *context, uint64_t **out_exts, uint32_t *out_num_exts)
+{
+    const char *ext_str;
+
+    if (!context->GetString)
+        return 0;
+
+    ext_str = (const char *)context->GetString(GL_EXTENSIONS);
+    if (!ext_str)
+        return 0;
+
+    return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
+}
+
+/* ==========================================================================
  * Per-API sections
  * ==========================================================================
  */
@@ -391,6 +557,37 @@ static void gloam_load_pfn_range_gl(GloamGLContext *context, GloamLoadFunc getPr
  * API: gles1
  * --------------------------------------------------------------------------
  */
+
+/* Extension index subset for gles1: extArray indices this API supports. */
+static const uint16_t kExtIdx_gles1[] = {
+       0, /* GL_OES_framebuffer_object */
+};
+
+/* Extension PFN range table for gles1. */
+static const GloamPfnRange_t kExtPfnRanges_gles1[] = {
+    {    0,  144,   15 }, /* GL_OES_framebuffer_object */
+};
+
+/* Search pre-baked kExtHashes_GL against the sorted driver hash list and set
+ * extArray flags for every matching extension.
+ */
+static int gloam_gl_find_extensions_gles1(GloamGLContext *context)
+{
+    uint64_t *exts = NULL;
+    uint32_t  num_exts = 0, i;
+
+    if (!gloam_gl_get_extensions_gles1(context, &exts, &num_exts))
+        return 0;
+
+    for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_gles1); ++i) {
+        const uint16_t extIdx = kExtIdx_gles1[i];
+        context->extArray[extIdx] = (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_GL[extIdx]);
+    }
+
+    free(exts);
+    return 1;
+}
+
 /* Parse the GL_VERSION string and set featArray entries for this API. */
 static int gloam_gl_find_core_gles1(GloamGLContext *context)
 {
@@ -439,6 +636,16 @@ int gloamLoadGLES1Context(GloamGLContext *context, GloamLoadFunc getProcAddr)
     for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_GL); ++i) {
         const GloamPfnRange_t *r = &kFeatPfnRanges_GL[i];
         if (context->featArray[r->extension])
+            gloam_load_pfn_range_gl(context, getProcAddr, r->start, r->count);
+    }
+
+    if (!gloam_gl_find_extensions_gles1(context))
+        return 0;
+
+    /* Load PFNs for each detected extension via the range table. */
+    for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_gles1); ++i) {
+        const GloamPfnRange_t *r = &kExtPfnRanges_gles1[i];
+        if (context->extArray[r->extension])
             gloam_load_pfn_range_gl(context, getProcAddr, r->start, r->count);
     }
 

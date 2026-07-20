@@ -1051,38 +1051,14 @@ GLOAM_NO_INLINE static void gloam_resolve_aliases_gl(GloamGLContext *context)
 }
 
 /* ==========================================================================
- * Per-API sections
+ * Driver extension query (shared across per-API sections)
  * ==========================================================================
  */
-
-/* --------------------------------------------------------------------------
- * API: gl
- * --------------------------------------------------------------------------
- */
-
-/* Extension index subset for gl: extArray indices this API supports. */
-static const uint16_t kExtIdx_gl[] = {
-       0, /* GL_KHR_debug */
-};
-
-/* Extension PFN range table for gl. */
-static const GloamPfnRange_t kExtPfnRanges_gl[] = {
-    {    0,  363,    2 }, /* GL_KHR_debug */
-    {    0,  366,    1 }, /* GL_KHR_debug */
-    {    0,  368,    1 }, /* GL_KHR_debug */
-    {    0,  370,    1 }, /* GL_KHR_debug */
-    {    0,  372,    1 }, /* GL_KHR_debug */
-    {    0,  374,    1 }, /* GL_KHR_debug */
-    {    0,  377,    1 }, /* GL_KHR_debug */
-    {    0,  379,    1 }, /* GL_KHR_debug */
-    {    0,  381,    1 }, /* GL_KHR_debug */
-    {    0,  383,    1 }, /* GL_KHR_debug */
-};
 
 /* Query driver-reported extension names, hash them, and fill *out_exts.
  * Returns 1 on success, 0 on failure. Caller must free(*out_exts).
  */
-static int gloam_gl_get_extensions_gl(GloamGLContext *context, uint64_t **out_exts, uint32_t *out_num_exts)
+static int gloam_gl_get_extensions(GloamGLContext *context, uint64_t **out_exts, uint32_t *out_num_exts)
 {
 #if defined(GL_ES_VERSION_3_0) || defined(GL_VERSION_3_0)
     /* Modern path: glGetIntegerv(GL_NUM_EXTENSIONS) + glGetStringi. */
@@ -1123,6 +1099,35 @@ static int gloam_gl_get_extensions_gl(GloamGLContext *context, uint64_t **out_ex
     }
 }
 
+/* ==========================================================================
+ * Per-API sections
+ * ==========================================================================
+ */
+
+/* --------------------------------------------------------------------------
+ * API: gl
+ * --------------------------------------------------------------------------
+ */
+
+/* Extension index subset for gl: extArray indices this API supports. */
+static const uint16_t kExtIdx_gl[] = {
+       0, /* GL_KHR_debug */
+};
+
+/* Extension PFN range table for gl. */
+static const GloamPfnRange_t kExtPfnRanges_gl[] = {
+    {    0,  363,    2 }, /* GL_KHR_debug */
+    {    0,  366,    1 }, /* GL_KHR_debug */
+    {    0,  368,    1 }, /* GL_KHR_debug */
+    {    0,  370,    1 }, /* GL_KHR_debug */
+    {    0,  372,    1 }, /* GL_KHR_debug */
+    {    0,  374,    1 }, /* GL_KHR_debug */
+    {    0,  377,    1 }, /* GL_KHR_debug */
+    {    0,  379,    1 }, /* GL_KHR_debug */
+    {    0,  381,    1 }, /* GL_KHR_debug */
+    {    0,  383,    1 }, /* GL_KHR_debug */
+};
+
 /* Search pre-baked kExtHashes_GL against the sorted driver hash list and set
  * extArray flags for every matching extension.
  */
@@ -1131,7 +1136,7 @@ static int gloam_gl_find_extensions_gl(GloamGLContext *context)
     uint64_t *exts = NULL;
     uint32_t  num_exts = 0, i;
 
-    if (!gloam_gl_get_extensions_gl(context, &exts, &num_exts))
+    if (!gloam_gl_get_extensions(context, &exts, &num_exts))
         return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_gl); ++i) {
@@ -1250,50 +1255,6 @@ static const GloamPfnRange_t kExtPfnRanges_gles2[] = {
     {    0,  384,    1 }, /* GL_KHR_debug */
 };
 
-/* Query driver-reported extension names, hash them, and fill *out_exts.
- * Returns 1 on success, 0 on failure. Caller must free(*out_exts).
- */
-static int gloam_gl_get_extensions_gles2(GloamGLContext *context, uint64_t **out_exts, uint32_t *out_num_exts)
-{
-#if defined(GL_ES_VERSION_3_0) || defined(GL_VERSION_3_0)
-    /* Modern path: glGetIntegerv(GL_NUM_EXTENSIONS) + glGetStringi. */
-    if (context->GetStringi != NULL && context->GetIntegerv != NULL) {
-        GLint n = 0;
-        uint32_t num_exts, i;
-        uint64_t *exts;
-        context->GetIntegerv(GL_NUM_EXTENSIONS, &n);
-        num_exts = (uint32_t)n;
-        if (num_exts == 0) {
-            *out_exts = NULL;
-            *out_num_exts = 0;
-            return 1;
-        }
-        exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-        if (!exts)
-            return 0;
-        for (i = 0; i < num_exts; ++i) {
-            const char *name = (const char *)context->GetStringi(GL_EXTENSIONS, i);
-            if (name)
-                exts[i] = gloam_hash_string(name, strlen(name));
-        }
-        gloam_sort_hashes(exts, num_exts);
-        *out_exts     = exts;
-        *out_num_exts = num_exts;
-        return 1;
-    }
-#endif
-    /* Legacy path: glGetString(GL_EXTENSIONS) — space-separated string. */
-    {
-        const char *ext_str;
-        if (!context->GetString)
-            return 0;
-        ext_str = (const char *)context->GetString(GL_EXTENSIONS);
-        if (!ext_str)
-            return 0;
-        return gloam_hash_ext_string(ext_str, out_exts, out_num_exts);
-    }
-}
-
 /* Search pre-baked kExtHashes_GL against the sorted driver hash list and set
  * extArray flags for every matching extension.
  */
@@ -1302,7 +1263,7 @@ static int gloam_gl_find_extensions_gles2(GloamGLContext *context)
     uint64_t *exts = NULL;
     uint32_t  num_exts = 0, i;
 
-    if (!gloam_gl_get_extensions_gles2(context, &exts, &num_exts))
+    if (!gloam_gl_get_extensions(context, &exts, &num_exts))
         return 0;
 
     for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_gles2); ++i) {
