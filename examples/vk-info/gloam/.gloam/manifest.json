@@ -1,0 +1,68 @@
+{
+  "schema_version": 2,
+  "gloam": {
+    "version": "0.5.1",
+    "describe": "0.5.1",
+    "commit": "",
+    "command_line": "gloam --api vk=1.3 --extensions VK_KHR_swapchain,VK_KHR_get_physical_device_properties2,VK_EXT_debug_utils,VK_KHR_timeline_semaphore,VK_KHR_synchronization2 --out-path vk-info/gloam c --loader"
+  },
+  "provenance": {
+    "vk.xml": {
+      "repo": "KhronosGroup/Vulkan-Docs",
+      "repo_url": "https://github.com/KhronosGroup/Vulkan-Docs",
+      "path_in_repo": "xml/vk.xml",
+      "commit": "d184375dcc5da2b06ca375a8d7d1f9d21ca64a76",
+      "blob": "107af9f81e0bb9d53f1c26319b35814e1d5c7b52"
+    },
+    "vulkan/vk_platform.h": {
+      "repo": "KhronosGroup/Vulkan-Headers",
+      "repo_url": "https://github.com/KhronosGroup/Vulkan-Headers",
+      "path_in_repo": "include/vulkan/vk_platform.h",
+      "commit": "e3b1eec08173d6b825cd3ac88c885a63b621504a",
+      "blob": "bbe60245d0f6f054782782b4de390193837e569c"
+    },
+    "xxhash.h": {
+      "repo": "Cyan4973/xxHash",
+      "repo_url": "https://github.com/Cyan4973/xxHash",
+      "path_in_repo": "xxhash.h",
+      "commit": "e573d4d2aaeaba0f3e5a0a9a54144a1f2b4b56e7",
+      "blob": "dceb9216aa5ac144172ddab595f98c5b0f80e653"
+    }
+  },
+  "output": [
+    {
+      "path": "include/gloam/vk.h",
+      "blob": "3e95b4624c3bce84b9243bbbde10756c506aa563",
+      "derived_from": [
+        "vk.xml",
+        "vulkan/vk_platform.h",
+        "xxhash.h"
+      ]
+    },
+    {
+      "path": "include/vulkan/vk_platform.h",
+      "blob": "bbe60245d0f6f054782782b4de390193837e569c",
+      "verbatim": true,
+      "derived_from": [
+        "vulkan/vk_platform.h"
+      ]
+    },
+    {
+      "path": "include/xxhash.h",
+      "blob": "dceb9216aa5ac144172ddab595f98c5b0f80e653",
+      "verbatim": true,
+      "derived_from": [
+        "xxhash.h"
+      ]
+    },
+    {
+      "path": "src/vk.c",
+      "blob": "abb01578fb8545ab47c23208c8023275f80fd9df",
+      "derived_from": [
+        "vk.xml",
+        "vulkan/vk_platform.h",
+        "xxhash.h"
+      ]
+    }
+  ]
+}
