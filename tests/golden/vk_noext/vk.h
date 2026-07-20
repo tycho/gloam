@@ -769,7 +769,7 @@ extern "C" {
 #define VK_KHR_OBJECT_REFRESH_EXTENSION_NAME "VK_KHR_object_refresh"
 #define VK_QCOM_TILE_SHADING_SPEC_VERSION 2
 #define VK_QCOM_TILE_SHADING_EXTENSION_NAME "VK_QCOM_tile_shading"
-#define VK_NV_LOW_LATENCY_SPEC_VERSION 1
+#define VK_NV_LOW_LATENCY_SPEC_VERSION 2
 #define VK_NV_LOW_LATENCY_EXTENSION_NAME "VK_NV_low_latency"
 #if defined(VK_USE_PLATFORM_METAL_EXT)
 #define VK_EXT_METAL_OBJECTS_SPEC_VERSION 2
@@ -1567,6 +1567,8 @@ extern "C" {
 #define VK_EXT_EXTENSION_696_EXTENSION_NAME "VK_EXT_extension_696"
 #define VK_NV_EXTENSION_697_SPEC_VERSION 0
 #define VK_NV_EXTENSION_697_EXTENSION_NAME "VK_NV_extension_697"
+#define VK_HUAWEI_EXTENSION_698_SPEC_VERSION 0
+#define VK_HUAWEI_EXTENSION_698_EXTENSION_NAME "VK_HUAWEI_extension_698"
 
 /* ---- Vulkan enum groups -------------------------------------------------- */
 
@@ -5609,6 +5611,7 @@ typedef enum VkSwapchainCreateFlagBitsKHR {
     VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR = 0x0000000000000080 /* Allow use of VK_KHR_present_wait2 with this swapchain */,
     VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_KHR = 0x0000000000000008,
     VK_SWAPCHAIN_CREATE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_BIT_EXT = 0x0000000000000100,
+    VK_SWAPCHAIN_CREATE_RESERVED_10_BIT_HUAWEI = 0x0000000000000400,
     VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_EXT = VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_KHR,
     VK_SWAPCHAIN_CREATE_FLAG_BITS_KHR_MAX_ENUM = 0x7FFFFFFF
 } VkSwapchainCreateFlagBitsKHR;
@@ -8192,7 +8195,7 @@ typedef enum VkNeuralAcceleratorStatisticsModeARM {
  * same platform guard are coalesced into a single #ifdef/#endif block.
  */
 /* Version of this file */
-#define VK_HEADER_VERSION 356
+#define VK_HEADER_VERSION 357
 
 #define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
 
