@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2](https://github.com/tycho/gloam/compare/0.5.1...0.5.2) - 2026-07-24
+
+### Added
+
+- *(examples)* SDL3 GL triangle and headless Vulkan info examples
+
+### Other
+
+- *(provenance)* swap reqwest for ureq (rustls+ring, drop aws-lc)
+
 ## [0.5.1](https://github.com/tycho/gloam/compare/0.5.0...0.5.1) - 2026-07-20
 
 ### Other
