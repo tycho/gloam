@@ -486,7 +486,7 @@ cargo test
 ```
 
 Requires Rust 1.88 or later. The `fetch` feature (enabled by default)
-pulls in `reqwest` for `--fetch` mode; disable with
+pulls in `ureq` for `--fetch` mode; disable with
 `--no-default-features` if not needed.
 
 ## Contributing

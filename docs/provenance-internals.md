@@ -200,8 +200,8 @@ constraint), in WAL mode for safe concurrent access.
 We use `rusqlite` with its `bundled` feature, behind the `fetch` feature.
 Rationale:
 
-- **No *new* toolchain cost.** The `fetch` feature already pulls `reqwest` +
-  `rustls`, whose crypto provider (`ring`/`aws-lc-rs`) compiles C/assembly — so
+- **No *new* toolchain cost.** The `fetch` feature already pulls `ureq` +
+  `rustls`, whose crypto provider (`ring`) compiles C/assembly — so
   `--features fetch` already requires a C compiler. Bundled SQLite adds no new
   category of dependency, only ~10–30s one-time compile and ~1 MB, both
   `fetch`-only. (Default `--no-default-features` builds have neither `fetch` nor

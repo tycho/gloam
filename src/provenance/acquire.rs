@@ -37,12 +37,49 @@ use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
+use ureq::Body;
+use ureq::http::Response;
 
 use super::manifest::git_blob_sha1;
 use super::{Cluster, Endpoint, ResolvedFile, ResolvedRepo};
 
 const API_BASE: &str = "https://api.github.com";
 const RAW_BASE: &str = "https://raw.githubusercontent.com";
+
+/// Upper bound on any response body we read into memory.  vk.xml (~3.3 MiB) is
+/// the largest tracked file today; 32 MiB leaves an order of magnitude of
+/// headroom while still bounding a runaway or hostile response.
+const BODY_LIMIT: u64 = 32 * 1024 * 1024;
+
+/// reqwest's `error_for_status()`, for an agent configured with
+/// `http_status_as_error(false)`: any non-2xx status becomes an error naming
+/// the URL.  Kept separate from body reads so callers can inspect the status
+/// first (the conditional ref path returns early on 304 before reaching here).
+fn ensure_ok(resp: Response<Body>, url: &str) -> Result<Response<Body>> {
+    let status = resp.status();
+    if !status.is_success() {
+        bail!("HTTP {status} from {url}");
+    }
+    Ok(resp)
+}
+
+/// Read a response body as UTF-8 text, capped at [`BODY_LIMIT`].
+fn body_text(mut resp: Response<Body>, url: &str) -> Result<String> {
+    resp.body_mut()
+        .with_config()
+        .limit(BODY_LIMIT)
+        .read_to_string()
+        .with_context(|| format!("body of {url}"))
+}
+
+/// Read a response body as raw bytes, capped at [`BODY_LIMIT`].
+fn body_bytes(mut resp: Response<Body>, url: &str) -> Result<Vec<u8>> {
+    resp.body_mut()
+        .with_config()
+        .limit(BODY_LIMIT)
+        .read_to_vec()
+        .with_context(|| format!("body of {url}"))
+}
 
 /// One cluster resolved at a snapshot: repo provenance plus each requested
 /// file's provenance and content.
@@ -114,7 +151,7 @@ pub(crate) fn parent_dir(path: &str) -> &str {
 /// A thin HTTP client speaking the GitHub REST API / raw-content-host and
 /// Gitiles dialects.
 pub struct Github {
-    client: reqwest::blocking::Client,
+    agent: ureq::Agent,
     token: Option<String>,
     /// GitHub API base URL (overridable in tests to point at a mock server).
     base: String,
@@ -142,12 +179,17 @@ impl Github {
 
     fn build(base: String, raw_base: String) -> Result<Self> {
         let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
-        let client = reqwest::blocking::Client::builder()
+        // We inspect status codes ourselves — notably 304 Not Modified on
+        // conditional ref requests — so ureq must hand back every response
+        // rather than turning non-2xx into an error; `ensure_ok` is our single
+        // `error_for_status()` equivalent.
+        let agent: ureq::Agent = ureq::Agent::config_builder()
             .user_agent(concat!("gloam/", env!("CARGO_PKG_VERSION")))
+            .http_status_as_error(false)
             .build()
-            .context("building HTTP client")?;
+            .into();
         Ok(Self {
-            client,
+            agent,
             token,
             base,
             raw_base,
@@ -157,33 +199,27 @@ impl Github {
     // -- low-level requests --------------------------------------------------
 
     /// GET with GitHub API headers and the auth token (metered API host only).
-    fn get(&self, url: &str) -> Result<reqwest::blocking::Response> {
+    fn get(&self, url: &str) -> Result<Response<Body>> {
         let started = std::time::Instant::now();
         let mut req = self
-            .client
+            .agent
             .get(url)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28");
         if let Some(tok) = &self.token {
-            req = req.bearer_auth(tok);
+            req = req.header("Authorization", format!("Bearer {tok}"));
         }
-        let resp = req.send().with_context(|| format!("GET {url}"))?;
+        let resp = req.call().with_context(|| format!("GET {url}"))?;
         crate::diag::debug(format_args!(
             "HTTP GET {url} -> {} in {}ms",
             resp.status(),
             started.elapsed().as_millis()
         ));
-        let resp = resp
-            .error_for_status()
-            .with_context(|| format!("HTTP error from {url}"))?;
-        Ok(resp)
+        ensure_ok(resp, url)
     }
 
     fn get_json(&self, url: &str) -> Result<Value> {
-        let text = self
-            .get(url)?
-            .text()
-            .with_context(|| format!("body of {url}"))?;
+        let text = body_text(self.get(url)?, url)?;
         serde_json::from_str(&text).with_context(|| format!("parsing JSON from {url}"))
     }
 
@@ -191,29 +227,25 @@ impl Github {
     /// Used for the raw-content host and for every Gitiles request: the API
     /// credential must never be sent cross-host, and no auth of any kind is
     /// sent to Gitiles.
-    fn get_plain(&self, url: &str) -> Result<reqwest::blocking::Response> {
+    fn get_plain(&self, url: &str) -> Result<Response<Body>> {
         let started = std::time::Instant::now();
         let resp = self
-            .client
+            .agent
             .get(url)
-            .send()
+            .call()
             .with_context(|| format!("GET {url}"))?;
         crate::diag::debug(format_args!(
             "HTTP GET {url} -> {} in {}ms",
             resp.status(),
             started.elapsed().as_millis()
         ));
-        resp.error_for_status()
-            .with_context(|| format!("HTTP error from {url}"))
+        ensure_ok(resp, url)
     }
 
     /// GET a Gitiles JSON response: strip the mandatory `)]}'` anti-XSSI
     /// prefix line, then parse.
     fn gitiles_json(&self, url: &str) -> Result<Value> {
-        let text = self
-            .get_plain(url)?
-            .text()
-            .with_context(|| format!("body of {url}"))?;
+        let text = body_text(self.get_plain(url)?, url)?;
         let Some(json) = text.strip_prefix(")]}'") else {
             bail!("Gitiles response from {url} lacks the )]}}' anti-XSSI prefix");
         };
@@ -276,34 +308,36 @@ impl Github {
         let url = format!("{base}/repos/{slug}/git/ref/heads/{branch}");
         let started = std::time::Instant::now();
         let mut req = self
-            .client
+            .agent
             .get(&url)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28");
         if let Some(tok) = &self.token {
-            req = req.bearer_auth(tok);
+            req = req.header("Authorization", format!("Bearer {tok}"));
         }
         if let Some(etag) = etag {
             req = req.header("If-None-Match", etag);
         }
-        let resp = req.send().with_context(|| format!("GET {url}"))?;
+        let resp = req.call().with_context(|| format!("GET {url}"))?;
         crate::diag::debug(format_args!(
             "HTTP GET {url} -> {} in {}ms",
             resp.status(),
             started.elapsed().as_millis()
         ));
-        if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+        // 304 is handled before the non-2xx error check: it is not a failure,
+        // it means the caller's previously derived commit still holds.
+        if resp.status() == ureq::http::StatusCode::NOT_MODIFIED {
             return Ok(HeadRef::NotModified);
         }
+        // Read the ETag off the (still-borrowable) headers before the body is
+        // consumed, so a fresh 200 carries its conditional token forward.
         let new_etag = resp
             .headers()
-            .get(reqwest::header::ETAG)
+            .get(ureq::http::header::ETAG)
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
-        let resp = resp
-            .error_for_status()
-            .with_context(|| format!("HTTP error from {url}"))?;
-        let text = resp.text().with_context(|| format!("body of {url}"))?;
+        let resp = ensure_ok(resp, &url)?;
+        let text = body_text(resp, &url)?;
         let v: Value =
             serde_json::from_str(&text).with_context(|| format!("parsing JSON from {url}"))?;
         let commit = v["object"]["sha"]
@@ -406,10 +440,7 @@ impl Github {
             Endpoint::GitHub { slug } => self.raw_content(slug, commit, path),
             Endpoint::Gitiles { base } => {
                 let url = format!("{base}/+/{commit}/{path}?format=TEXT");
-                let text = self
-                    .get_plain(&url)?
-                    .text()
-                    .with_context(|| format!("body of {url}"))?;
+                let text = body_text(self.get_plain(&url)?, &url)?;
                 // format=TEXT bodies are base64 of the raw file bytes (with
                 // embedded newlines).
                 decode_b64(&text)
@@ -423,11 +454,7 @@ impl Github {
     pub fn raw_content(&self, slug: &str, commit: &str, path: &str) -> Result<Vec<u8>> {
         let raw_base = &self.raw_base;
         let url = format!("{raw_base}/{slug}/{commit}/{path}");
-        Ok(self
-            .get_plain(&url)?
-            .bytes()
-            .with_context(|| format!("body of {url}"))?
-            .to_vec())
+        body_bytes(self.get_plain(&url)?, &url)
     }
 
     /// Fetch a blob's content by its SHA via the GitHub blobs API

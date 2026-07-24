@@ -1,5 +1,5 @@
 //! Deterministic tests for the fetch path (acquisition + cache + engine) that
-//! exercise `reqwest` end-to-end against a local mock server speaking both
+//! exercise `ureq` end-to-end against a local mock server speaking both
 //! endpoint dialects (GitHub and Gitiles) — never the real hosts and never
 //! the production cache file.
 //!
