@@ -14,7 +14,11 @@
 //!   shallow clone / CI       — .git exists but tags may be missing,
 //!                              GIT_DESCRIBE falls back to None
 
+use std::io::Write;
 use std::{env, fs, io, path::Path, path::PathBuf, process::Command};
+
+use flate2::Compression;
+use flate2::write::DeflateEncoder;
 
 /// Run a git command in `repo_dir`.  Using `-C` lets git walk up to find
 /// `.git` naturally and handles gitdir files (worktrees, cargo git checkouts).
@@ -115,9 +119,57 @@ fn opt_str(v: &Option<String>) -> String {
     }
 }
 
+/// Recursively collect every file under `dir` into `out`.
+fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_files(&path, out)?;
+        } else {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// Compress `data` with raw DEFLATE at maximum effort.  This runs once per
+/// build, so ratio matters and speed does not — level 9 is free here.
+fn deflate(data: &[u8]) -> Vec<u8> {
+    let mut enc = DeflateEncoder::new(Vec::new(), Compression::new(9));
+    enc.write_all(data).expect("deflate write");
+    enc.finish().expect("deflate finish")
+}
+
+/// Embed every file under `bundled/` as a raw-DEFLATE blob in OUT_DIR,
+/// mirroring the source layout with a `.deflate` suffix.  `src/bundled.rs`
+/// inflates these at runtime, trading ~6 MiB of uncompressed XML in the binary
+/// for ~0.65 MiB of blobs plus a one-time inflate of only the files used.
+fn emit_bundled_blobs(manifest_dir: &Path) {
+    let bundled_dir = manifest_dir.join("bundled");
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap()).join("bundled");
+
+    // A file added to or removed from bundled/ changes the directory's mtime.
+    println!("cargo:rerun-if-changed={}", bundled_dir.display());
+
+    let mut files = Vec::new();
+    collect_files(&bundled_dir, &mut files).expect("reading bundled/");
+    for src in files {
+        println!("cargo:rerun-if-changed={}", src.display());
+        let rel = src.strip_prefix(&bundled_dir).unwrap();
+        let data = fs::read(&src).expect("reading bundled file");
+        let mut dest = out_dir.join(rel);
+        let name = format!("{}.deflate", dest.file_name().unwrap().to_string_lossy());
+        dest.set_file_name(name);
+        write_if_changed(&dest, &deflate(&data)).expect("writing bundled blob");
+    }
+}
+
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let repo_root = find_repo_root(&manifest_dir);
+
+    // Compress the bundled specs/headers into OUT_DIR for src/bundled.rs.
+    emit_bundled_blobs(&manifest_dir);
 
     // Tell cargo when to re-run.  We must resolve the *real* git directory —
     // when .git is a file (worktrees, `cargo install --git`), the actual HEAD,

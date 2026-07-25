@@ -16,17 +16,19 @@ path           = "src/main.rs"
 
 [features]
 default = ["fetch"]
-fetch   = ["dep:ureq", "dep:flate2", "dep:base64", "dep:rusqlite", "dep:directories"]
+fetch   = ["dep:ureq", "dep:base64", "dep:rusqlite", "dep:directories"]
 
 [dependencies]
 anyhow         = "1"
 base64         = { version = "0.22", optional = true }
 clap           = { version = "4", features = ["derive"] }
 directories    = { version = "6", optional = true }
-# Pulled only to steer ureq's gzip: ureq depends on flate2 with its default
-# miniz_oxide backend; naming flate2 directly with zlib-rs unifies onto the
-# faster pure-Rust zlib-rs backend (no aws-lc, no C).
-flate2         = { version = "1", default-features = false, features = ["zlib-rs"], optional = true }
+# Inflates the DEFLATE-compressed bundled specs/headers embedded by build.rs
+# (always needed — the XML is embedded in every build, fetch or not). The
+# zlib-rs backend is the fastest pure-Rust codec (no aws-lc, no C); it also
+# unifies ureq's own gzip flate2 onto zlib-rs instead of its default
+# miniz_oxide.
+flate2         = { version = "1", default-features = false, features = ["zlib-rs"] }
 indexmap       = { version = "2", features = ["serde"] }
 minijinja      = "2"
 roxmltree      = "0.21"
@@ -38,6 +40,11 @@ sha1           = "0.11"
 # runtime. Replaces reqwest (which dragged in tokio/hyper/aws-lc-sys).
 ureq           = { version = "3", default-features = false, features = ["rustls", "gzip"], optional = true }
 xxhash-rust    = { version = "0.8", features = ["xxh3"] }
+
+[build-dependencies]
+# Compresses the bundled specs/headers into OUT_DIR blobs at build time.
+# Same backend as the runtime dep so both ends agree on raw DEFLATE.
+flate2         = { version = "1", default-features = false, features = ["zlib-rs"] }
 
 [dev-dependencies]
 assert_cmd     = "2"
