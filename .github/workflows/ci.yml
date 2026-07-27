@@ -47,4 +47,4 @@ jobs:
         run: cargo test --release
 
       - name: Check Rust version compatibility
-        run: cargo hack check --rust-version --all-targets
+        run: cargo hack check --rust-version --feature-powerset --all-targets
