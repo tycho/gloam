@@ -95,6 +95,12 @@ pub enum Generator {
     /// every supported upstream source at the current bundle (or, with --fetch,
     /// upstream HEAD).  Reuse it later with --lock for reproducible generation.
     Lock(LockArgs),
+    /// Regenerate existing gloam output trees in place by replaying the
+    /// command line recorded in each tree's .gloam/manifest.json with this
+    /// gloam.  By default each tree is pinned to its recorded provenance, so
+    /// output changes only if gloam itself changed; use --fresh to re-resolve
+    /// sources and advance the tree instead.
+    Regen(RegenArgs),
 }
 
 #[derive(Args, Debug)]
@@ -106,6 +112,24 @@ pub struct LockArgs {
     /// force a full re-snapshot.
     #[arg(long, default_value = "manifest.json")]
     pub out: String,
+}
+
+#[derive(Args, Debug)]
+pub struct RegenArgs {
+    /// What to regenerate: a tree root (a directory containing
+    /// .gloam/manifest.json), a directory to search recursively for trees
+    /// and `gloam lock` snapshots (files named manifest.json), or a manifest
+    /// file itself.  Defaults to the current directory.
+    #[arg(default_value = ".")]
+    pub paths: Vec<std::path::PathBuf>,
+
+    /// Re-resolve upstream sources (bundled, or upstream HEAD if the
+    /// recorded command used --fetch) instead of pinning each tree to its
+    /// recorded provenance.  This is the tree-update workflow; the default
+    /// locked mode is the audit workflow, where a diff shows only the effect
+    /// of gloam code changes.
+    #[arg(long)]
+    pub fresh: bool,
 }
 
 #[derive(Args, Debug)]

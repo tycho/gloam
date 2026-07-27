@@ -72,7 +72,8 @@ pub fn build_feature_sets(
     let alias = match &cli.generator {
         crate::cli::Generator::C(c) => c.alias,
         crate::cli::Generator::Rust(r) => r.alias,
-        crate::cli::Generator::Lock(_) => false, // never reached: lock skips resolution
+        // Never reached: lock skips resolution, regen replays a C/Rust command.
+        crate::cli::Generator::Lock(_) | crate::cli::Generator::Regen(_) => false,
     };
 
     // Batch the requests: a merged build resolves one feature set per spec
