@@ -5,12 +5,13 @@
 
 use std::collections::HashMap;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::cli::ApiRequest;
 use crate::identity::Spec;
 use crate::ir::{RawCommand, RawSpec};
 use crate::parse::commands::infer_vulkan_scope;
+use crate::parse::ctype::TypeRef;
 
 use super::requirements::RequirementCollector;
 use super::selection::{SelectedExt, SelectedFeature, api_profile_matches};
@@ -71,7 +72,7 @@ pub(super) fn materialize_commands(
             &scope,
             protect,
             spec.name_prefix(),
-        ));
+        )?);
     }
     debug_assert!(
         commands
@@ -94,31 +95,51 @@ fn build_command(
     scope: &str,
     protect: Protect,
     name_prefix: &str,
-) -> Command {
+) -> Result<Command> {
     let short_name = raw
         .name
         .strip_prefix(name_prefix)
         .unwrap_or(&raw.name)
         .to_string();
 
+    // Declarator parsing is a hard error: an unparseable type means the spec
+    // uses a construct gloam has never seen, and emitting it as opaque text
+    // would let a non-C backend mistranslate it silently.
+    let return_ty = TypeRef::parse(&raw.return_type).with_context(|| {
+        format!(
+            "parsing return type of command '{}' ('{}')",
+            raw.name, raw.return_type
+        )
+    })?;
+
     let params: Vec<Param> = raw
         .params
         .iter()
-        .map(|p| Param {
-            type_raw: p.type_raw.clone(),
-            name: p.name.clone(),
+        .map(|p| {
+            let ty = TypeRef::parse(&p.type_raw).with_context(|| {
+                format!(
+                    "parsing type of parameter '{}' of command '{}' ('{}')",
+                    p.name, raw.name, p.type_raw
+                )
+            })?;
+            Ok(Param {
+                type_raw: p.type_raw.clone(),
+                ty,
+                name: p.name.clone(),
+            })
         })
-        .collect();
+        .collect::<Result<_>>()?;
 
-    Command {
+    Ok(Command {
         index,
         name: raw.name.clone(),
         short_name,
         return_type: raw.return_type.clone(),
+        return_ty,
         params,
         scope: scope.to_string(),
         protect,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
