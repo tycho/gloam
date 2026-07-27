@@ -27,8 +27,8 @@ mod typedefs;
 // Public types — re-exported so external callers use `crate::resolve::FeatureSet` etc.
 pub mod types;
 pub use types::{
-    Command, Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, Protect, SelectionReason,
-    SerVersion, TypeDef,
+    Command, EnumGroup, Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, Protect,
+    SelectionReason, SerVersion, TypeDef,
 };
 
 use std::collections::HashMap;
