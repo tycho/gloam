@@ -14,6 +14,8 @@
 //! so the output is valid under any edition; the pinned `edition = 2021` is
 //! just a stable default, not load-bearing.
 
+mod vk_types;
+
 use std::fmt::Write as _;
 use std::path::Path;
 

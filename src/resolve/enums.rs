@@ -74,7 +74,7 @@ pub(super) fn build_enum_groups(raw: &RawSpec) -> Vec<EnumGroup> {
 
             EnumGroup {
                 name: g.name.clone(),
-                is_bitmask: false,
+                is_bitmask: g.is_bitmask,
                 bitwidth: g.bitwidth.unwrap_or(32),
                 values: sorted,
             }

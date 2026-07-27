@@ -244,6 +244,9 @@ pub struct RawEnum {
 #[derive(Debug, Clone)]
 pub struct RawEnumGroup {
     pub name: String,
+    /// From `<enums type="bitmask">`: the group's values are combinable bit
+    /// flags (`Vk*FlagBits`), not an exclusive enumeration.
+    pub is_bitmask: bool,
     pub bitwidth: Option<u32>,
     pub values: Vec<RawEnum>,
 }
