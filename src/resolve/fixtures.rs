@@ -123,6 +123,7 @@ pub(super) fn raw_type(
         alias: None,
         bitwidth: None,
         raw_c: raw_c.to_string(),
+        payload: crate::ir::TypePayload::Opaque,
         protect: protect.map(str::to_string),
     }
 }

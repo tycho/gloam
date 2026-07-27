@@ -180,6 +180,12 @@ pub struct TypeDef {
     pub raw_c: String,
     /// Serialized as the XML category string (`"include"`, `"struct"`, ...).
     pub category: crate::ir::TypeCategory,
+    /// Structured view of `raw_c`.  Not serialized: the C templates render
+    /// the raw text; non-C backends print from this (starting RT-4 of the
+    /// type-IR plan — dead until then).
+    #[serde(skip)]
+    #[allow(dead_code)]
+    pub payload: crate::ir::TypePayload,
     /// Platform protection.
     pub protect: Protect,
 }

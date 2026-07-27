@@ -149,8 +149,74 @@ pub struct RawType {
     /// The fully-assembled C text (apientry substituted, name/type sub-elements
     /// inlined). Ready to emit verbatim into a C header.
     pub raw_c: String,
+    /// Structured view of the body, kept alongside the C text.  `raw_c`
+    /// remains the C backend's source of truth; non-C backends print from
+    /// this.  `Opaque` marks bodies with no structured form (includes,
+    /// `#define` aliases, platform forward declarations).
+    pub payload: TypePayload,
     /// Platform protection macro (e.g. "VK_USE_PLATFORM_WIN32_KHR").
     pub protect: Option<String>,
+}
+
+/// Structured body of a `<type>` element.  Built at parse time from the same
+/// XML walk (structs/funcpointers) or text shape (typedefs) that assembles
+/// `raw_c`, so the two views cannot drift.
+///
+/// The C backend never reads this (raw_c is its source of truth); the Rust
+/// backend's type printer becomes the consumer in RT-4 of the type-IR plan.
+/// Until then only the parse-layer corpus test reads the fields, so the
+/// carriers are allowed to be dead in lib builds.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Default)]
+pub enum TypePayload {
+    /// No structured form.  The C backend emits `raw_c` verbatim; a non-C
+    /// backend that needs this type must satisfy it another way (platform
+    /// handle policy) or fail loudly.
+    #[default]
+    Opaque,
+    /// struct/union members (which of the two is `RawType.category`).
+    Members(Vec<RawMember>),
+    /// Function-pointer typedef signature.
+    Funcpointer(RawFnSig),
+    /// One `typedef <decl> <name>;`, possibly split into preprocessor arms.
+    /// A single arm with `condition: None` is unconditional; in a multi-arm
+    /// set, `None` marks the `#else` arm.
+    Typedef(Vec<TypedefArm>),
+    /// Vulkan handle (`VK_DEFINE_HANDLE` / `VK_DEFINE_NON_DISPATCHABLE_HANDLE`).
+    Handle { dispatchable: bool },
+}
+
+/// One struct/union member: the assembled C text (as embedded in `raw_c`,
+/// without the trailing `;`) plus the typed declarator parsed from it.
+#[allow(dead_code)] // read from RT-4 (see TypePayload)
+#[derive(Debug, Clone)]
+pub struct RawMember {
+    pub raw_c: String,
+    pub name: String,
+    pub ty: crate::parse::ctype::TypeRef,
+    /// The `values=` attribute (Vulkan `sType` member defaults), if present.
+    pub values: Option<String>,
+}
+
+/// A function-pointer typedef signature.  The calling convention is a C
+/// emission concern (`raw_c` carries it); non-C backends supply their own.
+#[allow(dead_code)] // read from RT-4 (see TypePayload)
+#[derive(Debug, Clone)]
+pub struct RawFnSig {
+    pub ret: crate::parse::ctype::TypeRef,
+    /// `(name, type)` pairs; empty for `(void)`.
+    pub params: Vec<(String, crate::parse::ctype::TypeRef)>,
+}
+
+/// One arm of a (possibly preprocessor-conditional) typedef.  `ty.decl_name`
+/// is the typedef'd name; the rest of the `TypeRef` is the target type.
+#[allow(dead_code)] // read from RT-4 (see TypePayload)
+#[derive(Debug, Clone)]
+pub struct TypedefArm {
+    /// Raw C preprocessor condition (`defined(__APPLE__)`), `None` for the
+    /// unconditional/`#else` arm.
+    pub condition: Option<String>,
+    pub ty: crate::parse::ctype::TypeRef,
 }
 
 // ---------------------------------------------------------------------------
