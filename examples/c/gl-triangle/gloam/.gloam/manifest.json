@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.5.1",
-    "describe": "0.5.1",
-    "commit": "",
+    "version": "0.5.2",
+    "describe": "0.5.2-5-gb4ad6f5",
+    "commit": "b4ad6f5ad17671253272a5979ad4909afd11496d",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0 --merge --extensions GL_KHR_debug,GL_EXT_texture_filter_anisotropic --out-path gl-triangle/gloam c --alias"
   },
   "provenance": {
@@ -54,7 +54,7 @@
     },
     {
       "path": "include/gloam/gl.h",
-      "blob": "7c1f2268c6d63937139537a8fb6c4c89e0a47c40",
+      "blob": "6fbe20bd3876d2ce121cefe37b388b8d40b9708c",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
@@ -73,7 +73,7 @@
     },
     {
       "path": "src/gl.c",
-      "blob": "6d2a3726f18b39bac13293bcdeb39d7e183bd150",
+      "blob": "9758acd44daa23a5d263c268a912147be250fa31",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",

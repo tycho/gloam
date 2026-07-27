@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.5.1",
-    "describe": "0.5.1",
-    "commit": "",
+    "version": "0.5.2",
+    "describe": "0.5.2-5-gb4ad6f5",
+    "commit": "b4ad6f5ad17671253272a5979ad4909afd11496d",
     "command_line": "gloam --api vk=1.3 --extensions VK_KHR_swapchain,VK_KHR_get_physical_device_properties2,VK_EXT_debug_utils,VK_KHR_timeline_semaphore,VK_KHR_synchronization2 --out-path vk-info/gloam c --loader"
   },
   "provenance": {
@@ -32,7 +32,7 @@
   "output": [
     {
       "path": "include/gloam/vk.h",
-      "blob": "3e95b4624c3bce84b9243bbbde10756c506aa563",
+      "blob": "c5c51ca4c257dab6b5356b2d09abb026a214c603",
       "derived_from": [
         "vk.xml",
         "vulkan/vk_platform.h",
@@ -57,7 +57,7 @@
     },
     {
       "path": "src/vk.c",
-      "blob": "abb01578fb8545ab47c23208c8023275f80fd9df",
+      "blob": "3fb06072fb8a9dc532c4ff6d19e90428d23bc536",
       "derived_from": [
         "vk.xml",
         "vulkan/vk_platform.h",
