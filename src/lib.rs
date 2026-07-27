@@ -16,6 +16,7 @@ mod ir;
 mod parse;
 mod preamble;
 pub mod provenance;
+mod regen;
 mod resolve;
 mod version;
 
@@ -38,9 +39,25 @@ pub fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
+    // `gloam regen` replays the command line recorded in existing output
+    // trees; it never records its own argv, so it branches off before
+    // command-line reconstruction.
+    if matches!(cli.generator, Generator::Regen(_)) {
+        return regen::run(cli);
+    }
+
     let argv: Vec<String> = std::env::args().collect();
     let command_line = reconstruct_command_line(&argv);
+    execute(cli, &command_line)
+}
 
+/// Run one parsed invocation.  `command_line` is the string recorded in
+/// generated preambles and the manifest: for a direct invocation, the
+/// caller's reconstruction of its own argv; under `gloam regen`, the tree's
+/// originally recorded command line, preserved verbatim so regeneration
+/// never rewrites it (its `--out-path` is a historical record — placement is
+/// overridden via `cli.out_path` instead).
+pub(crate) fn execute(cli: Cli, command_line: &str) -> Result<()> {
     // A --lock manifest pins upstream sources to recorded provenance.  Only its
     // `provenance` section is used; everything else is regenerated.  Unlike the
     // best-effort implicit baseline (`read_snapshot`), --lock is a contract, so
@@ -71,7 +88,7 @@ fn run() -> Result<()> {
 
     // `gloam lock`: write a provenance-only snapshot, no loader generation.
     if let Generator::Lock(lock_args) = &cli.generator {
-        return write_lock_snapshot(&store, &command_line, lock_args, diag);
+        return write_lock_snapshot(&store, command_line, lock_args, diag);
     }
 
     diag.info("resolving feature sets...");
@@ -114,17 +131,28 @@ fn run() -> Result<()> {
         Generator::C(c_args) => {
             diag.info("generating C loader...");
             for fs in &feature_sets {
-                let tree = generator::c::generate(fs, c_args, out, &store, &command_line)?;
+                let tree = generator::c::generate(fs, c_args, out, &store, command_line)?;
                 pins.extend(tree.pins);
                 for f in tree.files {
                     files.entry(f.path.clone()).or_insert(f);
                 }
             }
         }
-        Generator::Lock(_) => unreachable!("handled above"),
+        Generator::Rust(rust_args) => {
+            diag.info("generating Rust loader...");
+            // The backend sees all resolved feature sets at once: one crate,
+            // one module file per spec.
+            let tree =
+                generator::rust::generate(&feature_sets, rust_args, out, &store, command_line)?;
+            pins.extend(tree.pins);
+            for f in tree.files {
+                files.entry(f.path.clone()).or_insert(f);
+            }
+        }
+        Generator::Lock(_) | Generator::Regen(_) => unreachable!("handled above"),
     }
 
-    write_manifest(out, &command_line, pins, files)?;
+    write_manifest(out, command_line, pins, files)?;
 
     diag.info("done.");
 

@@ -230,6 +230,7 @@ mod tests {
     fn param(type_raw: &str, name: &str) -> Param {
         Param {
             type_raw: type_raw.to_string(),
+            ty: crate::parse::ctype::TypeRef::parse(type_raw).unwrap(),
             name: name.to_string(),
         }
     }

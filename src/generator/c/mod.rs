@@ -21,13 +21,7 @@ use crate::resolve::FeatureSet;
 use indexmap::IndexMap;
 use model::RenderModel;
 
-/// What one `generate()` call produced: the provenance pins for every source it
-/// used and an output-BOM entry for every file it wrote.  The run loop merges
-/// these across feature sets into `.gloam/manifest.json`.
-pub struct GeneratedTree {
-    pub pins: IndexMap<String, ProvenancePin>,
-    pub files: Vec<OutputEntry>,
-}
+pub use super::GeneratedTree;
 
 // ---------------------------------------------------------------------------
 // Entry point

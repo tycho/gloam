@@ -16,7 +16,7 @@
 //!   git diff tests/golden/     # the delta IS the review artifact
 
 mod common;
-use common::generate;
+use common::{generate, generate_rust};
 
 use std::path::PathBuf;
 
@@ -119,6 +119,43 @@ fn assert_matches_golden(name: &str, rel: &str, actual: &str) {
          If this change is intended (or follows a bundled-spec update), re-bless and review:\n  \
          GLOAM_BLESS=1 cargo test --test golden\n  git diff tests/golden/"
     );
+}
+
+/// Strip the Rust preamble: `//` comment lines (gloam version, provenance
+/// pins) up to the first crate attribute.  Mirrors [`strip_preamble`] for the
+/// line-comment form the Rust backend emits.
+fn strip_rust_preamble(content: &str) -> &str {
+    match content.find("#![") {
+        Some(pos) => &content[pos..],
+        None => content,
+    }
+}
+
+/// Generate one Rust-backend config and snapshot Cargo.toml plus every file
+/// under src/ (the crate-root lib.rs and one module file per spec).
+fn check_rust(name: &str, global_args: &[&str], rust_flags: &[&str]) {
+    let dir = generate_rust(global_args, rust_flags);
+
+    let manifest = common::read_rust_manifest(dir.path());
+    assert_single_trailing_newline(name, "Cargo.toml", &manifest);
+    assert_matches_golden(name, "Cargo.toml", &manifest);
+
+    let src = dir.path().join("src");
+    let mut paths: Vec<_> = std::fs::read_dir(&src)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    paths.sort();
+    assert!(
+        paths.len() >= 2,
+        "[{name}] expected lib.rs + module file(s)"
+    );
+    for p in paths {
+        let content = std::fs::read_to_string(&p).unwrap();
+        let rel = format!("src/{}", p.file_name().unwrap().to_string_lossy());
+        assert_single_trailing_newline(name, &rel, &content);
+        assert_matches_golden(name, &rel, strip_rust_preamble(&content));
+    }
 }
 
 /// Generate one config and snapshot the primary .h/.c pair for `stem`.
@@ -266,5 +303,84 @@ fn golden_vk_external_headers() {
         &["--api", "vk=1.3", "--extensions", ""],
         &["--external-headers"],
         "vk",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rust backend configs — the minimal crate and the flagship merged build
+// with every layer enabled (alias + mx-global), mirroring the C flagship.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn golden_rust_gl_noext() {
+    check_rust(
+        "rust_gl_noext",
+        &["--api", "gl:core=3.3", "--extensions", ""],
+        &[],
+    );
+}
+
+#[test]
+fn golden_rust_merged_gl_gles2() {
+    check_rust(
+        "rust_merged_gl_gles2",
+        &[
+            "--api",
+            "gl:core=3.3,gles2=3.0",
+            "--merge",
+            "--extensions",
+            "GL_KHR_debug",
+        ],
+        &["--alias", "--mx-global"],
+    );
+}
+
+#[test]
+fn golden_rust_egl() {
+    // Full extension set — the production shape (ANGLE selection needs the
+    // client extensions) — pinning EGL_CAST constants, the native-type
+    // platform table, inline structs (EGLClientPixmapHI), and the
+    // client+display extension-string detection path.
+    check_rust("rust_egl", &["--api", "egl"], &["--alias"]);
+}
+
+#[test]
+fn golden_rust_wgl() {
+    // Full extension set, pinning the WGL Rust surface: the windows.h
+    // platform table (GDI struct layouts, DECLARE_HANDLE handle types,
+    // GPU_DEVICE from an inline struct body), i32/u32 constant typing, the
+    // load-all-upfront flow with features-by-PFN-availability, and the
+    // extensions-string detection path (ARB with fallback to EXT).
+    check_rust("rust_wgl", &["--api", "wgl"], &["--alias"]);
+}
+
+#[test]
+fn golden_rust_glx() {
+    // Full extension set, pinning the GLX Rust surface: the Xlib platform
+    // table (XIDs as c_ulong, opaque Display/Screen/XVisualInfo), the XID
+    // typedef family, text-form records incl. multi-declarator members
+    // (GLXPbufferClobberEvent's `int x, y;`) and the GLXEvent union, the
+    // glXQueryVersion + load-all-upfront flow, and string constants
+    // (GLX_EXTENSION_NAME as &CStr).
+    check_rust("rust_glx", &["--api", "glx"], &["--alias"]);
+}
+
+#[test]
+fn golden_rust_vk_ext() {
+    // Pins the Vulkan Rust surface end to end: typed enum groups, handles,
+    // struct/union/bitfield emission, the phased loader, and — via
+    // win32_surface — platform-protected commands (#[cfg(feature)]) plus
+    // the platform-type section.
+    check_rust(
+        "rust_vk_ext",
+        &[
+            "--api",
+            "vk=1.3",
+            "--extensions",
+            "VK_KHR_surface,VK_KHR_swapchain,VK_KHR_win32_surface,\
+             VK_EXT_debug_utils,VK_KHR_acceleration_structure,\
+             VK_KHR_deferred_host_operations,VK_KHR_get_physical_device_properties2",
+        ],
+        &["--alias", "--mx-global"],
     );
 }

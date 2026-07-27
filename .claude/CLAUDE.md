@@ -27,10 +27,11 @@ used throughout for insertion-order preservation. Never introduce
 non-determinism (HashMap iteration order, random seeds, etc.) and minimize
 unnecessary output churn.
 
-**C is the target.** C output is universally compatible — it works in C++
-projects too. The `generator/c/` directory structure allows for future
-backends, but there is no active non-C backend. Focus effort on the
-C generator.
+**C is the primary target.** C output is universally compatible — it works
+in C++ projects too. The Rust backend (`generator/rust/`) covers the same
+five spec families and shares the resolver, so the two backends detect
+extensions identically. The C generator remains the main focus, and new
+resolver/selection features must land in C first.
 
 **Merged output is the primary use case.** `--merge` with GL+GLES2 is how
 the loader is actually used in production (Darwinia runs on desktop GL or

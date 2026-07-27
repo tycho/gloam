@@ -6,9 +6,10 @@
 [crates.io]: https://crates.io/crates/gloam
 
 A loader generator for Vulkan, OpenGL, OpenGL ES, EGL, GLX, and WGL.
-Reads Khronos XML spec files and generates C dispatch code. The gloam
-binary is fully self-contained — XML specs and auxiliary headers are
-embedded at compile time.
+Reads Khronos XML spec files and generates C dispatch code, with a Rust
+backend covering the same APIs. The gloam binary is fully
+self-contained — XML specs and auxiliary headers are embedded at compile
+time.
 
 ## Why gloam?
 
@@ -168,6 +169,17 @@ Commands:
                   (vk_platform.h, vk_video/*) are not bundled in the
                   output directory.
 
+  rust  Generate a Rust loader. Emits a self-contained #![no_std] crate
+        — Cargo.toml plus one src/ module per spec — instead of C
+        sources. See "Rust output" below.
+        --alias   Enable bijective function-pointer alias resolution at
+                  load time (same semantics as the C generator).
+        --mx-global
+                  Also emit a process-global context with free-function
+                  dispatch (gl::DrawArrays(...) after `use gloam_gl as
+                  gl`), the analogue of the C loader's global-context
+                  macros.
+
   lock  Write a provenance-only snapshot manifest (no loader output)
         pinning every supported upstream source — at the current bundle,
         or at upstream HEAD with --fetch. Reuse it later with --lock.
@@ -177,6 +189,19 @@ Commands:
                   all match it keeps its previously recorded
                   commit/describe; delete the file to force a full
                   re-snapshot.
+
+  regen Regenerate existing gloam output trees in place by replaying the
+        command line recorded in each tree's .gloam/manifest.json. Takes
+        any number of paths — a tree root, a directory to search
+        recursively (also finds `gloam lock` snapshots), or a manifest
+        file itself [default: .]. The output path is derived from each
+        manifest's own location, so regeneration works from any working
+        directory. By default every tree is pinned to its recorded
+        provenance, so output changes only if gloam itself changed. See
+        "Regenerating a tree with gloam regen" below.
+        --fresh   Re-resolve sources instead (bundled, or upstream HEAD
+                  if the recorded command used --fetch), advancing the
+                  tree — the update workflow.
 ```
 
 ### Extension selection flags
@@ -253,6 +278,31 @@ same command rewrites the tree only when upstream content it actually uses has
 changed. Unlike an explicit `--lock`, the baseline is best-effort rather than a
 contract: sources missing from the old manifest resolve fresh (advancing their
 whole repo) instead of being refused.
+
+### Regenerating a tree with `gloam regen`
+
+Because every output tree records its own command line, a checked-in tree is
+self-describing — you don't need to remember (or script) the invocation that
+produced it:
+
+```sh
+gloam regen path/to/gloam           # reproduce the tree with this gloam
+gloam regen --fresh path/to/gloam   # advance it to this gloam's bundle
+```
+
+`gloam regen` replays the recorded command with the current gloam. The output
+path is derived from the manifest's own location (the recorded `--out-path`
+was relative to the original invocation's working directory, so it is treated
+as a historical record and re-recorded verbatim), which means regeneration
+works from any directory. A directory argument is searched recursively, so one
+command can regenerate several vendored trees at once; bare `gloam lock`
+snapshots found along the way are re-snapshotted in place.
+
+By default each tree is pinned to its recorded provenance — with an unchanged
+gloam the result is byte-identical, and after upgrading gloam the diff shows
+exactly what the new version changed. `--fresh` re-resolves sources instead
+(the embedded bundle, or upstream HEAD if the recorded command used
+`--fetch`), which is how you pull in new spec content.
 
 ## Generated output
 
@@ -456,6 +506,47 @@ if(UNIX)
     target_link_libraries(myapp PRIVATE dl)
 endif()
 ```
+
+## Rust output
+
+The `rust` subcommand generates the loader as a self-contained Rust crate
+instead of C sources, covering every spec family the C backend does —
+GL/GLES, Vulkan, EGL, WGL, and GLX:
+
+```sh
+gloam --api gl:core=3.3,gles2=3.0 --merge --out-path gloam rust --alias --mx-global
+```
+
+This emits `Cargo.toml` and one `src/` module per requested spec (crate
+name `gloam_<stems>`, e.g. `gloam_gl` or `gloam_gl_vk`) — add it to your
+workspace or reference it by path. The crate is `#![no_std]` with a single
+dependency (`xxhash-rust`, for the same XXH3 extension detection the C
+loader uses; the two backends detect identically). Vulkan crates follow
+the C loader's phased contract (`initialize` → `load_instance` →
+`load_device`, plus the enumeration-driven `discover`) and gate their
+platform-surface commands behind cargo features mirroring the
+`VK_USE_PLATFORM_*` defines; see
+[examples/rust/vk-info](examples/rust/vk-info).
+
+Loading takes a `GetProcAddress`-style closure and returns a context struct
+with an `#[inline]` dispatch method per command plus feature/extension
+presence queries:
+
+```rust
+use gloam_gl::*;
+
+let gl = unsafe { Gl::load_gl(|name| display.get_proc_address(name))? };
+unsafe { gl.Clear(GL_COLOR_BUFFER_BIT) };
+if gl.VERSION_3_3() { /* GL 3.3 core available */ }
+if gl.KHR_debug()   { /* KHR_debug available */ }
+```
+
+With `--mx-global`, the crate also emits a process-global context with
+free-function dispatch — the analogue of the C loader's global-context
+macros. After one `load_gl_global(...)`, every command is a free function
+(`gl::DrawArrays(...)`) with no context threading. See
+[examples/rust/gl-triangle](examples/rust/gl-triangle) for a complete
+winit + glutin application using this mode.
 
 ## Bundled specs
 

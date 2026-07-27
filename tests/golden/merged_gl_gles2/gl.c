@@ -550,25 +550,25 @@ static const char kFnNameData_GL[] =
     /*  6499 */ "glTexStorage3D\0"
     /*  6514 */ "glGetPointerv\0"
     /*  6528 */ "glDebugMessageCallback\0"
-    /*  6551 */ "glDebugMessageCallbackKHR\0"
-    /*  6577 */ "glDebugMessageControl\0"
-    /*  6599 */ "glDebugMessageControlKHR\0"
-    /*  6624 */ "glDebugMessageInsert\0"
-    /*  6645 */ "glDebugMessageInsertKHR\0"
-    /*  6669 */ "glGetDebugMessageLog\0"
-    /*  6690 */ "glGetDebugMessageLogKHR\0"
-    /*  6714 */ "glGetObjectLabel\0"
-    /*  6731 */ "glGetObjectLabelKHR\0"
-    /*  6751 */ "glGetObjectPtrLabel\0"
-    /*  6771 */ "glGetObjectPtrLabelKHR\0"
-    /*  6794 */ "glGetPointervKHR\0"
-    /*  6811 */ "glObjectLabel\0"
-    /*  6825 */ "glObjectLabelKHR\0"
-    /*  6842 */ "glObjectPtrLabel\0"
-    /*  6859 */ "glObjectPtrLabelKHR\0"
-    /*  6879 */ "glPopDebugGroup\0"
-    /*  6895 */ "glPopDebugGroupKHR\0"
-    /*  6914 */ "glPushDebugGroup\0"
+    /*  6551 */ "glDebugMessageControl\0"
+    /*  6573 */ "glDebugMessageInsert\0"
+    /*  6594 */ "glGetDebugMessageLog\0"
+    /*  6615 */ "glGetObjectLabel\0"
+    /*  6632 */ "glGetObjectPtrLabel\0"
+    /*  6652 */ "glObjectLabel\0"
+    /*  6666 */ "glObjectPtrLabel\0"
+    /*  6683 */ "glPopDebugGroup\0"
+    /*  6699 */ "glPushDebugGroup\0"
+    /*  6716 */ "glDebugMessageCallbackKHR\0"
+    /*  6742 */ "glDebugMessageControlKHR\0"
+    /*  6767 */ "glDebugMessageInsertKHR\0"
+    /*  6791 */ "glGetDebugMessageLogKHR\0"
+    /*  6815 */ "glGetObjectLabelKHR\0"
+    /*  6835 */ "glGetObjectPtrLabelKHR\0"
+    /*  6858 */ "glGetPointervKHR\0"
+    /*  6875 */ "glObjectLabelKHR\0"
+    /*  6892 */ "glObjectPtrLabelKHR\0"
+    /*  6912 */ "glPopDebugGroupKHR\0"
     /*  6931 */ "glPushDebugGroupKHR\0"
 ;
 static const uint16_t kFnNameOffsets_GL[] = {
@@ -937,25 +937,25 @@ static const uint16_t kFnNameOffsets_GL[] = {
     /*  362 */  6499, /* glTexStorage3D */
     /*  363 */  6514, /* glGetPointerv */
     /*  364 */  6528, /* glDebugMessageCallback */
-    /*  365 */  6551, /* glDebugMessageCallbackKHR */
-    /*  366 */  6577, /* glDebugMessageControl */
-    /*  367 */  6599, /* glDebugMessageControlKHR */
-    /*  368 */  6624, /* glDebugMessageInsert */
-    /*  369 */  6645, /* glDebugMessageInsertKHR */
-    /*  370 */  6669, /* glGetDebugMessageLog */
-    /*  371 */  6690, /* glGetDebugMessageLogKHR */
-    /*  372 */  6714, /* glGetObjectLabel */
-    /*  373 */  6731, /* glGetObjectLabelKHR */
-    /*  374 */  6751, /* glGetObjectPtrLabel */
-    /*  375 */  6771, /* glGetObjectPtrLabelKHR */
-    /*  376 */  6794, /* glGetPointervKHR */
-    /*  377 */  6811, /* glObjectLabel */
-    /*  378 */  6825, /* glObjectLabelKHR */
-    /*  379 */  6842, /* glObjectPtrLabel */
-    /*  380 */  6859, /* glObjectPtrLabelKHR */
-    /*  381 */  6879, /* glPopDebugGroup */
-    /*  382 */  6895, /* glPopDebugGroupKHR */
-    /*  383 */  6914, /* glPushDebugGroup */
+    /*  365 */  6551, /* glDebugMessageControl */
+    /*  366 */  6573, /* glDebugMessageInsert */
+    /*  367 */  6594, /* glGetDebugMessageLog */
+    /*  368 */  6615, /* glGetObjectLabel */
+    /*  369 */  6632, /* glGetObjectPtrLabel */
+    /*  370 */  6652, /* glObjectLabel */
+    /*  371 */  6666, /* glObjectPtrLabel */
+    /*  372 */  6683, /* glPopDebugGroup */
+    /*  373 */  6699, /* glPushDebugGroup */
+    /*  374 */  6716, /* glDebugMessageCallbackKHR */
+    /*  375 */  6742, /* glDebugMessageControlKHR */
+    /*  376 */  6767, /* glDebugMessageInsertKHR */
+    /*  377 */  6791, /* glGetDebugMessageLogKHR */
+    /*  378 */  6815, /* glGetObjectLabelKHR */
+    /*  379 */  6835, /* glGetObjectPtrLabelKHR */
+    /*  380 */  6858, /* glGetPointervKHR */
+    /*  381 */  6875, /* glObjectLabelKHR */
+    /*  382 */  6892, /* glObjectPtrLabelKHR */
+    /*  383 */  6912, /* glPopDebugGroupKHR */
     /*  384 */  6931 /* glPushDebugGroupKHR */
 };
 /* ---- Extension hash table ------------------------------------------------
@@ -1024,17 +1024,17 @@ static void gloam_load_pfn_range_gl(GloamGLContext *context, GloamLoadFunc getPr
  * consecutive; the resolver processes them in a single forward pass.
  */
 static const GloamAliasPair_t kAliases_GL[] = {
-    {  363,  376 }, /* glGetPointerv and glGetPointervKHR */
-    {  364,  365 }, /* glDebugMessageCallback and glDebugMessageCallbackKHR */
-    {  366,  367 }, /* glDebugMessageControl and glDebugMessageControlKHR */
-    {  368,  369 }, /* glDebugMessageInsert and glDebugMessageInsertKHR */
-    {  370,  371 }, /* glGetDebugMessageLog and glGetDebugMessageLogKHR */
-    {  372,  373 }, /* glGetObjectLabel and glGetObjectLabelKHR */
-    {  374,  375 }, /* glGetObjectPtrLabel and glGetObjectPtrLabelKHR */
-    {  377,  378 }, /* glObjectLabel and glObjectLabelKHR */
-    {  379,  380 }, /* glObjectPtrLabel and glObjectPtrLabelKHR */
-    {  381,  382 }, /* glPopDebugGroup and glPopDebugGroupKHR */
-    {  383,  384 }, /* glPushDebugGroup and glPushDebugGroupKHR */
+    {  363,  380 }, /* glGetPointerv and glGetPointervKHR */
+    {  364,  374 }, /* glDebugMessageCallback and glDebugMessageCallbackKHR */
+    {  365,  375 }, /* glDebugMessageControl and glDebugMessageControlKHR */
+    {  366,  376 }, /* glDebugMessageInsert and glDebugMessageInsertKHR */
+    {  367,  377 }, /* glGetDebugMessageLog and glGetDebugMessageLogKHR */
+    {  368,  378 }, /* glGetObjectLabel and glGetObjectLabelKHR */
+    {  369,  379 }, /* glGetObjectPtrLabel and glGetObjectPtrLabelKHR */
+    {  370,  381 }, /* glObjectLabel and glObjectLabelKHR */
+    {  371,  382 }, /* glObjectPtrLabel and glObjectPtrLabelKHR */
+    {  372,  383 }, /* glPopDebugGroup and glPopDebugGroupKHR */
+    {  373,  384 }, /* glPushDebugGroup and glPushDebugGroupKHR */
 };
 
 GLOAM_NO_INLINE static void gloam_resolve_aliases_gl(GloamGLContext *context)
@@ -1116,16 +1116,7 @@ static const uint16_t kExtIdx_gl[] = {
 
 /* Extension PFN range table for gl. */
 static const GloamPfnRange_t kExtPfnRanges_gl[] = {
-    {    0,  363,    2 }, /* GL_KHR_debug */
-    {    0,  366,    1 }, /* GL_KHR_debug */
-    {    0,  368,    1 }, /* GL_KHR_debug */
-    {    0,  370,    1 }, /* GL_KHR_debug */
-    {    0,  372,    1 }, /* GL_KHR_debug */
-    {    0,  374,    1 }, /* GL_KHR_debug */
-    {    0,  377,    1 }, /* GL_KHR_debug */
-    {    0,  379,    1 }, /* GL_KHR_debug */
-    {    0,  381,    1 }, /* GL_KHR_debug */
-    {    0,  383,    1 }, /* GL_KHR_debug */
+    {    0,  363,   11 }, /* GL_KHR_debug */
 };
 
 /* Search pre-baked kExtHashes_GL against the sorted driver hash list and set
@@ -1243,16 +1234,7 @@ static const uint16_t kExtIdx_gles2[] = {
 
 /* Extension PFN range table for gles2. */
 static const GloamPfnRange_t kExtPfnRanges_gles2[] = {
-    {    0,  365,    1 }, /* GL_KHR_debug */
-    {    0,  367,    1 }, /* GL_KHR_debug */
-    {    0,  369,    1 }, /* GL_KHR_debug */
-    {    0,  371,    1 }, /* GL_KHR_debug */
-    {    0,  373,    1 }, /* GL_KHR_debug */
-    {    0,  375,    2 }, /* GL_KHR_debug */
-    {    0,  378,    1 }, /* GL_KHR_debug */
-    {    0,  380,    1 }, /* GL_KHR_debug */
-    {    0,  382,    1 }, /* GL_KHR_debug */
-    {    0,  384,    1 }, /* GL_KHR_debug */
+    {    0,  374,   11 }, /* GL_KHR_debug */
 };
 
 /* Search pre-baked kExtHashes_GL against the sorted driver hash list and set

@@ -89,10 +89,18 @@ pub struct Cli {
 pub enum Generator {
     /// Generate a C loader.
     C(CArgs),
+    /// Generate a Rust loader.
+    Rust(RustArgs),
     /// Write a provenance-only snapshot manifest (no loader output) pinning
     /// every supported upstream source at the current bundle (or, with --fetch,
     /// upstream HEAD).  Reuse it later with --lock for reproducible generation.
     Lock(LockArgs),
+    /// Regenerate existing gloam output trees in place by replaying the
+    /// command line recorded in each tree's .gloam/manifest.json with this
+    /// gloam.  By default each tree is pinned to its recorded provenance, so
+    /// output changes only if gloam itself changed; use --fresh to re-resolve
+    /// sources and advance the tree instead.
+    Regen(RegenArgs),
 }
 
 #[derive(Args, Debug)]
@@ -104,6 +112,24 @@ pub struct LockArgs {
     /// force a full re-snapshot.
     #[arg(long, default_value = "manifest.json")]
     pub out: String,
+}
+
+#[derive(Args, Debug)]
+pub struct RegenArgs {
+    /// What to regenerate: a tree root (a directory containing
+    /// .gloam/manifest.json), a directory to search recursively for trees
+    /// and `gloam lock` snapshots (files named manifest.json), or a manifest
+    /// file itself.  Defaults to the current directory.
+    #[arg(default_value = ".")]
+    pub paths: Vec<std::path::PathBuf>,
+
+    /// Re-resolve upstream sources (bundled, or upstream HEAD if the
+    /// recorded command used --fetch) instead of pinning each tree to its
+    /// recorded provenance.  This is the tree-update workflow; the default
+    /// locked mode is the audit workflow, where a diff shows only the effect
+    /// of gloam code changes.
+    #[arg(long)]
+    pub fresh: bool,
 }
 
 #[derive(Args, Debug)]
@@ -122,6 +148,26 @@ pub struct CArgs {
     /// and PFN typedefs.  Only meaningful for Vulkan builds.
     #[arg(long)]
     pub external_headers: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct RustArgs {
+    /// Enable bijective function-pointer alias resolution.
+    #[arg(long)]
+    pub alias: bool,
+
+    /// Also emit a process-global context with free-function dispatch
+    /// (`gl::DrawArrays(...)` after `use gloam_gl as gl`), the analogue of
+    /// the C loader's global-context macros.
+    #[arg(long)]
+    pub mx_global: bool,
+
+    /// Also emit `src/bin/layout_probe.rs`, a self-check binary printing the
+    /// size, alignment, and field offsets of every emitted type.  Used by
+    /// gloam's layout-oracle test to cross-check the Rust types against the
+    /// C backend's output with a C compiler; not needed by consumers.
+    #[arg(long)]
+    pub layout_probe: bool,
 }
 
 impl Cli {

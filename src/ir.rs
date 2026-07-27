@@ -149,8 +149,76 @@ pub struct RawType {
     /// The fully-assembled C text (apientry substituted, name/type sub-elements
     /// inlined). Ready to emit verbatim into a C header.
     pub raw_c: String,
+    /// Structured view of the body, kept alongside the C text.  `raw_c`
+    /// remains the C backend's source of truth; non-C backends print from
+    /// this.  `Opaque` marks bodies with no structured form (includes,
+    /// `#define` aliases, platform forward declarations).
+    pub payload: TypePayload,
     /// Platform protection macro (e.g. "VK_USE_PLATFORM_WIN32_KHR").
     pub protect: Option<String>,
+}
+
+/// Structured body of a `<type>` element.  Built at parse time from the same
+/// XML walk (structs/funcpointers) or text shape (typedefs) that assembles
+/// `raw_c`, so the two views cannot drift.
+///
+/// The C backend never reads this (raw_c is its source of truth); the Rust
+/// backend's type printer consumes it.
+#[derive(Debug, Clone, Default)]
+pub enum TypePayload {
+    /// No structured form.  The C backend emits `raw_c` verbatim; a non-C
+    /// backend that needs this type must satisfy it another way (platform
+    /// handle policy) or fail loudly.
+    #[default]
+    Opaque,
+    /// struct/union members (which of the two is `RawType.category`).
+    Members(Vec<RawMember>),
+    /// Function-pointer typedef signature.
+    Funcpointer(RawFnSig),
+    /// One `typedef <decl> <name>;`, possibly split into preprocessor arms.
+    /// A single arm with `condition: None` is unconditional; in a multi-arm
+    /// set, `None` marks the `#else` arm.
+    Typedef(Vec<TypedefArm>),
+    /// Vulkan handle (`VK_DEFINE_HANDLE` / `VK_DEFINE_NON_DISPATCHABLE_HANDLE`).
+    Handle { dispatchable: bool },
+}
+
+/// One struct/union member: the assembled C text (as embedded in `raw_c`,
+/// without the trailing `;`) plus the typed declarator parsed from it.
+#[derive(Debug, Clone)]
+pub struct RawMember {
+    /// The member's exact C declarator spelling.  Emission works from `ty`;
+    /// this keeps the C text recoverable without re-parsing (test-verified
+    /// to agree with `ty`).
+    #[allow(dead_code)]
+    pub raw_c: String,
+    pub name: String,
+    pub ty: crate::parse::ctype::TypeRef,
+    /// The `values=` attribute (Vulkan `sType` member defaults), if present.
+    /// The generated loader deliberately emits no sType defaults (it is a
+    /// loader, not a bindings crate); carried so the structured view stays
+    /// complete.
+    #[allow(dead_code)]
+    pub values: Option<String>,
+}
+
+/// A function-pointer typedef signature.  The calling convention is a C
+/// emission concern (`raw_c` carries it); non-C backends supply their own.
+#[derive(Debug, Clone)]
+pub struct RawFnSig {
+    pub ret: crate::parse::ctype::TypeRef,
+    /// `(name, type)` pairs; empty for `(void)`.
+    pub params: Vec<(String, crate::parse::ctype::TypeRef)>,
+}
+
+/// One arm of a (possibly preprocessor-conditional) typedef.  `ty.decl_name`
+/// is the typedef'd name; the rest of the `TypeRef` is the target type.
+#[derive(Debug, Clone)]
+pub struct TypedefArm {
+    /// Raw C preprocessor condition (`defined(__APPLE__)`), `None` for the
+    /// unconditional/`#else` arm.
+    pub condition: Option<String>,
+    pub ty: crate::parse::ctype::TypeRef,
 }
 
 // ---------------------------------------------------------------------------
@@ -167,12 +235,20 @@ pub struct RawEnum {
     /// This enum is an alias of another enum name.
     pub alias: Option<String>,
     pub comment: String,
+    /// Defined inside a GL `<enums type="bitmask">` block.  Typed backends use
+    /// this to give the constant the bitfield type (e.g. Rust `GLbitfield`);
+    /// the C backend's untyped `#define`s ignore it.  Always false for Vulkan
+    /// (whose bitmask blocks become typed groups, not flat enums).
+    pub is_bitmask: bool,
 }
 
 /// A Vulkan typed enum group (the `<enums type="enum"|"bitmask">` element).
 #[derive(Debug, Clone)]
 pub struct RawEnumGroup {
     pub name: String,
+    /// From `<enums type="bitmask">`: the group's values are combinable bit
+    /// flags (`Vk*FlagBits`), not an exclusive enumeration.
+    pub is_bitmask: bool,
     pub bitwidth: Option<u32>,
     pub values: Vec<RawEnum>,
 }

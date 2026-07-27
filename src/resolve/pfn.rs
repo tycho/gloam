@@ -19,6 +19,7 @@ pub(super) fn build_feature_pfn_ranges(
     features: &[SelectedFeature<'_>],
     feat_entries: &[Feature],
     commands: &[Command],
+    requests: &[crate::cli::ApiRequest],
 ) -> Vec<PfnRange> {
     debug_assert_eq!(
         features.len(),
@@ -39,8 +40,28 @@ pub(super) fn build_feature_pfn_ranges(
     for (sf, feat) in features.iter().zip(feat_entries.iter()) {
         debug_assert_eq!(sf.raw.name, feat.full_name);
 
+        // Require blocks are api/profile-conditional; filter them exactly
+        // like requirement collection and the consumer signatures do, so a
+        // command selected by *another* consumer can't leak into this
+        // feature's ranges through a require block this API/profile excludes
+        // (unfiltered, commands from a profile-excluded block would be
+        // filtered only by the selection — which another consumer may have
+        // satisfied).
+        let profile = requests
+            .iter()
+            .find(|r| r.api == sf.api)
+            .and_then(|r| r.profile.as_deref());
+
         let mut cmd_indices: Vec<u16> = Vec::new();
         for require in &sf.raw.requires {
+            if !api_profile_matches(
+                require.api.as_deref(),
+                require.profile.as_deref(),
+                sf.api.as_str(),
+                profile,
+            ) {
+                continue;
+            }
             for cmd_name in &require.commands {
                 if let Some(&idx) = cmd_index.get(cmd_name.as_str()) {
                     cmd_indices.push(idx);

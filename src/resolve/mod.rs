@@ -27,8 +27,8 @@ mod typedefs;
 // Public types — re-exported so external callers use `crate::resolve::FeatureSet` etc.
 pub mod types;
 pub use types::{
-    Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, Protect, SelectionReason,
-    SerVersion, TypeDef,
+    Command, EnumGroup, Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, Protect,
+    SelectionReason, SerVersion, TypeDef,
 };
 
 use std::collections::HashMap;
@@ -71,7 +71,9 @@ pub fn build_feature_sets(
 
     let alias = match &cli.generator {
         crate::cli::Generator::C(c) => c.alias,
-        crate::cli::Generator::Lock(_) => false, // never reached: lock skips resolution
+        crate::cli::Generator::Rust(r) => r.alias,
+        // Never reached: lock skips resolution, regen replays a C/Rust command.
+        crate::cli::Generator::Lock(_) | crate::cli::Generator::Regen(_) => false,
     };
 
     // Batch the requests: a merged build resolves one feature set per spec
@@ -237,7 +239,8 @@ fn phase2_materialize(
         .collect();
 
     // -- PFN ranges ------------------------------------------------------
-    let feature_pfn_ranges = build_feature_pfn_ranges(&selected_features, &features, &commands);
+    let feature_pfn_ranges =
+        build_feature_pfn_ranges(&selected_features, &features, &commands, requests);
     let mut ext_pfn_ranges: IndexMap<String, Vec<PfnRange>> = IndexMap::new();
     let mut ext_subset_indices: IndexMap<String, Vec<u16>> = IndexMap::new();
 

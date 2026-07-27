@@ -5,12 +5,13 @@
 
 use std::collections::HashMap;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::cli::ApiRequest;
-use crate::identity::Spec;
+use crate::identity::{Spec, canonical_api_name};
 use crate::ir::{RawCommand, RawSpec};
 use crate::parse::commands::infer_vulkan_scope;
+use crate::parse::ctype::TypeRef;
 
 use super::requirements::RequirementCollector;
 use super::selection::{SelectedExt, SelectedFeature, api_profile_matches};
@@ -71,7 +72,7 @@ pub(super) fn materialize_commands(
             &scope,
             protect,
             spec.name_prefix(),
-        ));
+        )?);
     }
     debug_assert!(
         commands
@@ -94,31 +95,51 @@ fn build_command(
     scope: &str,
     protect: Protect,
     name_prefix: &str,
-) -> Command {
+) -> Result<Command> {
     let short_name = raw
         .name
         .strip_prefix(name_prefix)
         .unwrap_or(&raw.name)
         .to_string();
 
+    // Declarator parsing is a hard error: an unparseable type means the spec
+    // uses a construct gloam has never seen, and emitting it as opaque text
+    // would let a non-C backend mistranslate it silently.
+    let return_ty = TypeRef::parse(&raw.return_type).with_context(|| {
+        format!(
+            "parsing return type of command '{}' ('{}')",
+            raw.name, raw.return_type
+        )
+    })?;
+
     let params: Vec<Param> = raw
         .params
         .iter()
-        .map(|p| Param {
-            type_raw: p.type_raw.clone(),
-            name: p.name.clone(),
+        .map(|p| {
+            let ty = TypeRef::parse(&p.type_raw).with_context(|| {
+                format!(
+                    "parsing type of parameter '{}' of command '{}' ('{}')",
+                    p.name, raw.name, p.type_raw
+                )
+            })?;
+            Ok(Param {
+                type_raw: p.type_raw.clone(),
+                ty,
+                name: p.name.clone(),
+            })
         })
-        .collect();
+        .collect::<Result<_>>()?;
 
-    Command {
+    Ok(Command {
         index,
         name: raw.name.clone(),
         short_name,
         return_type: raw.return_type.clone(),
+        return_ty,
         params,
         scope: scope.to_string(),
         protect,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -201,14 +222,37 @@ pub(super) fn optimize_command_order(
         }
     }
 
-    // Extension consumers.
+    // Extension consumers — one consumer id per (extension, requesting API),
+    // mirroring exactly how `build_ext_pfn_ranges` slices each extension's
+    // ranges per API.  A single per-extension id would collapse the API
+    // dimension: in a merged GL+GLES2 build, GL_KHR_debug requires the
+    // unsuffixed names for gl and the KHR-suffixed names for gles2, and with
+    // one shared signature the alphabetical tie-break interleaves the two
+    // spellings — fragmenting both APIs' range tables into one-slot runs.
+    // Extension-major id layout (`ei * num_apis + ai`) keeps one extension's
+    // per-API groups adjacent in signature order.
+    let num_apis = requests.len();
     for (ei, ext) in selected_exts.iter().enumerate() {
-        for require in &ext.raw.requires {
-            for cmd in &require.commands {
-                consumers
-                    .entry(cmd.as_str())
-                    .or_default()
-                    .push((num_features + ei) as u32);
+        for (ai, req) in requests.iter().enumerate() {
+            let api = req.api.as_str();
+            if !ext
+                .raw
+                .supported
+                .iter()
+                .any(|s| canonical_api_name(s) == canonical_api_name(api))
+            {
+                continue;
+            }
+            for require in &ext.raw.requires {
+                if !api_profile_matches(require.api.as_deref(), None, api, None) {
+                    continue;
+                }
+                for cmd in &require.commands {
+                    consumers
+                        .entry(cmd.as_str())
+                        .or_default()
+                        .push((num_features + ei * num_apis + ai) as u32);
+                }
             }
         }
     }

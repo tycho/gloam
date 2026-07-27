@@ -3,10 +3,11 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use super::ctype::TypeRef;
 use super::xml::NodeExt;
 use super::{SpecDocs, extract_raw_c};
 use crate::diag::Diag;
-use crate::ir::{RawType, TypeCategory};
+use crate::ir::{RawFnSig, RawMember, RawType, TypeCategory, TypePayload, TypedefArm};
 
 // GL pointer types that need the macOS ptrdiff_t guard (spec gotcha #7).
 const MACOS_PTRDIFF_TYPES: &[&str] = &["GLsizeiptr", "GLintptr", "GLsizeiptrARB", "GLintptrARB"];
@@ -59,11 +60,19 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, diag: Diag) -> Vec<RawType> {
         // For enum-category types, we emit nothing from this node directly —
         // the actual enum group is built in enums.rs.  We still record the
         // entry so the alias chain and bitwidth propagation can work.
-        let raw_c = if category == TypeCategory::Include {
+        //
+        // Each branch yields the assembled C text plus the structured
+        // `TypePayload` view of the same body.  Structured branches
+        // (struct/union members, new-format funcpointers) build both from
+        // one XML walk; text branches parse the finished C fragment, so a
+        // body outside the known shapes degrades to `Opaque` rather than
+        // erroring here (the corpus test pins full structured coverage for
+        // the categories that need it).
+        let (raw_c, payload) = if category == TypeCategory::Include {
             // Emit as a verbatim #include directive — roxmltree decodes XML
             // entities so &lt;X11/Xlib.h&gt; arrives as <X11/Xlib.h>.
             let text = extract_raw_c(*node).trim().to_string();
-            if text.is_empty() {
+            let c = if text.is_empty() {
                 // Empty body (e.g. `<type category="include" name="X11/Xlib.h"/>`):
                 // the name attribute IS the header path — synthesize the directive.
                 // Platform system headers use angle-bracket form.
@@ -75,7 +84,8 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, diag: Diag) -> Vec<RawType> {
                 }
             } else {
                 text
-            }
+            };
+            (c, TypePayload::Opaque)
         } else if category == TypeCategory::Enum {
             // Enum aliases (e.g. VkComponentTypeNV = VkComponentTypeKHR) need
             // a typedef emission.  Plain enum types have no direct C emission
@@ -92,20 +102,24 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, diag: Diag) -> Vec<RawType> {
             // `typedef X Y` form works in all C/C++ versions regardless of
             // bitwidth, because the topo sort guarantees X is already defined.
             if let Some(ref al) = alias {
-                format!("typedef {} {};", al, name)
+                let c = format!("typedef {} {};", al, name);
+                let payload = text_payload(&c);
+                (c, payload)
             } else {
-                String::new()
+                (String::new(), TypePayload::Opaque)
             }
         } else if matches!(category, TypeCategory::Struct | TypeCategory::Union) {
             if alias.is_some() {
                 // Alias: `typedef AliasedName NewName` (semicolon added by
                 // normalize_raw_c in the resolver).
-                format!("typedef {} {};", alias.as_deref().unwrap(), name)
+                let c = format!("typedef {} {};", alias.as_deref().unwrap(), name);
+                let payload = text_payload(&c);
+                (c, payload)
             } else {
                 // Build a proper `typedef struct Name { ... } Name` from the
                 // <member> children.  extract_raw_c_inner would concatenate all
                 // member text as a flat blob, producing incorrect output.
-                extract_struct_c(*node, &name, category)
+                extract_struct(*node, &name, category)
             }
         } else if category == TypeCategory::Funcpointer {
             // Vulkan funcpointers come in two XML formats:
@@ -117,9 +131,11 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, diag: Diag) -> Vec<RawType> {
             //   analogous to <command> elements.  extract_raw_c would produce
             //   garbled output here since it concatenates all child text naively.
             if node.child("proto").is_some() {
-                extract_funcpointer_c(*node, &name)
+                extract_funcpointer(*node, &name)
             } else {
-                extract_raw_c(*node).trim().to_string()
+                let c = extract_raw_c(*node).trim().to_string();
+                let payload = text_payload(&c);
+                (c, payload)
             }
         } else {
             // For alias-only entries (bitmask, handle, basetype aliases) where
@@ -137,7 +153,12 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, diag: Diag) -> Vec<RawType> {
             if MACOS_PTRDIFF_TYPES.contains(&name.as_str()) {
                 c = macos_ptrdiff_guard(&name, &c);
             }
-            c
+            let payload = if category == TypeCategory::Handle {
+                handle_payload(&c)
+            } else {
+                text_payload(&c)
+            };
+            (c, payload)
         };
 
         raw.push(RawType {
@@ -148,15 +169,15 @@ pub fn parse_types(docs: &SpecDocs<'_, '_>, diag: Diag) -> Vec<RawType> {
             alias,
             bitwidth,
             raw_c,
+            payload,
             protect,
         });
     }
 
     // Propagate bitwidth=64 through alias chains (spec gotcha #4).
-    // This metadata is retained on RawType for correctness; it is no longer
-    // needed for alias raw_c fixup since enum aliases are now always emitted
-    // as plain `typedef X Y` (no `enum` keyword), which is valid regardless
-    // of bitwidth.
+    // The metadata rides on RawType; alias raw_c needs no bitwidth fixup
+    // because enum aliases are emitted as plain `typedef X Y` (no `enum`
+    // keyword), which is valid regardless of bitwidth.
     propagate_bitwidth(&mut raw);
 
     // Topological sort by dependency order (spec gotcha #2).
@@ -205,13 +226,23 @@ fn propagate_bitwidth(types: &mut [RawType]) {
 // Struct / union C reconstruction
 // ---------------------------------------------------------------------------
 
-/// Build a `typedef struct Name { ... } Name` declaration from a Vulkan
-/// `<type category="struct">` or `<type category="union">` element.
+/// Build a `typedef struct Name { ... } Name` declaration — plus the
+/// structured member list — from a Vulkan `<type category="struct">` or
+/// `<type category="union">` element.
 ///
 /// `extract_raw_c_inner` is not usable here because it would concatenate
 /// all `<member>` sub-element text into a single flat string with no
 /// separators, losing the per-member line boundaries.
-fn extract_struct_c(node: roxmltree::Node<'_, '_>, name: &str, category: TypeCategory) -> String {
+///
+/// The C text and the payload come from the same walk over the same member
+/// strings, so the two views cannot drift.  If any member's declarator falls
+/// outside the `TypeRef` grammar the payload degrades to `Opaque` (the C
+/// text is unaffected); the corpus test pins full structured coverage.
+fn extract_struct(
+    node: roxmltree::Node<'_, '_>,
+    name: &str,
+    category: TypeCategory,
+) -> (String, TypePayload) {
     let kw = if category == TypeCategory::Union {
         "union"
     } else {
@@ -219,6 +250,7 @@ fn extract_struct_c(node: roxmltree::Node<'_, '_>, name: &str, category: TypeCat
     };
 
     let mut members: Vec<String> = Vec::new();
+    let mut records: Option<Vec<RawMember>> = Some(Vec::new());
     for child in node.children_named("member") {
         // Skip members restricted to a non-Vulkan API variant.
         // e.g. api="vulkansc" members must not appear in the vulkan header.
@@ -238,25 +270,51 @@ fn extract_struct_c(node: roxmltree::Node<'_, '_>, name: &str, category: TypeCat
         } else {
             members.push(format!("    {};", trimmed));
         }
+
+        // Structured record for the same member.  The declarator text is the
+        // C fragment minus any trailing ';'.
+        if let Some(recs) = records.as_mut() {
+            let decl = trimmed.trim_end_matches(';').trim_end();
+            let member_name = child
+                .child("name")
+                .and_then(|n| n.text())
+                .unwrap_or("")
+                .to_string();
+            match TypeRef::parse(decl) {
+                Ok(ty) if !member_name.is_empty() => recs.push(RawMember {
+                    raw_c: decl.to_string(),
+                    name: member_name,
+                    ty,
+                    values: child.attribute("values").map(str::to_string),
+                }),
+                _ => records = None,
+            }
+        }
     }
+
+    let payload = records.map_or(TypePayload::Opaque, TypePayload::Members);
 
     if members.is_empty() {
-        return format!("typedef {} {} {{}};", kw, name);
+        return (format!("typedef {} {} {{}};", kw, name), payload);
     }
 
-    format!(
-        "typedef {} {} {{\n{}\n}} {};",
-        kw,
-        name,
-        members.join("\n"),
-        name
+    (
+        format!(
+            "typedef {} {} {{\n{}\n}} {};",
+            kw,
+            name,
+            members.join("\n"),
+            name
+        ),
+        payload,
     )
 }
 
-/// Build a `typedef RET (VKAPI_PTR *NAME)(params)` declaration from a
-/// structured `<type category="funcpointer">` element that uses `<proto>`
-/// and `<param>` children (VulkanBase-era format).
-fn extract_funcpointer_c(node: roxmltree::Node<'_, '_>, name: &str) -> String {
+/// Build a `typedef RET (VKAPI_PTR *NAME)(params)` declaration — plus the
+/// structured signature — from a structured `<type category="funcpointer">`
+/// element that uses `<proto>` and `<param>` children (VulkanBase-era
+/// format).
+fn extract_funcpointer(node: roxmltree::Node<'_, '_>, name: &str) -> (String, TypePayload) {
     // Extract return type from <proto>: everything before <name>.
     let mut ret = String::new();
     if let Some(proto) = node.child("proto") {
@@ -289,7 +347,244 @@ fn extract_funcpointer_c(node: roxmltree::Node<'_, '_>, name: &str) -> String {
         params.join(", ")
     };
 
-    format!("typedef {} (VKAPI_PTR *{})({});", ret, name, params_str)
+    // Structured signature from the same fragments the C text embeds.
+    let payload = fn_sig(ret, &params).map_or(TypePayload::Opaque, TypePayload::Funcpointer);
+
+    (
+        format!("typedef {} (VKAPI_PTR *{})({});", ret, name, params_str),
+        payload,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Structured payload helpers
+// ---------------------------------------------------------------------------
+
+/// Structured signature from a return-type fragment and parameter fragments
+/// (each `"const void* pUserData"`-shaped, carrying its name).
+fn fn_sig(ret: &str, params: &[String]) -> Option<RawFnSig> {
+    let ret = TypeRef::parse(ret).ok()?;
+    let params = params
+        .iter()
+        .filter(|p| p.trim() != "void")
+        .map(|p| {
+            let ty = TypeRef::parse(p.trim()).ok()?;
+            Some((ty.decl_name.clone().unwrap_or_default(), ty))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(RawFnSig { ret, params })
+}
+
+/// Structured payload for a finished C fragment, dispatched on shape:
+/// function-pointer typedefs, inline record definitions (`struct Name {...};`
+/// like EGL's EGLClientPixmapHI and WGL's GPU_DEVICE, or GLX's
+/// `typedef struct/union {...} Name;`), plain or preprocessor-conditional
+/// typedefs, anything else `Opaque`.  The record shapes are tested before
+/// the function-pointer `(` heuristic so a parenthesis inside a member
+/// comment cannot misroute a record body.
+fn text_payload(raw: &str) -> TypePayload {
+    let t = raw.trim_start();
+    let record =
+        (t.starts_with("typedef struct") || t.starts_with("typedef union")) && t.contains('{');
+    if record || (t.starts_with("struct") && t.contains('{')) {
+        record_text_payload(raw)
+    } else if t.starts_with("typedef") && t.contains('(') {
+        funcpointer_text_payload(raw)
+    } else if t.starts_with("typedef") || t.starts_with("#if") {
+        typedef_text_payload(raw)
+    } else {
+        TypePayload::Opaque
+    }
+}
+
+/// Parse an inline record body — `struct Name { decl; ... };` or
+/// `typedef struct/union [tag] { decl; ... } Name;` — into member records
+/// (the GL-family registries write these as raw text, unlike vk.xml's
+/// structured `<member>` elements).  Whether the record is a struct or a
+/// union stays visible in `raw_c` (`TypePayload::Members` carries only the
+/// members; the Rust emitter keys union-ness off the raw text).
+fn record_text_payload(raw: &str) -> TypePayload {
+    let (Some(open), Some(close)) = (raw.find('{'), raw.rfind('}')) else {
+        return TypePayload::Opaque;
+    };
+    if close < open {
+        return TypePayload::Opaque;
+    }
+    // Strip `/* ... */` comments: GLX's record bodies annotate members with
+    // trailing comments, which would otherwise glue onto the next declarator
+    // when splitting on `;`.
+    let body = strip_block_comments(&raw[open + 1..close]);
+
+    let mut members: Vec<RawMember> = Vec::new();
+    for decl in body.split(';') {
+        let decl = decl.trim();
+        if decl.is_empty() {
+            continue;
+        }
+        // Multi-declarator lines (`int x, y;`): the first piece is a full
+        // declarator; each further piece must be a bare identifier sharing
+        // the first one's type (the registries never put pointers or arrays
+        // on the continuation declarators).
+        let mut pieces = decl.split(',');
+        let first = pieces.next().unwrap_or("").trim();
+        let Ok(ty) = TypeRef::parse(first) else {
+            return TypePayload::Opaque;
+        };
+        let Some(name) = ty.decl_name.clone() else {
+            return TypePayload::Opaque;
+        };
+        members.push(RawMember {
+            raw_c: first.to_string(),
+            name,
+            ty: ty.clone(),
+            values: None,
+        });
+        for extra in pieces {
+            let extra = extra.trim();
+            if extra.is_empty()
+                || !extra.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                || extra.starts_with(|c: char| c.is_ascii_digit())
+            {
+                return TypePayload::Opaque;
+            }
+            let mut extra_ty = ty.clone();
+            extra_ty.decl_name = Some(extra.to_string());
+            members.push(RawMember {
+                raw_c: format!(
+                    "{} {extra}",
+                    first.rsplit_once(' ').map_or(first, |(t, _)| t)
+                ),
+                name: extra.to_string(),
+                ty: extra_ty,
+                values: None,
+            });
+        }
+    }
+    if members.is_empty() {
+        TypePayload::Opaque
+    } else {
+        TypePayload::Members(members)
+    }
+}
+
+/// Remove every `/* ... */` region from `s` (replacing each with a single
+/// space, so token boundaries survive).
+fn strip_block_comments(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(start) = rest.find("/*") {
+        out.push_str(&rest[..start]);
+        out.push(' ');
+        match rest[start + 2..].find("*/") {
+            Some(end) => rest = &rest[start + 2 + end + 2..],
+            None => return out, // unterminated: drop the tail
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Parse an inline-text function-pointer typedef:
+/// `typedef RET (CALLCONV *NAME)(PARAMS);` (calling convention optional).
+fn funcpointer_text_payload(raw: &str) -> TypePayload {
+    parse_funcpointer_text(raw).map_or(TypePayload::Opaque, TypePayload::Funcpointer)
+}
+
+fn parse_funcpointer_text(raw: &str) -> Option<RawFnSig> {
+    let s = raw.trim().strip_prefix("typedef")?;
+    let open = s.find('(')?;
+    let ret = s[..open].trim();
+    let rest = &s[open + 1..];
+    let close = rest.find(')')?;
+    // The declarator between the parens must actually be a pointer-to-
+    // function name; a paren for any other reason is not this shape.
+    if !rest[..close].contains('*') {
+        return None;
+    }
+    let after = &rest[close + 1..];
+    let popen = after.find('(')?;
+    let pclose = after.rfind(')')?;
+    if pclose <= popen {
+        return None;
+    }
+    let params: Vec<String> = {
+        let text = after[popen + 1..pclose].trim();
+        if text.is_empty() {
+            Vec::new()
+        } else {
+            text.split(',').map(|p| p.trim().to_string()).collect()
+        }
+    };
+    fn_sig(ret, &params)
+}
+
+/// Parse one `typedef <decl> <name>;` per line, optionally split across
+/// `#if`/`#ifdef`/`#else`/`#endif` arms (GLhandleARB, the macOS ptrdiff_t
+/// guard).  Any line outside that shape makes the whole body `Opaque`.
+fn typedef_text_payload(raw: &str) -> TypePayload {
+    // Join preprocessor line continuations (the macOS guard wraps its
+    // condition) before walking lines.
+    let joined = raw.replace("\\\n", " ");
+    let mut arms: Vec<TypedefArm> = Vec::new();
+    let mut cond: Option<String> = None;
+    let mut in_else = false;
+
+    for line in joined.lines() {
+        let l = line.trim();
+        if l.is_empty() {
+            continue;
+        }
+        if let Some(rest) = l.strip_prefix("#ifdef") {
+            cond = Some(format!("defined({})", rest.trim()));
+            in_else = false;
+        } else if let Some(rest) = l.strip_prefix("#if ") {
+            cond = Some(rest.trim().to_string());
+            in_else = false;
+        } else if l == "#else" {
+            in_else = true;
+        } else if l == "#endif" {
+            cond = None;
+            in_else = false;
+        } else if let Some(body) = l.strip_prefix("typedef") {
+            let Some(decl) = body.trim().strip_suffix(';') else {
+                return TypePayload::Opaque;
+            };
+            let Ok(ty) = TypeRef::parse(decl.trim()) else {
+                return TypePayload::Opaque;
+            };
+            if ty.decl_name.is_none() {
+                return TypePayload::Opaque;
+            }
+            arms.push(TypedefArm {
+                condition: if in_else { None } else { cond.clone() },
+                ty,
+            });
+        } else {
+            return TypePayload::Opaque;
+        }
+    }
+
+    if arms.is_empty() {
+        TypePayload::Opaque
+    } else {
+        TypePayload::Typedef(arms)
+    }
+}
+
+/// Payload for `category="handle"` bodies: the `VK_DEFINE_*HANDLE` macro
+/// invocations.  Alias handles (`#define X Y`) stay `Opaque` — the alias
+/// field carries their target.
+fn handle_payload(raw: &str) -> TypePayload {
+    let t = raw.trim_start();
+    if t.starts_with("VK_DEFINE_NON_DISPATCHABLE_HANDLE") {
+        TypePayload::Handle {
+            dispatchable: false,
+        }
+    } else if t.starts_with("VK_DEFINE_HANDLE") {
+        TypePayload::Handle { dispatchable: true }
+    } else {
+        TypePayload::Opaque
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -400,4 +695,201 @@ fn topological_sort(types: Vec<RawType>) -> Vec<RawType> {
         .into_iter()
         .map(|i| types_opt[i].take().unwrap())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::TypePayload;
+
+    fn parse_bundled(file: &str) -> Vec<RawType> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("bundled/xml")
+            .join(file);
+        let text = std::fs::read_to_string(path).unwrap();
+        let doc = roxmltree::Document::parse(&text).unwrap();
+        let docs = super::super::SpecDocs {
+            primary: &doc,
+            supplementals: &[],
+        };
+        parse_types(&docs, Diag::new(true))
+    }
+
+    fn find<'a>(types: &'a [RawType], name: &str) -> &'a RawType {
+        types
+            .iter()
+            .find(|t| t.name == name)
+            .unwrap_or_else(|| panic!("type '{name}' not found"))
+    }
+
+    /// Every non-alias struct/union and every funcpointer in every bundled
+    /// XML must carry a structured payload, and each structured member must
+    /// agree with its XML-declared name.  The type-body counterpart of
+    /// the command-declarator corpus test: a registry update whose type
+    /// bodies fall outside the grammar fails here with a listing, instead
+    /// of silently degrading to `Opaque` for the Rust backend to trip over.
+    #[test]
+    fn corpus_struct_and_funcpointer_payloads_structured() {
+        let mut structs = 0usize;
+        let mut funcpointers = 0usize;
+        let mut failures: Vec<String> = Vec::new();
+
+        for file in [
+            "gl.xml",
+            "gl_angle_ext.xml",
+            "egl.xml",
+            "egl_angle_ext.xml",
+            "glx.xml",
+            "wgl.xml",
+            "vk.xml",
+            "glsl_exts.xml",
+        ] {
+            for t in &parse_bundled(file) {
+                match t.category {
+                    TypeCategory::Struct | TypeCategory::Union if t.alias.is_none() => {
+                        structs += 1;
+                        match &t.payload {
+                            TypePayload::Members(ms) => {
+                                for m in ms {
+                                    if m.ty.decl_name.as_deref() != Some(m.name.as_str()) {
+                                        failures.push(format!(
+                                            "{file}: {}.{}: declarator name {:?} != member \
+                                             name (from '{}')",
+                                            t.name, m.name, m.ty.decl_name, m.raw_c
+                                        ));
+                                    }
+                                }
+                            }
+                            _ => failures.push(format!(
+                                "{file}: struct/union '{}' has no structured members",
+                                t.name
+                            )),
+                        }
+                    }
+                    TypeCategory::Funcpointer => {
+                        funcpointers += 1;
+                        if !matches!(t.payload, TypePayload::Funcpointer(_)) {
+                            failures.push(format!(
+                                "{file}: funcpointer '{}' has no structured signature",
+                                t.name
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        assert!(
+            structs > 700 && funcpointers > 10,
+            "corpus suspiciously small ({structs} structs, {funcpointers} funcpointers)"
+        );
+        assert!(
+            failures.is_empty(),
+            "{} unstructured type bodies:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
+
+    #[test]
+    fn vk_payload_spot_checks() {
+        let types = parse_bundled("vk.xml");
+
+        // Dispatchable vs non-dispatchable handles.
+        assert!(matches!(
+            find(&types, "VkInstance").payload,
+            TypePayload::Handle { dispatchable: true }
+        ));
+        assert!(matches!(
+            find(&types, "VkBuffer").payload,
+            TypePayload::Handle {
+                dispatchable: false
+            }
+        ));
+
+        // Old-format inline funcpointer: void* return, 4 named params.
+        let TypePayload::Funcpointer(sig) = &find(&types, "PFN_vkAllocationFunction").payload
+        else {
+            panic!("PFN_vkAllocationFunction not structured");
+        };
+        assert_eq!(sig.ret.base, "void");
+        assert_eq!(sig.ret.pointers.len(), 1);
+        assert_eq!(sig.params.len(), 4);
+        assert_eq!(sig.params[0].0, "pUserData");
+
+        // sType member defaults arrive via values=.
+        let TypePayload::Members(ms) = &find(&types, "VkInstanceCreateInfo").payload else {
+            panic!("VkInstanceCreateInfo not structured");
+        };
+        let stype = &ms[0];
+        assert_eq!(stype.name, "sType");
+        assert_eq!(
+            stype.values.as_deref(),
+            Some("VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO")
+        );
+
+        // Bitfield members parse with widths.
+        let TypePayload::Members(ms) = &find(&types, "VkAccelerationStructureInstanceKHR").payload
+        else {
+            panic!("VkAccelerationStructureInstanceKHR not structured");
+        };
+        assert_eq!(ms[1].ty.bitfield, Some(24)); // instanceCustomIndex:24
+    }
+
+    #[test]
+    fn gl_family_typedef_payloads() {
+        let types = parse_bundled("gl.xml");
+
+        // GLhandleARB: the #ifdef __APPLE__ / #else pair — the exact case
+        // hand-maintained base-type tables get wrong.
+        let TypePayload::Typedef(arms) = &find(&types, "GLhandleARB").payload else {
+            panic!("GLhandleARB not structured");
+        };
+        assert_eq!(arms.len(), 2);
+        assert_eq!(arms[0].condition.as_deref(), Some("defined(__APPLE__)"));
+        assert_eq!(arms[0].ty.base, "void");
+        assert_eq!(arms[0].ty.pointers.len(), 1);
+        assert_eq!(arms[1].condition, None);
+        assert_eq!(arms[1].ty.base, "unsigned int");
+
+        // GLsizeiptr: the synthesized macOS ptrdiff_t guard splits into two
+        // conditional arms.
+        let TypePayload::Typedef(arms) = &find(&types, "GLsizeiptr").payload else {
+            panic!("GLsizeiptr not structured");
+        };
+        assert_eq!(arms.len(), 2);
+        assert!(
+            arms[0]
+                .condition
+                .as_deref()
+                .is_some_and(|c| c.contains("__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__"))
+        );
+        assert_eq!(arms[0].ty.base, "long");
+        assert_eq!(arms[1].ty.base, "ptrdiff_t");
+
+        // Plain unconditional typedef.
+        let TypePayload::Typedef(arms) = &find(&types, "GLenum").payload else {
+            panic!("GLenum not structured");
+        };
+        assert_eq!(arms.len(), 1);
+        assert_eq!(arms[0].condition, None);
+        assert_eq!(arms[0].ty.base, "unsigned int");
+
+        // Opaque-struct-pointer typedef.
+        let TypePayload::Typedef(arms) = &find(&types, "GLsync").payload else {
+            panic!("GLsync not structured");
+        };
+        assert!(arms[0].ty.struct_kw);
+        assert_eq!(arms[0].ty.base, "__GLsync");
+        assert_eq!(arms[0].ty.pointers.len(), 1);
+
+        // Category-less GL funcpointer typedef (text shape detection).
+        let TypePayload::Funcpointer(sig) = &find(&types, "GLDEBUGPROC").payload else {
+            panic!("GLDEBUGPROC not structured");
+        };
+        assert!(sig.ret.is_void());
+        assert_eq!(sig.params.len(), 7);
+        assert_eq!(sig.params.last().unwrap().0, "userParam");
+    }
 }

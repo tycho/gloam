@@ -1,0 +1,19 @@
+[package]
+name = "vk-info-rs"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "vk-info-rs"
+path = "src/main.rs"
+
+[dependencies]
+# The gloam-generated Vulkan loader crate (regenerate with the command in README.md).
+gloam_vk = { path = "gloam" }
+# Loads the platform Vulkan library to bootstrap vkGetInstanceProcAddr.
+libloading = "0.8"
+
+# Standalone workspace so this example stays out of the main gloam
+# workspace's build and lockfile.
+[workspace]

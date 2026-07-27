@@ -6,13 +6,12 @@
 //! `bundled/provenance.json`.  Sharing gloam's acquisition code guarantees the
 //! bundled and `--fetch` provenance are produced identically.
 //!
-//! `cargo xtask regen <tree-root> [--fresh]` regenerates every gloam output
-//! tree found under `<tree-root>` (e.g. a gloam-pregen checkout) by re-running
-//! the command line recorded in each tree's manifest with the current working
-//! copy of gloam.  By default each run is pinned to the tree's recorded
-//! provenance (`--lock`), so `git diff` in the tree shows only the effect of
-//! gloam code changes; `--fresh` runs the recorded commands verbatim instead,
-//! advancing to upstream HEAD (the normal tree-update workflow).
+//! `cargo xtask regen [tree-root] [--fresh]` builds the working-copy gloam
+//! and runs `gloam regen` over `tree-root` (default: the current directory),
+//! regenerating every gloam output tree found beneath it (e.g. `examples/`
+//! here, or a gloam-pregen checkout).  Discovery, path handling, and the
+//! locked-vs-fresh semantics all live in `gloam regen` itself; this task
+//! just supplies a freshly built binary.
 
 use std::path::{Path, PathBuf};
 
@@ -21,7 +20,7 @@ use indexmap::IndexMap;
 
 use gloam::provenance::acquire::Github;
 use gloam::provenance::manifest::{
-    BundledProvenance, Manifest, ProvenancePin, SCHEMA_VERSION, preserve_unchanged_repos,
+    BundledProvenance, ProvenancePin, SCHEMA_VERSION, preserve_unchanged_repos,
 };
 use gloam::provenance::{CLUSTERS, bundled_rel_path};
 
@@ -48,23 +47,7 @@ fn regen(args: &[String]) -> Result<()> {
             other => bail!("unexpected regen argument '{other}'"),
         }
     }
-    let root = root.context("usage: cargo xtask regen <tree-root> [--fresh]")?;
-    if !root.is_dir() {
-        bail!("tree root {} is not a directory", root.display());
-    }
-    // Keep the path as given (no canonicalize: Windows turns those into
-    // \\?\ UNC paths, which is noise in every printed command).  Child
-    // processes run with this as their cwd, so relative roots work too.
-
-    // Every gloam manifest records the exact command line that produced its
-    // tree, so the tree set is self-describing: generation trees carry
-    // `.gloam/manifest.json`, lock snapshots are bare `manifest.json` files.
-    let mut manifests: Vec<PathBuf> = Vec::new();
-    find_manifests(&root, &mut manifests);
-    manifests.sort();
-    if manifests.is_empty() {
-        bail!("no gloam manifests found under {}", root.display());
-    }
+    let root = root.unwrap_or_else(|| PathBuf::from("."));
 
     // Build and locate the working-copy gloam binary.
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
@@ -81,91 +64,22 @@ fn regen(args: &[String]) -> Result<()> {
         .join("debug")
         .join(format!("gloam{}", std::env::consts::EXE_SUFFIX));
 
-    let mut ran = 0usize;
-    for manifest_path in &manifests {
-        let Some(recorded) = recorded_command(manifest_path) else {
-            continue; // not a gloam manifest (or unreadable) — skip
-        };
-
-        let rel = manifest_path.strip_prefix(&root).unwrap_or(manifest_path);
-
-        // Drop the recorded argv[0] ("gloam"); in locked mode, pin the run to
-        // the tree's own provenance.  --lock must precede the subcommand, so
-        // it goes first.  The path is root-relative because the child runs
-        // with the tree root as its cwd (recorded --out-path values are too).
-        let mut argv: Vec<String> = recorded
-            .split_whitespace()
-            .skip(1)
-            .map(String::from)
-            .collect();
-        if !fresh {
-            argv.splice(0..0, ["--lock".to_string(), rel.display().to_string()]);
-        }
-        eprintln!("· {} $ gloam {}", rel.display(), argv.join(" "));
-
-        // Recorded --out-path values are relative to the tree root.
-        let status = std::process::Command::new(&bin)
-            .args(&argv)
-            .current_dir(&root)
-            .status()
-            .with_context(|| format!("running gloam for {}", rel.display()))?;
-        if !status.success() {
-            bail!("gloam failed for {}", rel.display());
-        }
-        ran += 1;
+    // `gloam regen` does the rest: recursive discovery, path handling, and
+    // locked-vs-fresh replay.  It runs with our cwd, so a relative root
+    // behaves the same as it would for find/grep.
+    let mut cmd = std::process::Command::new(&bin);
+    cmd.arg("regen");
+    if fresh {
+        cmd.arg("--fresh");
     }
-
-    if ran == 0 {
-        bail!(
-            "found {} manifest.json file(s) under {}, but none recorded a gloam command line",
-            manifests.len(),
-            root.display()
-        );
+    cmd.arg(&root);
+    let status = cmd
+        .status()
+        .with_context(|| format!("running {} regen", bin.display()))?;
+    if !status.success() {
+        bail!("gloam regen failed");
     }
-
-    eprintln!("regenerated {ran} tree(s) under {}", root.display());
-    eprintln!("review with:");
-    eprintln!(
-        "  git -C {} diff -I'^ \\* Generated by gloam ' -I'^    \"(version|describe|commit)\": '",
-        root.display()
-    );
     Ok(())
-}
-
-/// Recursively collect `manifest.json` files under `dir`, skipping `.git`.
-fn find_manifests(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if path.file_name().is_some_and(|n| n == ".git") {
-                continue;
-            }
-            find_manifests(&path, out);
-        } else if path.file_name().is_some_and(|n| n == "manifest.json") {
-            out.push(path);
-        }
-    }
-}
-
-/// The gloam command line recorded in a manifest, if the file parses as a
-/// gloam manifest at the current schema and recorded one.
-fn recorded_command(path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let m = Manifest::from_json(&text).ok()?;
-    if m.schema_version != SCHEMA_VERSION {
-        eprintln!(
-            "· {}: skipping (schema_version {} != {})",
-            path.display(),
-            m.schema_version,
-            SCHEMA_VERSION
-        );
-        return None;
-    }
-    let cmd = m.gloam.command_line;
-    (cmd.split_whitespace().next() == Some("gloam")).then_some(cmd)
 }
 
 /// Best-effort read of the checked-in provenance manifest.  Missing,

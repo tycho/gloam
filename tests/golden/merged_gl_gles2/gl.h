@@ -1553,25 +1553,25 @@ typedef void (APIENTRYP PFNGLTEXSTORAGE2DPROC)(GLenum target, GLsizei levels, GL
 typedef void (APIENTRYP PFNGLTEXSTORAGE3DPROC)(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth);
 typedef void (APIENTRYP PFNGLGETPOINTERVPROC)(GLenum pname, void ** params);
 typedef void (APIENTRYP PFNGLDEBUGMESSAGECALLBACKPROC)(GLDEBUGPROC callback, const void * userParam);
-typedef void (APIENTRYP PFNGLDEBUGMESSAGECALLBACKKHRPROC)(GLDEBUGPROCKHR callback, const void * userParam);
 typedef void (APIENTRYP PFNGLDEBUGMESSAGECONTROLPROC)(GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint * ids, GLboolean enabled);
-typedef void (APIENTRYP PFNGLDEBUGMESSAGECONTROLKHRPROC)(GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint * ids, GLboolean enabled);
 typedef void (APIENTRYP PFNGLDEBUGMESSAGEINSERTPROC)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar * buf);
-typedef void (APIENTRYP PFNGLDEBUGMESSAGEINSERTKHRPROC)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar * buf);
 typedef GLuint (APIENTRYP PFNGLGETDEBUGMESSAGELOGPROC)(GLuint count, GLsizei bufSize, GLenum * sources, GLenum * types, GLuint * ids, GLenum * severities, GLsizei * lengths, GLchar * messageLog);
-typedef GLuint (APIENTRYP PFNGLGETDEBUGMESSAGELOGKHRPROC)(GLuint count, GLsizei bufSize, GLenum * sources, GLenum * types, GLuint * ids, GLenum * severities, GLsizei * lengths, GLchar * messageLog);
 typedef void (APIENTRYP PFNGLGETOBJECTLABELPROC)(GLenum identifier, GLuint name, GLsizei bufSize, GLsizei * length, GLchar * label);
-typedef void (APIENTRYP PFNGLGETOBJECTLABELKHRPROC)(GLenum identifier, GLuint name, GLsizei bufSize, GLsizei * length, GLchar * label);
 typedef void (APIENTRYP PFNGLGETOBJECTPTRLABELPROC)(const void * ptr, GLsizei bufSize, GLsizei * length, GLchar * label);
+typedef void (APIENTRYP PFNGLOBJECTLABELPROC)(GLenum identifier, GLuint name, GLsizei length, const GLchar * label);
+typedef void (APIENTRYP PFNGLOBJECTPTRLABELPROC)(const void * ptr, GLsizei length, const GLchar * label);
+typedef void (APIENTRYP PFNGLPOPDEBUGGROUPPROC)(void);
+typedef void (APIENTRYP PFNGLPUSHDEBUGGROUPPROC)(GLenum source, GLuint id, GLsizei length, const GLchar * message);
+typedef void (APIENTRYP PFNGLDEBUGMESSAGECALLBACKKHRPROC)(GLDEBUGPROCKHR callback, const void * userParam);
+typedef void (APIENTRYP PFNGLDEBUGMESSAGECONTROLKHRPROC)(GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint * ids, GLboolean enabled);
+typedef void (APIENTRYP PFNGLDEBUGMESSAGEINSERTKHRPROC)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar * buf);
+typedef GLuint (APIENTRYP PFNGLGETDEBUGMESSAGELOGKHRPROC)(GLuint count, GLsizei bufSize, GLenum * sources, GLenum * types, GLuint * ids, GLenum * severities, GLsizei * lengths, GLchar * messageLog);
+typedef void (APIENTRYP PFNGLGETOBJECTLABELKHRPROC)(GLenum identifier, GLuint name, GLsizei bufSize, GLsizei * length, GLchar * label);
 typedef void (APIENTRYP PFNGLGETOBJECTPTRLABELKHRPROC)(const void * ptr, GLsizei bufSize, GLsizei * length, GLchar * label);
 typedef void (APIENTRYP PFNGLGETPOINTERVKHRPROC)(GLenum pname, void ** params);
-typedef void (APIENTRYP PFNGLOBJECTLABELPROC)(GLenum identifier, GLuint name, GLsizei length, const GLchar * label);
 typedef void (APIENTRYP PFNGLOBJECTLABELKHRPROC)(GLenum identifier, GLuint name, GLsizei length, const GLchar * label);
-typedef void (APIENTRYP PFNGLOBJECTPTRLABELPROC)(const void * ptr, GLsizei length, const GLchar * label);
 typedef void (APIENTRYP PFNGLOBJECTPTRLABELKHRPROC)(const void * ptr, GLsizei length, const GLchar * label);
-typedef void (APIENTRYP PFNGLPOPDEBUGGROUPPROC)(void);
 typedef void (APIENTRYP PFNGLPOPDEBUGGROUPKHRPROC)(void);
-typedef void (APIENTRYP PFNGLPUSHDEBUGGROUPPROC)(GLenum source, GLuint id, GLsizei length, const GLchar * message);
 typedef void (APIENTRYP PFNGLPUSHDEBUGGROUPKHRPROC)(GLenum source, GLuint id, GLsizei length, const GLchar * message);
 
 
@@ -1981,25 +1981,25 @@ typedef struct GloamGLContext {
         /*  362 */ PFNGLTEXSTORAGE3DPROC TexStorage3D;
         /*  363 */ PFNGLGETPOINTERVPROC GetPointerv;
         /*  364 */ PFNGLDEBUGMESSAGECALLBACKPROC DebugMessageCallback;
-        /*  365 */ PFNGLDEBUGMESSAGECALLBACKKHRPROC DebugMessageCallbackKHR;
-        /*  366 */ PFNGLDEBUGMESSAGECONTROLPROC DebugMessageControl;
-        /*  367 */ PFNGLDEBUGMESSAGECONTROLKHRPROC DebugMessageControlKHR;
-        /*  368 */ PFNGLDEBUGMESSAGEINSERTPROC DebugMessageInsert;
-        /*  369 */ PFNGLDEBUGMESSAGEINSERTKHRPROC DebugMessageInsertKHR;
-        /*  370 */ PFNGLGETDEBUGMESSAGELOGPROC GetDebugMessageLog;
-        /*  371 */ PFNGLGETDEBUGMESSAGELOGKHRPROC GetDebugMessageLogKHR;
-        /*  372 */ PFNGLGETOBJECTLABELPROC GetObjectLabel;
-        /*  373 */ PFNGLGETOBJECTLABELKHRPROC GetObjectLabelKHR;
-        /*  374 */ PFNGLGETOBJECTPTRLABELPROC GetObjectPtrLabel;
-        /*  375 */ PFNGLGETOBJECTPTRLABELKHRPROC GetObjectPtrLabelKHR;
-        /*  376 */ PFNGLGETPOINTERVKHRPROC GetPointervKHR;
-        /*  377 */ PFNGLOBJECTLABELPROC ObjectLabel;
-        /*  378 */ PFNGLOBJECTLABELKHRPROC ObjectLabelKHR;
-        /*  379 */ PFNGLOBJECTPTRLABELPROC ObjectPtrLabel;
-        /*  380 */ PFNGLOBJECTPTRLABELKHRPROC ObjectPtrLabelKHR;
-        /*  381 */ PFNGLPOPDEBUGGROUPPROC PopDebugGroup;
-        /*  382 */ PFNGLPOPDEBUGGROUPKHRPROC PopDebugGroupKHR;
-        /*  383 */ PFNGLPUSHDEBUGGROUPPROC PushDebugGroup;
+        /*  365 */ PFNGLDEBUGMESSAGECONTROLPROC DebugMessageControl;
+        /*  366 */ PFNGLDEBUGMESSAGEINSERTPROC DebugMessageInsert;
+        /*  367 */ PFNGLGETDEBUGMESSAGELOGPROC GetDebugMessageLog;
+        /*  368 */ PFNGLGETOBJECTLABELPROC GetObjectLabel;
+        /*  369 */ PFNGLGETOBJECTPTRLABELPROC GetObjectPtrLabel;
+        /*  370 */ PFNGLOBJECTLABELPROC ObjectLabel;
+        /*  371 */ PFNGLOBJECTPTRLABELPROC ObjectPtrLabel;
+        /*  372 */ PFNGLPOPDEBUGGROUPPROC PopDebugGroup;
+        /*  373 */ PFNGLPUSHDEBUGGROUPPROC PushDebugGroup;
+        /*  374 */ PFNGLDEBUGMESSAGECALLBACKKHRPROC DebugMessageCallbackKHR;
+        /*  375 */ PFNGLDEBUGMESSAGECONTROLKHRPROC DebugMessageControlKHR;
+        /*  376 */ PFNGLDEBUGMESSAGEINSERTKHRPROC DebugMessageInsertKHR;
+        /*  377 */ PFNGLGETDEBUGMESSAGELOGKHRPROC GetDebugMessageLogKHR;
+        /*  378 */ PFNGLGETOBJECTLABELKHRPROC GetObjectLabelKHR;
+        /*  379 */ PFNGLGETOBJECTPTRLABELKHRPROC GetObjectPtrLabelKHR;
+        /*  380 */ PFNGLGETPOINTERVKHRPROC GetPointervKHR;
+        /*  381 */ PFNGLOBJECTLABELKHRPROC ObjectLabelKHR;
+        /*  382 */ PFNGLOBJECTPTRLABELKHRPROC ObjectPtrLabelKHR;
+        /*  383 */ PFNGLPOPDEBUGGROUPKHRPROC PopDebugGroupKHR;
         /*  384 */ PFNGLPUSHDEBUGGROUPKHRPROC PushDebugGroupKHR;
         };
     };
@@ -2413,25 +2413,25 @@ void glTexStorage2D(GLenum target, GLsizei levels, GLenum internalformat, GLsize
 void glTexStorage3D(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth);
 void glGetPointerv(GLenum pname, void ** params);
 void glDebugMessageCallback(GLDEBUGPROC callback, const void * userParam);
-void glDebugMessageCallbackKHR(GLDEBUGPROCKHR callback, const void * userParam);
 void glDebugMessageControl(GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint * ids, GLboolean enabled);
-void glDebugMessageControlKHR(GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint * ids, GLboolean enabled);
 void glDebugMessageInsert(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar * buf);
-void glDebugMessageInsertKHR(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar * buf);
 GLuint glGetDebugMessageLog(GLuint count, GLsizei bufSize, GLenum * sources, GLenum * types, GLuint * ids, GLenum * severities, GLsizei * lengths, GLchar * messageLog);
-GLuint glGetDebugMessageLogKHR(GLuint count, GLsizei bufSize, GLenum * sources, GLenum * types, GLuint * ids, GLenum * severities, GLsizei * lengths, GLchar * messageLog);
 void glGetObjectLabel(GLenum identifier, GLuint name, GLsizei bufSize, GLsizei * length, GLchar * label);
-void glGetObjectLabelKHR(GLenum identifier, GLuint name, GLsizei bufSize, GLsizei * length, GLchar * label);
 void glGetObjectPtrLabel(const void * ptr, GLsizei bufSize, GLsizei * length, GLchar * label);
+void glObjectLabel(GLenum identifier, GLuint name, GLsizei length, const GLchar * label);
+void glObjectPtrLabel(const void * ptr, GLsizei length, const GLchar * label);
+void glPopDebugGroup(void);
+void glPushDebugGroup(GLenum source, GLuint id, GLsizei length, const GLchar * message);
+void glDebugMessageCallbackKHR(GLDEBUGPROCKHR callback, const void * userParam);
+void glDebugMessageControlKHR(GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint * ids, GLboolean enabled);
+void glDebugMessageInsertKHR(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar * buf);
+GLuint glGetDebugMessageLogKHR(GLuint count, GLsizei bufSize, GLenum * sources, GLenum * types, GLuint * ids, GLenum * severities, GLsizei * lengths, GLchar * messageLog);
+void glGetObjectLabelKHR(GLenum identifier, GLuint name, GLsizei bufSize, GLsizei * length, GLchar * label);
 void glGetObjectPtrLabelKHR(const void * ptr, GLsizei bufSize, GLsizei * length, GLchar * label);
 void glGetPointervKHR(GLenum pname, void ** params);
-void glObjectLabel(GLenum identifier, GLuint name, GLsizei length, const GLchar * label);
 void glObjectLabelKHR(GLenum identifier, GLuint name, GLsizei length, const GLchar * label);
-void glObjectPtrLabel(const void * ptr, GLsizei length, const GLchar * label);
 void glObjectPtrLabelKHR(const void * ptr, GLsizei length, const GLchar * label);
-void glPopDebugGroup(void);
 void glPopDebugGroupKHR(void);
-void glPushDebugGroup(GLenum source, GLuint id, GLsizei length, const GLchar * message);
 void glPushDebugGroupKHR(GLenum source, GLuint id, GLsizei length, const GLchar * message);
 #else
 #define glClearDepth (gloam_gl_context.ClearDepth)
@@ -2799,25 +2799,25 @@ void glPushDebugGroupKHR(GLenum source, GLuint id, GLsizei length, const GLchar 
 #define glTexStorage3D (gloam_gl_context.TexStorage3D)
 #define glGetPointerv (gloam_gl_context.GetPointerv)
 #define glDebugMessageCallback (gloam_gl_context.DebugMessageCallback)
-#define glDebugMessageCallbackKHR (gloam_gl_context.DebugMessageCallbackKHR)
 #define glDebugMessageControl (gloam_gl_context.DebugMessageControl)
-#define glDebugMessageControlKHR (gloam_gl_context.DebugMessageControlKHR)
 #define glDebugMessageInsert (gloam_gl_context.DebugMessageInsert)
-#define glDebugMessageInsertKHR (gloam_gl_context.DebugMessageInsertKHR)
 #define glGetDebugMessageLog (gloam_gl_context.GetDebugMessageLog)
-#define glGetDebugMessageLogKHR (gloam_gl_context.GetDebugMessageLogKHR)
 #define glGetObjectLabel (gloam_gl_context.GetObjectLabel)
-#define glGetObjectLabelKHR (gloam_gl_context.GetObjectLabelKHR)
 #define glGetObjectPtrLabel (gloam_gl_context.GetObjectPtrLabel)
+#define glObjectLabel (gloam_gl_context.ObjectLabel)
+#define glObjectPtrLabel (gloam_gl_context.ObjectPtrLabel)
+#define glPopDebugGroup (gloam_gl_context.PopDebugGroup)
+#define glPushDebugGroup (gloam_gl_context.PushDebugGroup)
+#define glDebugMessageCallbackKHR (gloam_gl_context.DebugMessageCallbackKHR)
+#define glDebugMessageControlKHR (gloam_gl_context.DebugMessageControlKHR)
+#define glDebugMessageInsertKHR (gloam_gl_context.DebugMessageInsertKHR)
+#define glGetDebugMessageLogKHR (gloam_gl_context.GetDebugMessageLogKHR)
+#define glGetObjectLabelKHR (gloam_gl_context.GetObjectLabelKHR)
 #define glGetObjectPtrLabelKHR (gloam_gl_context.GetObjectPtrLabelKHR)
 #define glGetPointervKHR (gloam_gl_context.GetPointervKHR)
-#define glObjectLabel (gloam_gl_context.ObjectLabel)
 #define glObjectLabelKHR (gloam_gl_context.ObjectLabelKHR)
-#define glObjectPtrLabel (gloam_gl_context.ObjectPtrLabel)
 #define glObjectPtrLabelKHR (gloam_gl_context.ObjectPtrLabelKHR)
-#define glPopDebugGroup (gloam_gl_context.PopDebugGroup)
 #define glPopDebugGroupKHR (gloam_gl_context.PopDebugGroupKHR)
-#define glPushDebugGroup (gloam_gl_context.PushDebugGroup)
 #define glPushDebugGroupKHR (gloam_gl_context.PushDebugGroupKHR)
 #endif /* __INTELLISENSE__ */
 /* ---- API declarations ---------------------------------------------------- */

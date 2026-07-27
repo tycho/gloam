@@ -94,6 +94,7 @@ pub(super) fn build_type_list(
                 name: t.name.clone(),
                 raw_c: normalize_raw_c(&t.raw_c),
                 category: t.category,
+                payload: t.payload.clone(),
                 protect,
             }
         })
@@ -578,12 +579,14 @@ mod tests {
                 name: "B".to_string(),
                 raw_c: "typedef struct { A member; } B;".to_string(),
                 category: TypeCategory::Struct,
+                payload: crate::ir::TypePayload::Opaque,
                 protect: Protect::default(),
             },
             TypeDef {
                 name: "A".to_string(),
                 raw_c: "typedef struct { int x; } A;".to_string(),
                 category: TypeCategory::Struct,
+                payload: crate::ir::TypePayload::Opaque,
                 protect: Protect::default(),
             },
         ];
@@ -600,12 +603,14 @@ mod tests {
                 name: "A".to_string(),
                 raw_c: "typedef struct { B* ptr; } A;".to_string(),
                 category: TypeCategory::Struct,
+                payload: crate::ir::TypePayload::Opaque,
                 protect: Protect::default(),
             },
             TypeDef {
                 name: "B".to_string(),
                 raw_c: "typedef struct { A* ptr; } B;".to_string(),
                 category: TypeCategory::Struct,
+                payload: crate::ir::TypePayload::Opaque,
                 protect: Protect::default(),
             },
         ];
@@ -622,12 +627,14 @@ mod tests {
                 name: "D".to_string(),
                 raw_c: "#define D C".to_string(),
                 category: TypeCategory::Define,
+                payload: crate::ir::TypePayload::Opaque,
                 protect: Protect::default(),
             },
             TypeDef {
                 name: "C".to_string(),
                 raw_c: "typedef int C;".to_string(),
                 category: TypeCategory::Basetype,
+                payload: crate::ir::TypePayload::Opaque,
                 protect: Protect::default(),
             },
         ];

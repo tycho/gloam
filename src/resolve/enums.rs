@@ -39,6 +39,7 @@ pub(super) fn build_flat_enums(
                 value: value.to_string(),
                 comment: e.comment.clone(),
                 protect,
+                is_bitmask: e.is_bitmask,
             })
         })
         .collect()
@@ -63,6 +64,7 @@ pub(super) fn build_enum_groups(raw: &RawSpec) -> Vec<EnumGroup> {
                         literal_value: String::new(), // resolved below
                         comment: v.comment.clone(),
                         protect: Protect::default(),
+                        is_bitmask: false,
                     })
                 })
                 .collect();
@@ -72,7 +74,7 @@ pub(super) fn build_enum_groups(raw: &RawSpec) -> Vec<EnumGroup> {
 
             EnumGroup {
                 name: g.name.clone(),
-                is_bitmask: false,
+                is_bitmask: g.is_bitmask,
                 bitwidth: g.bitwidth.unwrap_or(32),
                 values: sorted,
             }
@@ -181,6 +183,7 @@ mod tests {
             literal_value: String::new(),
             comment: String::new(),
             protect: Protect::default(),
+            is_bitmask: false,
         }
     }
 
