@@ -28,76 +28,226 @@ use crate::provenance::load::SourceStore;
 use crate::provenance::manifest::{OutputEntry, ProvenancePin, git_blob_sha1};
 use crate::resolve::{Command, FeatureSet};
 
-/// GL base-type aliases, covering the whole GL/GLES command surface.  The
-/// translator maps each C base type to one of these names (or a `GLenum`/
-/// `GLbitfield` newtype), so pointer/const wrapping is all it has to compute.
-/// Item order is irrelevant in Rust, so the callback aliases may reference the
-/// `GLenum` newtype defined later.
-const BASE_TYPES: &str = "\
-pub type GLvoid = c_void;
-pub type GLboolean = u8;
-pub type GLbyte = i8;
-pub type GLubyte = u8;
-pub type GLchar = c_char;
-pub type GLcharARB = c_char;
-pub type GLshort = i16;
-pub type GLushort = u16;
-pub type GLint = i32;
-pub type GLuint = u32;
-pub type GLfixed = i32;
-pub type GLint64 = i64;
-pub type GLuint64 = u64;
-pub type GLint64EXT = i64;
-pub type GLuint64EXT = u64;
-pub type GLintptr = isize;
-pub type GLsizeiptr = isize;
-pub type GLintptrARB = isize;
-pub type GLsizeiptrARB = isize;
-pub type GLsizei = i32;
-pub type GLfloat = f32;
-pub type GLclampf = f32;
-pub type GLdouble = f64;
-pub type GLclampd = f64;
-pub type GLhalf = u16;
-pub type GLhalfARB = u16;
-pub type GLhalfNV = u16;
-pub type GLhandleARB = u32;
-pub type GLvdpauSurfaceNV = GLintptr;
-
-// Opaque handle types.  `GLsync` is a pointer to an incomplete struct in C,
-// so it gets its own zero-sized opaque type to keep the pointer distinct
-// (a GLsync is not interchangeable with any other pointer, as in C).
-// `GLeglImageOES`/`GLeglClientBufferEXT` are literally `void *` in the spec.
-#[repr(C)]
-pub struct __GLsync {
-    _opaque: [u8; 0],
-}
-pub type GLsync = *mut __GLsync;
-pub type GLeglImageOES = *mut c_void;
-pub type GLeglClientBufferEXT = *mut c_void;
-#[repr(C)]
-pub struct _cl_context {
-    _opaque: [u8; 0],
-}
-#[repr(C)]
-pub struct _cl_event {
-    _opaque: [u8; 0],
+/// Layer-1 ABI map: C scalar spellings — and the `khronos_*` aliases, whose
+/// definitions live in khrplatform.h, outside any registry — to Rust.  This
+/// is the one deliberately hand-maintained table: it encodes platform-ABI
+/// facts no XML records.  Everything above it (the GL type aliases,
+/// callbacks, opaque handles) is derived from the registry's structured
+/// payloads, so an unknown base name here is a hard generation error rather
+/// than a silently wrong hand-copied alias.
+fn abi_scalar(base: &str) -> Option<&'static str> {
+    Some(match base {
+        "void" => "c_void",
+        "char" => "c_char",
+        "unsigned char" => "u8",
+        "short" => "i16",
+        "unsigned short" => "u16",
+        "int" => "i32",
+        "unsigned int" => "u32",
+        "float" => "f32",
+        "double" => "f64",
+        // `long` appears only inside the Apple-conditioned arm of the macOS
+        // ptrdiff_t guard (LP64 there, so pointer-sized); ptrdiff_t is the
+        // portable spelling of the same width.
+        "long" => "isize",
+        "ptrdiff_t" => "isize",
+        "size_t" => "usize",
+        "int8_t" | "khronos_int8_t" => "i8",
+        "uint8_t" | "khronos_uint8_t" => "u8",
+        "int16_t" | "khronos_int16_t" => "i16",
+        "uint16_t" | "khronos_uint16_t" => "u16",
+        "int32_t" | "khronos_int32_t" => "i32",
+        "uint32_t" | "khronos_uint32_t" => "u32",
+        "int64_t" | "khronos_int64_t" => "i64",
+        "uint64_t" | "khronos_uint64_t" => "u64",
+        "khronos_float_t" => "f32",
+        "khronos_intptr_t" | "khronos_ssize_t" => "isize",
+        "khronos_uintptr_t" | "khronos_usize_t" => "usize",
+        _ => return None,
+    })
 }
 
-// Callback function-pointer types.
-pub type GLDEBUGPROC =
-    Option<unsafe extern \"system\" fn(GLenum, GLenum, GLuint, GLenum, GLsizei, *const GLchar, *const c_void)>;
-pub type GLDEBUGPROCARB = GLDEBUGPROC;
-pub type GLDEBUGPROCKHR = GLDEBUGPROC;
-pub type GLDEBUGPROCAMD =
-    Option<unsafe extern \"system\" fn(GLuint, GLenum, GLenum, GLsizei, *const GLchar, *mut c_void)>;
-pub type GLVULKANPROCNV = Option<unsafe extern \"system\" fn()>;
-pub type GLSETBLOBPROCANGLE =
-    Option<unsafe extern \"system\" fn(*const c_void, GLsizeiptr, *const c_void, GLsizeiptr, *const c_void)>;
-pub type GLGETBLOBPROCANGLE = Option<
-    unsafe extern \"system\" fn(*const c_void, GLsizeiptr, *mut c_void, GLsizeiptr, *const c_void) -> GLsizeiptr,
->;
-";
+/// Map a C preprocessor condition (from a conditional typedef arm) to a Rust
+/// `cfg` predicate.  Only conditions that actually occur in the registries
+/// are mapped; anything new is a hard error so it gets a deliberate mapping
+/// instead of a silent mistranslation.
+fn cond_to_cfg(cond: &str) -> Result<&'static str> {
+    if cond == "defined(__APPLE__)"
+        || cond.contains("__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__")
+    {
+        Ok("target_vendor = \"apple\"")
+    } else {
+        bail!("no cfg mapping for C preprocessor condition '{cond}'")
+    }
+}
+
+/// Print a typedef-target `TypeRef` as a Rust type: base through the ABI map
+/// (or verbatim when it names another emitted type), pointer levels wrapped
+/// per constness.  `defined` is the full set of names this module defines;
+/// `opaque` accumulates `struct`-keyword bases (incomplete C struct types)
+/// that need a zero-sized `#[repr(C)]` struct synthesized.
+fn rust_target_type(
+    ty: &TypeRef,
+    defined: &std::collections::HashSet<&str>,
+    opaque: &mut indexmap::IndexSet<String>,
+) -> Result<String> {
+    let base: String = if ty.struct_kw {
+        // Pointer to an incomplete struct (e.g. `struct __GLsync *`): give
+        // the tag a synthesized opaque type so the pointer stays distinct.
+        opaque.insert(ty.base.clone());
+        ty.base.clone()
+    } else if let Some(scalar) = abi_scalar(&ty.base) {
+        scalar.to_string()
+    } else if defined.contains(ty.base.as_str()) {
+        ty.base.clone()
+    } else {
+        bail!(
+            "typedef target '{}' is neither an ABI scalar nor a type defined \
+             in this module",
+            ty.base
+        );
+    };
+    let mut t = base;
+    for i in 0..ty.pointers.len() {
+        let pointee_const = if i == 0 {
+            ty.base_const
+        } else {
+            ty.pointers[i - 1]
+        };
+        t = format!("{}{t}", if pointee_const { "*const " } else { "*mut " });
+    }
+    Ok(t)
+}
+
+/// Emit the GL base-type aliases, callback function-pointer types, and
+/// opaque handle structs — derived from the registry's structured type
+/// payloads (`TypeDef.payload`), not hand-maintained.  Only the ABI scalar
+/// map is hand-written; everything else follows the spec, including the
+/// platform-conditional typedefs (GLhandleARB is `void *` on Apple platforms
+/// and `unsigned int` elsewhere — a distinction a hand-copied table misses).
+fn emit_base_types(fs: &FeatureSet, s: &mut String) -> Result<()> {
+    use crate::ir::{TypeCategory, TypePayload};
+
+    // Full set of names this module defines, for validating alias targets
+    // that reference other GL types (e.g. GLvdpauSurfaceNV = GLintptr).
+    // The GLenum/GLbitfield newtypes are defined by NEWTYPES below.
+    let mut defined: std::collections::HashSet<&str> =
+        fs.types.iter().map(|t| t.name.as_str()).collect();
+    defined.insert("GLenum");
+    defined.insert("GLbitfield");
+
+    let mut opaque: indexmap::IndexSet<String> = indexmap::IndexSet::new();
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+
+    for t in &fs.types {
+        if t.category == TypeCategory::Include || !seen.insert(t.name.as_str()) {
+            continue;
+        }
+        match &t.payload {
+            // The two scalar-enum newtypes replace their C typedefs.
+            TypePayload::Typedef(_) if t.name == "GLenum" || t.name == "GLbitfield" => {}
+            TypePayload::Typedef(arms) => {
+                emit_typedef_arms(s, &t.name, arms, &defined, &mut opaque)?;
+            }
+            TypePayload::Funcpointer(sig) => {
+                let params = sig
+                    .params
+                    .iter()
+                    .map(|(_, ty)| rust_type(ty))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret = if sig.ret.is_void() {
+                    String::new()
+                } else {
+                    format!(" -> {}", rust_type(&sig.ret))
+                };
+                let _ = writeln!(
+                    s,
+                    "pub type {} = Option<unsafe extern \"system\" fn({params}){ret}>;",
+                    t.name
+                );
+            }
+            TypePayload::Opaque => {
+                // Forward struct declarations (`struct _cl_context;`) become
+                // synthesized opaque types below.  Anything else opaque is a
+                // spec construct this backend has never seen: fail loudly.
+                let trimmed = t.raw_c.trim();
+                let fwd = trimmed
+                    .strip_prefix("struct ")
+                    .and_then(|r| r.strip_suffix(';'))
+                    .map(str::trim)
+                    .filter(|tag| tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+                match fwd {
+                    Some(tag) => {
+                        opaque.insert(tag.to_string());
+                    }
+                    None => bail!(
+                        "type '{}' has no structured form for Rust emission \
+                         (raw C: '{}')",
+                        t.name,
+                        t.raw_c
+                    ),
+                }
+            }
+            TypePayload::Members(_) | TypePayload::Handle { .. } => bail!(
+                "type '{}': unexpected {} payload in a GL-family build",
+                t.name,
+                if matches!(t.payload, TypePayload::Members(_)) {
+                    "struct/union"
+                } else {
+                    "handle"
+                }
+            ),
+        }
+    }
+
+    if !opaque.is_empty() {
+        s.push_str(
+            "\n// Opaque C struct types (incomplete in the spec).  Zero-sized so\n\
+             // pointers to them stay distinct types, exactly as in C.\n",
+        );
+        for tag in &opaque {
+            let _ = writeln!(
+                s,
+                "#[repr(C)]\npub struct {tag} {{\n    _opaque: [u8; 0],\n}}"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Emit one derived type alias, collapsing preprocessor arms whose Rust
+/// mapping agrees (the macOS ptrdiff_t guard: `long` and `ptrdiff_t` are
+/// both `isize`) and emitting a `cfg`/`cfg(not)` pair when they differ
+/// (GLhandleARB).
+fn emit_typedef_arms(
+    s: &mut String,
+    name: &str,
+    arms: &[crate::ir::TypedefArm],
+    defined: &std::collections::HashSet<&str>,
+    opaque: &mut indexmap::IndexSet<String>,
+) -> Result<()> {
+    let targets = arms
+        .iter()
+        .map(|arm| rust_target_type(&arm.ty, defined, opaque))
+        .collect::<Result<Vec<_>>>()?;
+
+    if targets.windows(2).all(|w| w[0] == w[1]) {
+        let _ = writeln!(s, "pub type {name} = {};", targets[0]);
+        return Ok(());
+    }
+    // Arms differ: a guarded arm followed by its #else arm.
+    let [ref guarded, ref fallback] = targets[..] else {
+        bail!("typedef '{name}' has {} arms; expected 2", targets.len());
+    };
+    let Some(cond) = arms[0].condition.as_deref() else {
+        bail!("typedef '{name}': first arm of a differing pair has no condition");
+    };
+    let cfg = cond_to_cfg(cond)?;
+    let _ = writeln!(s, "#[cfg({cfg})]\npub type {name} = {guarded};");
+    let _ = writeln!(s, "#[cfg(not({cfg}))]\npub type {name} = {fallback};");
+    Ok(())
+}
 
 /// The two GL scalar-enum newtypes.  `#[repr(transparent)]` keeps them
 /// ABI-identical to `u32`, so they pass through `extern \"system\"` fn pointers
@@ -262,7 +412,7 @@ fn emit_module(fs: &FeatureSet, preamble: &str, mx_global: bool) -> Result<Strin
     );
 
     s.push_str("// ── GL base types ───────────────────────────────────────────\n");
-    s.push_str(BASE_TYPES);
+    emit_base_types(fs, &mut s)?;
     s.push('\n');
     s.push_str("// ── Enum newtypes ───────────────────────────────────────────\n");
     s.push_str(NEWTYPES);
