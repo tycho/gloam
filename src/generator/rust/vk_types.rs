@@ -125,7 +125,7 @@ fn platform_type_decl(name: &str) -> Option<&'static str> {
 /// Map a declarator base for Vulkan printing: ABI scalars through the shared
 /// map, anything else verbatim (validated against `defined` by the caller
 /// where a wrong name would otherwise slip through).
-fn vk_base(base: &str) -> String {
+pub(super) fn vk_base(base: &str) -> String {
     match abi_scalar(base) {
         Some(s) => s.to_string(),
         None => base.to_string(),
@@ -170,15 +170,19 @@ fn vk_const(literal: &str) -> Result<(String, String)> {
     if let Some(body) = t.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
         return Ok(("&core::ffi::CStr".to_string(), format!("c\"{body}\"")));
     }
-    // Parenthesized forms: (~0U), (~0ULL), (~0U-1), (~0U-2).
-    if let Some(inner) = t.strip_prefix("(~0U").and_then(|r| r.strip_suffix(')')) {
-        return Ok(match inner {
-            "" => ("u32".to_string(), "!0u32".to_string()),
-            "LL" => ("u64".to_string(), "!0u64".to_string()),
-            "-1" => ("u32".to_string(), "!0u32 - 1".to_string()),
-            "-2" => ("u32".to_string(), "!0u32 - 2".to_string()),
-            other => bail!("unrecognized Vulkan constant form '(~0U{other})'"),
-        });
+    // Parenthesized complement forms: (~0U), (~1U), (~0ULL), (~0U-1), ...
+    if let Some(inner) = t.strip_prefix("(~").and_then(|r| r.strip_suffix(')')) {
+        let digits: String = inner.chars().take_while(char::is_ascii_digit).collect();
+        let rest = &inner[digits.len()..];
+        if !digits.is_empty() {
+            return Ok(match rest {
+                "U" => ("u32".to_string(), format!("!{digits}u32")),
+                "ULL" => ("u64".to_string(), format!("!{digits}u64")),
+                "U-1" => ("u32".to_string(), format!("!{digits}u32 - 1")),
+                "U-2" => ("u32".to_string(), format!("!{digits}u32 - 2")),
+                other => bail!("unrecognized Vulkan constant form '(~{digits}{other})'"),
+            });
+        }
     }
     // Float constants: 1000.0F.
     if let Some(num) = t.strip_suffix(['F', 'f'])
@@ -223,11 +227,11 @@ fn emit_flat_consts(fs: &FeatureSet, s: &mut String) -> Result<()> {
 
 /// Emit the typed enum groups.  See the module doc for the newtype /
 /// Flags-alias split.
-fn emit_enum_groups(fs: &FeatureSet, s: &mut String, defined: &HashSet<&str>) -> Result<()> {
+fn emit_enum_groups(fs: &FeatureSet, s: &mut String) -> Result<()> {
     s.push_str("// ── Enum groups ─────────────────────────────────────────────\n");
     for g in &fs.enum_groups {
         if g.is_bitmask {
-            emit_bitmask_group(g, s, defined)?;
+            emit_bitmask_group(g, s)?;
         } else {
             emit_enum_group(g, s)?;
         }
@@ -264,25 +268,19 @@ fn emit_enum_group(g: &EnumGroup, s: &mut String) -> Result<()> {
     Ok(())
 }
 
-/// A bitmask group (`Vk*FlagBits`): an alias of its `Vk*Flags` carrier (the
-/// registry-guaranteed name) with free constants of that type, combinable
-/// with `|` and directly assignable to struct fields, as in C.
-fn emit_bitmask_group(g: &EnumGroup, s: &mut String, defined: &HashSet<&str>) -> Result<()> {
+/// A bitmask group (`Vk*FlagBits`): an alias of the scalar its `Vk*Flags`
+/// carrier wraps, with free constants of that type — combinable with `|`
+/// and directly assignable to `Flags`-typed struct fields, as in C.  The
+/// alias targets the scalar rather than the `Flags` typedef because the
+/// typedef can sit behind a platform `cfg` (Wayland, Fuchsia, Metal) while
+/// the group itself is unguarded.
+fn emit_bitmask_group(g: &EnumGroup, s: &mut String) -> Result<()> {
     let scalar = match g.bitwidth {
         32 => "u32",
         64 => "u64",
         w => bail!("bitmask group '{}' has unsupported bitwidth {w}", g.name),
     };
-    let flags = g.name.replace("FlagBits", "Flags");
-    // The Flags carrier is normally a bitmask-category typedef in the type
-    // list; alias it when present, fall back to the scalar when a FlagBits
-    // group has no carrier typedef.
-    let carrier = if flags != g.name && defined.contains(flags.as_str()) {
-        flags
-    } else {
-        scalar.to_string()
-    };
-    let _ = writeln!(s, "pub type {} = {carrier};", g.name);
+    let _ = writeln!(s, "pub type {} = {scalar};", g.name);
     for v in &g.values {
         let lit = v
             .literal_value
@@ -308,7 +306,7 @@ pub(super) fn emit_vk_types(fs: &FeatureSet, s: &mut String) -> Result<()> {
     }
 
     emit_flat_consts(fs, s)?;
-    emit_enum_groups(fs, s, &defined)?;
+    emit_enum_groups(fs, s)?;
 
     s.push_str("// ── Types ───────────────────────────────────────────────────\n");
     let mut platform: IndexSet<&str> = IndexSet::new();
@@ -323,6 +321,17 @@ pub(super) fn emit_vk_types(fs: &FeatureSet, s: &mut String) -> Result<()> {
             continue;
         }
         push_guarded(s, &t.protect.0, &body);
+    }
+
+    // Commands reference platform types too (vkGetPhysicalDeviceXlib-
+    // PresentationSupportKHR takes a VisualID); sweep their signatures so
+    // the platform section covers the dispatch methods as well.
+    for cmd in &fs.commands {
+        for ty in cmd.params.iter().map(|p| &p.ty).chain([&cmd.return_ty]) {
+            if platform_type_decl(&ty.base).is_some() {
+                record_platform(&ty.base, &mut platform);
+            }
+        }
     }
 
     if !platform.is_empty() {
@@ -479,6 +488,14 @@ fn check_base(
     if defined.contains(ty.base.as_str()) {
         return Ok(());
     }
+    if ty.base.starts_with("StdVideo") {
+        bail!(
+            "base type '{}' lives in the vk_video headers, which the Rust \
+             backend cannot emit yet — exclude the video-codec extensions \
+             via --extensions to generate this loader",
+            ty.base
+        );
+    }
     bail!(
         "base type '{}' is not an ABI scalar, a defined Vulkan type, or a \
          known platform type",
@@ -592,7 +609,12 @@ fn emit_vk_struct(
     for f in &fields {
         match f {
             Field::Plain(m) => {
-                let _ = writeln!(s, "    pub {}: {},", m.name, vk_type(&m.ty));
+                let _ = writeln!(
+                    s,
+                    "    pub {}: {},",
+                    super::sanitize_ident(&m.name),
+                    vk_type(&m.ty)
+                );
             }
             Field::Packed(run) => {
                 let field_name = run

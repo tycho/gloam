@@ -321,3 +321,23 @@ fn golden_rust_merged_gl_gles2() {
         &["--alias", "--mx-global"],
     );
 }
+
+#[test]
+fn golden_rust_vk_ext() {
+    // Pins the Vulkan Rust surface end to end: typed enum groups, handles,
+    // struct/union/bitfield emission, the phased loader, and — via
+    // win32_surface — platform-protected commands (#[cfg(feature)]) plus
+    // the platform-type section.
+    check_rust(
+        "rust_vk_ext",
+        &[
+            "--api",
+            "vk=1.3",
+            "--extensions",
+            "VK_KHR_surface,VK_KHR_swapchain,VK_KHR_win32_surface,\
+             VK_EXT_debug_utils,VK_KHR_acceleration_structure,\
+             VK_KHR_deferred_host_operations,VK_KHR_get_physical_device_properties2",
+        ],
+        &["--alias"],
+    );
+}
