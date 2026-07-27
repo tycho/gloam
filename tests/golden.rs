@@ -16,7 +16,7 @@
 //!   git diff tests/golden/     # the delta IS the review artifact
 
 mod common;
-use common::generate;
+use common::{generate, generate_rust};
 
 use std::path::PathBuf;
 
@@ -119,6 +119,30 @@ fn assert_matches_golden(name: &str, rel: &str, actual: &str) {
          If this change is intended (or follows a bundled-spec update), re-bless and review:\n  \
          GLOAM_BLESS=1 cargo test --test golden\n  git diff tests/golden/"
     );
+}
+
+/// Strip the Rust preamble: `//` comment lines (gloam version, provenance
+/// pins) up to the first crate attribute.  Mirrors [`strip_preamble`] for the
+/// line-comment form the Rust backend emits.
+fn strip_rust_preamble(content: &str) -> &str {
+    match content.find("#![") {
+        Some(pos) => &content[pos..],
+        None => content,
+    }
+}
+
+/// Generate one Rust-backend config and snapshot Cargo.toml + src/lib.rs.
+fn check_rust(name: &str, global_args: &[&str], rust_flags: &[&str]) {
+    let dir = generate_rust(global_args, rust_flags);
+
+    let lib = common::read_rust_lib(dir.path());
+    let manifest = common::read_rust_manifest(dir.path());
+
+    assert_single_trailing_newline(name, "lib.rs", &lib);
+    assert_single_trailing_newline(name, "Cargo.toml", &manifest);
+
+    assert_matches_golden(name, "src/lib.rs", strip_rust_preamble(&lib));
+    assert_matches_golden(name, "Cargo.toml", &manifest);
 }
 
 /// Generate one config and snapshot the primary .h/.c pair for `stem`.
@@ -266,5 +290,34 @@ fn golden_vk_external_headers() {
         &["--api", "vk=1.3", "--extensions", ""],
         &["--external-headers"],
         "vk",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rust backend configs — the minimal crate and the flagship merged build
+// with every layer enabled (alias + mx-global), mirroring the C flagship.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn golden_rust_gl_noext() {
+    check_rust(
+        "rust_gl_noext",
+        &["--api", "gl:core=3.3", "--extensions", ""],
+        &[],
+    );
+}
+
+#[test]
+fn golden_rust_merged_gl_gles2() {
+    check_rust(
+        "rust_merged_gl_gles2",
+        &[
+            "--api",
+            "gl:core=3.3,gles2=3.0",
+            "--merge",
+            "--extensions",
+            "GL_KHR_debug",
+        ],
+        &["--alias", "--mx-global"],
     );
 }
