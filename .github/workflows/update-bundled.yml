@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   update:
+    if: ${{ github.server_url == 'https://github.com' }}
     name: Fetch and validate
     runs-on: ubuntu-latest
 
