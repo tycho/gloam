@@ -152,8 +152,12 @@ pub(super) fn select_extensions<'a>(
         let already: HashSet<&str> = selected.iter().map(|e| e.raw.name.as_str()).collect();
         let prev_len = selected.len();
 
-        // Collect unique dependency names from all currently selected extensions.
-        let needed: HashSet<&str> = selected
+        // Collect unique dependency names from all currently selected
+        // extensions.  Insertion-ordered: the order dependencies are pulled
+        // in determines extArray indices and command ordering downstream, so
+        // a hash-ordered set here would make the generated output
+        // nondeterministic.
+        let needed: indexmap::IndexSet<&str> = selected
             .iter()
             .flat_map(|e| e.raw.depends.iter().map(String::as_str))
             .filter(|dep| {
