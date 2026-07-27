@@ -207,6 +207,13 @@ regenerate with the same or different flags:
 gloam --lock path/to/.gloam/manifest.json --api gl:core=4.6 c --loader
 ```
 
+To reproduce a tree with its *original* flags, `gloam regen <tree>` automates
+this replay: it re-runs the manifest's recorded `command_line` pinned to the
+manifest's own `provenance` (or re-resolved with `--fresh`), deriving the
+output path from the manifest's location so it works from any directory. The
+rest of this section describes the underlying `--lock` mechanism, which regen
+uses and which you drive directly when changing flags.
+
 When reading a `--lock` manifest, gloam uses **only its `provenance` section**.
 The `gloam` and `output` sections of the input are ignored and regenerated
 fresh for the new run.
