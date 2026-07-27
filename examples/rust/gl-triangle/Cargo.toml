@@ -1,0 +1,22 @@
+[package]
+name = "gl-triangle-rs"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "gl-triangle-rs"
+path = "src/main.rs"
+
+[dependencies]
+# The gloam-generated GL loader crate (regenerate with the command in README.md).
+gloam_gl = { path = "gloam" }
+# Rust-native windowing + GL context management (no C libraries to locate).
+winit = "0.30"
+glutin = "0.32"
+glutin-winit = "0.5"
+raw-window-handle = "0.6"
+
+# Standalone workspace so this example (and its winit/glutin deps) stays out of
+# the main gloam workspace's build and lockfile.
+[workspace]

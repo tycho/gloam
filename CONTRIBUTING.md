@@ -157,6 +157,7 @@ check, header/source readers) live in `tests/common/mod.rs`.
 | Test file | Coverage |
 |---|---|
 | `generate_c.rs` | GL/GLES C loader generation + compilation |
+| `generate_rust.rs` | Rust loader crate structure, constant typing, `cargo check` |
 | `generate_vulkan.rs` | Vulkan-specific generation |
 | `generate_wgl_glx.rs` | WGL, GLX, and cross-API edge cases |
 | `predecessor_promoted.rs` | `--promoted` and `--predecessors` flag behavior |
@@ -174,7 +175,8 @@ cargo test
 
 `tests/golden.rs` compares generated `.h`/`.c` output (preamble stripped)
 byte-for-byte against checked-in snapshots under `tests/golden/`, one config
-per spec family plus the merged GL+GLES2 build. A refactor that should not
+per spec family plus the merged GL+GLES2 build, plus two Rust-backend
+configs (`Cargo.toml` + `src/lib.rs`). A refactor that should not
 change output is proven neutral by `cargo test`. When output changes
 deliberately — or a bundle refresh changes resolved content — re-bless and
 review the diff:
@@ -183,6 +185,22 @@ review the diff:
 GLOAM_BLESS=1 cargo test --test golden
 git diff tests/golden/
 ```
+
+### Miri
+
+The library unit tests run clean under Miri and should stay that way:
+
+```sh
+cargo +nightly miri test --no-default-features --lib
+```
+
+Expect the first run to be slow (Miri builds its own sysroot). Scope is
+`--lib` only: the integration tests spawn the gloam binary as a
+subprocess, which Miri cannot interpret. Note this checks gloam itself,
+not the generated loaders — their dispatch paths call driver FFI, which
+no interpreter can execute; the generated crate's soundness-sensitive
+choices (Option<fn> transmutes, explicit unsafe blocks, checked dispatch)
+are enforced structurally at generation time instead.
 
 ### Regenerating downstream trees
 

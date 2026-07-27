@@ -167,6 +167,11 @@ pub struct RawEnum {
     /// This enum is an alias of another enum name.
     pub alias: Option<String>,
     pub comment: String,
+    /// Defined inside a GL `<enums type="bitmask">` block.  Typed backends use
+    /// this to give the constant the bitfield type (e.g. Rust `GLbitfield`);
+    /// the C backend's untyped `#define`s ignore it.  Always false for Vulkan
+    /// (whose bitmask blocks become typed groups, not flat enums).
+    pub is_bitmask: bool,
 }
 
 /// A Vulkan typed enum group (the `<enums type="enum"|"bitmask">` element).

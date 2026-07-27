@@ -89,6 +89,8 @@ pub struct Cli {
 pub enum Generator {
     /// Generate a C loader.
     C(CArgs),
+    /// Generate a Rust loader (experimental; GL/GLES only for now).
+    Rust(RustArgs),
     /// Write a provenance-only snapshot manifest (no loader output) pinning
     /// every supported upstream source at the current bundle (or, with --fetch,
     /// upstream HEAD).  Reuse it later with --lock for reproducible generation.
@@ -122,6 +124,19 @@ pub struct CArgs {
     /// and PFN typedefs.  Only meaningful for Vulkan builds.
     #[arg(long)]
     pub external_headers: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct RustArgs {
+    /// Enable bijective function-pointer alias resolution.
+    #[arg(long)]
+    pub alias: bool,
+
+    /// Also emit a process-global context with free-function dispatch
+    /// (`gl::DrawArrays(...)` after `use gloam_gl as gl`), the analogue of
+    /// the C loader's global-context macros.
+    #[arg(long)]
+    pub mx_global: bool,
 }
 
 impl Cli {

@@ -139,3 +139,56 @@ pub fn collect_files(root: &Path) -> Vec<PathBuf> {
     files.sort();
     files
 }
+
+// ---------------------------------------------------------------------------
+// Rust backend helpers
+// ---------------------------------------------------------------------------
+
+/// Run gloam's `rust` subcommand into a fresh temp dir and assert success.
+/// Mirrors [`generate`]: `global_args` go before the subcommand, `rust_flags`
+/// after it (e.g. `--alias`, `--mx-global`).
+pub fn generate_rust(global_args: &[&str], rust_flags: &[&str]) -> TempDir {
+    let dir = TempDir::new().unwrap();
+    gloam()
+        .args(global_args)
+        .args(["--out-path", dir.path().to_str().unwrap(), "rust"])
+        .args(rust_flags)
+        .assert()
+        .success();
+    dir
+}
+
+/// Read the generated crate's `src/lib.rs`.
+pub fn read_rust_lib(out: &Path) -> String {
+    std::fs::read_to_string(out.join("src").join("lib.rs"))
+        .unwrap_or_else(|_| panic!("missing src/lib.rs"))
+}
+
+/// Read the generated crate's `Cargo.toml`.
+pub fn read_rust_manifest(out: &Path) -> String {
+    std::fs::read_to_string(out.join("Cargo.toml")).unwrap_or_else(|_| panic!("missing Cargo.toml"))
+}
+
+/// Attempt `cargo check` on the generated crate (once per feature config).
+/// Silently skips if cargo can't be spawned; fails the test on compile errors.
+pub fn try_cargo_check_rust(out: &Path, features: &[&str]) {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let mut cmd = std::process::Command::new(cargo);
+    cmd.current_dir(out).arg("check").arg("--quiet");
+    for f in features {
+        cmd.args(["--features", f]);
+    }
+    // Keep the temp crate's build artifacts inside the temp dir.
+    cmd.env("CARGO_TARGET_DIR", out.join("target"));
+    match cmd.output() {
+        Err(e) => eprintln!("cargo check skipped: could not spawn cargo: {e}"),
+        Ok(output) => {
+            assert!(
+                output.status.success(),
+                "generated Rust crate in {} failed cargo check (features: {features:?}):\n{}",
+                out.display(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+}

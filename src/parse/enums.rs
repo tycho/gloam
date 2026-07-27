@@ -41,10 +41,12 @@ pub fn parse_enums(
         let _namespace = block.attribute("namespace").unwrap_or("");
         let _parent_group = block.attribute("group").unwrap_or("");
         let _comment = block.attribute("comment").unwrap_or("");
+        let is_bitmask = block_type == Some("bitmask");
 
         // Non-<enum> children (<unused>, <comment>) are deliberately ignored.
         for child in block.children_named("enum") {
-            let enum_val = parse_flat_enum(child, None)?;
+            let mut enum_val = parse_flat_enum(child, None)?;
+            enum_val.is_bitmask = is_bitmask;
             flat_enums.entry(enum_val.name.clone()).or_insert(enum_val);
         }
     }
@@ -227,5 +229,6 @@ fn parse_flat_enum(
         value,
         alias,
         comment,
+        is_bitmask: false, // set by the caller from the enclosing block
     })
 }
