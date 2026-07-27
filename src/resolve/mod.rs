@@ -27,7 +27,7 @@ mod typedefs;
 // Public types — re-exported so external callers use `crate::resolve::FeatureSet` etc.
 pub mod types;
 pub use types::{
-    Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, Protect, SelectionReason,
+    Command, Extension, Feature, FeatureSet, FlatEnum, Param, PfnRange, Protect, SelectionReason,
     SerVersion, TypeDef,
 };
 
@@ -71,6 +71,7 @@ pub fn build_feature_sets(
 
     let alias = match &cli.generator {
         crate::cli::Generator::C(c) => c.alias,
+        crate::cli::Generator::Rust(r) => r.alias,
         crate::cli::Generator::Lock(_) => false, // never reached: lock skips resolution
     };
 

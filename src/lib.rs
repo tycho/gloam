@@ -121,6 +121,16 @@ fn run() -> Result<()> {
                 }
             }
         }
+        Generator::Rust(rust_args) => {
+            diag.info("generating Rust loader...");
+            for fs in &feature_sets {
+                let tree = generator::rust::generate(fs, rust_args, out, &store, &command_line)?;
+                pins.extend(tree.pins);
+                for f in tree.files {
+                    files.entry(f.path.clone()).or_insert(f);
+                }
+            }
+        }
         Generator::Lock(_) => unreachable!("handled above"),
     }
 

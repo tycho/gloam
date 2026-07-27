@@ -186,6 +186,9 @@ pub struct FlatEnum {
     pub comment: String,
     /// Platform protection.
     pub protect: Protect,
+    /// From a GL `<enums type="bitmask">` block; typed backends emit the
+    /// bitfield type (Rust `GLbitfield`).  Ignored by the C `#define` path.
+    pub is_bitmask: bool,
 }
 
 #[derive(Debug, Serialize)]
