@@ -2,8 +2,8 @@
   "schema_version": 2,
   "gloam": {
     "version": "0.5.2",
-    "describe": "0.5.2-19-g3692707",
-    "commit": "3692707842bb3ec287b64c27ff183c168e2dfb3d",
+    "describe": "0.5.2-20-g1d8744e",
+    "commit": "1d8744e68c3e893824873c34c4763f140c9ff488",
     "command_line": "gloam --api vk=1.3 --extensions VK_KHR_swapchain,VK_KHR_get_physical_device_properties2,VK_EXT_debug_utils,VK_KHR_timeline_semaphore,VK_KHR_synchronization2 --out-path examples/rust/vk-info/gloam rust --alias"
   },
   "provenance": {
@@ -37,7 +37,7 @@
     },
     {
       "path": "src/lib.rs",
-      "blob": "c799ac67319807d28b7ac1fe0da9c9756c2e0c54",
+      "blob": "d271ab3b515e818245ab70cbfad26fcf8f4b5c43",
       "derived_from": [
         "vk.xml",
         "vulkan/vk_platform.h",
