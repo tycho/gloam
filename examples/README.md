@@ -58,5 +58,10 @@ gloam --api vk=1.3 \
 gloam --api gl:core=3.3,gles2=3.0 --merge --out-path gl-triangle/gloam rust --alias
 ```
 
-`cargo xtask regen examples/c` and `cargo xtask regen examples/rust` re-run the
-recorded commands with the working-copy gloam.
+`cargo xtask regen examples` re-runs the recorded commands with the
+working-copy gloam, regenerating every tree in place (the output path is
+derived from each `.gloam/manifest.json` location, so the recorded
+`--out-path` values above don't need to match your cwd).  Add `--fresh` to
+advance the trees to the current bundle instead of pinning to their
+recorded provenance — CI does this automatically when the weekly bundle
+update changes example output.
