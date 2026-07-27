@@ -9,6 +9,7 @@ use indexmap::IndexMap;
 use serde::Serialize;
 
 use crate::identity::Spec;
+use crate::parse::ctype::TypeRef;
 
 // ---------------------------------------------------------------------------
 // Protection
@@ -150,6 +151,10 @@ pub struct Command {
     pub short_name: String,
     /// C return type text e.g. "void", "const GLubyte *"
     pub return_type: String,
+    /// Typed view of `return_type`.  Not serialized: the C templates render
+    /// the raw text; non-C backends print from this.
+    #[serde(skip)]
+    pub return_ty: TypeRef,
     /// Parameters as declared in the spec (raw C type text + name).
     pub params: Vec<Param>,
     /// Vulkan scope name (empty string for non-Vulkan).
@@ -161,6 +166,10 @@ pub struct Command {
 #[derive(Debug, Clone, Serialize)]
 pub struct Param {
     pub type_raw: String,
+    /// Typed view of `type_raw`.  Not serialized: the C templates render the
+    /// raw text; non-C backends print from this.
+    #[serde(skip)]
+    pub ty: TypeRef,
     pub name: String,
 }
 

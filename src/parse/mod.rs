@@ -7,6 +7,7 @@
 //! approach in the original Python but avoids any DOM mutation.
 
 pub mod commands;
+pub mod ctype;
 pub mod enums;
 pub mod features;
 pub mod types;

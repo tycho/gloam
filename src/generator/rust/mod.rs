@@ -13,9 +13,6 @@
 //! explicit `unsafe {}` blocks (enforced by `#![deny(unsafe_op_in_unsafe_fn)]`),
 //! so the output is valid under any edition; the pinned `edition = 2021` is
 //! just a stable default, not load-bearing.
-//!
-//! See `docs/rust-backend.md` for the design.  The one remaining optional mode
-//! is mx-global dispatch via a `OnceLock` global.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -25,6 +22,7 @@ use indexmap::IndexMap;
 
 use super::GeneratedTree;
 use crate::identity::Spec;
+use crate::parse::ctype::TypeRef;
 use crate::preamble;
 use crate::provenance::load::SourceStore;
 use crate::provenance::manifest::{OutputEntry, ProvenancePin, git_blob_sha1};
@@ -869,14 +867,14 @@ fn emit_method(cmd: &Command, first_api: &str) -> String {
             } else {
                 sanitize_ident(&p.name)
             };
-            (name, translate_type(&p.type_raw))
+            (name, rust_type(&p.ty))
         })
         .collect();
 
-    let ret = if cmd.return_type.trim() == "void" {
+    let ret = if cmd.return_ty.is_void() {
         None
     } else {
-        Some(translate_type(&cmd.return_type))
+        Some(rust_type(&cmd.return_ty))
     };
     let ret_sig = ret.as_ref().map(|r| format!(" -> {r}")).unwrap_or_default();
 
@@ -1030,14 +1028,14 @@ fn emit_global_fn(cmd: &Command) -> String {
             } else {
                 sanitize_ident(&p.name)
             };
-            (name, translate_type(&p.type_raw))
+            (name, rust_type(&p.ty))
         })
         .collect();
 
-    let ret = if cmd.return_type.trim() == "void" {
+    let ret = if cmd.return_ty.is_void() {
         None
     } else {
-        Some(translate_type(&cmd.return_type))
+        Some(rust_type(&cmd.return_ty))
     };
     let ret_sig = ret.as_ref().map(|r| format!(" -> {r}")).unwrap_or_default();
     let sig_params = params
@@ -1075,34 +1073,40 @@ fn emit_global_flag_query(s: &mut String, name: &str, full: &str, verb: &str) {
     );
 }
 
-/// Translate a C type string from the spec (`Param.type_raw` /
-/// `Command.return_type`) into a Rust type, relying on the emitted base-type
-/// aliases and newtypes for the base name.  Handles `const` and pointer levels;
-/// GL's handful of exotic types are out of scope for this slice.
-fn translate_type(raw: &str) -> String {
-    let stars = raw.matches('*').count();
-    // GL pointer params are uniformly read-only (`const T *`, `const T *const*`)
-    // or read-write (`T *`), so const-ness applies to every pointer level: e.g.
-    // `const GLchar *const *` -> `*const *const GLchar`, `GLuint *` -> `*mut GLuint`.
-    let ptr = if raw.contains("const") {
-        "*const "
-    } else {
-        "*mut "
-    };
-    let base: String = raw
-        .replace("const", " ")
-        .replace("struct", " ")
-        .replace('*', " ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let base_rust = match base.as_str() {
+/// Print a `TypeRef` (`Param.ty` / `Command.return_ty`) as a Rust type,
+/// relying on the emitted base-type aliases and newtypes for the base name.
+/// Pointer mutability is per-level: each Rust pointer is `*const` exactly
+/// when the thing it points at is const-qualified in the C declarator, so
+/// `const GLchar *const*` prints `*const *const GLchar` while
+/// `const GLcharARB **` prints `*mut *const GLcharARB`.
+fn rust_type(ty: &TypeRef) -> String {
+    let base = match ty.base.as_str() {
         "void" | "GLvoid" => "c_void",
         other => other,
     };
-    let mut t = base_rust.to_string();
-    for _ in 0..stars {
-        t = format!("{ptr}{t}");
+    let mut t = base.to_string();
+    // Inner array dimensions (all but the outermost) survive parameter decay
+    // as Rust array layers.  No GL command uses them today; the printer stays
+    // total so a spec that grows one can't silently mistranslate.
+    for dim in ty.array.iter().skip(1).rev() {
+        t = format!("[{t}; {dim}]");
+    }
+    for i in 0..ty.pointers.len() {
+        let pointee_const = if i == 0 {
+            ty.base_const
+        } else {
+            ty.pointers[i - 1]
+        };
+        t = format!("{}{t}", if pointee_const { "*const " } else { "*mut " });
+    }
+    // A C array parameter decays to a pointer to its element type.
+    if !ty.array.is_empty() {
+        let elem_const = if ty.pointers.is_empty() {
+            ty.base_const
+        } else {
+            *ty.pointers.last().unwrap()
+        };
+        t = format!("{}{t}", if elem_const { "*const " } else { "*mut " });
     }
     t
 }
@@ -1174,4 +1178,44 @@ fn normalize_eof(mut rendered: String) -> String {
     rendered.truncate(rendered.trim_end_matches('\n').len());
     rendered.push('\n');
     rendered
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rt(decl: &str) -> String {
+        rust_type(&TypeRef::parse(decl).unwrap())
+    }
+
+    #[test]
+    fn rust_type_scalars_and_void() {
+        assert_eq!(rt("GLenum"), "GLenum");
+        assert_eq!(rt("void"), "c_void");
+        assert_eq!(rt("GLvoid"), "c_void");
+    }
+
+    #[test]
+    fn rust_type_single_pointers() {
+        assert_eq!(rt("const GLubyte *"), "*const GLubyte");
+        assert_eq!(rt("GLuint *"), "*mut GLuint");
+        assert_eq!(rt("void *"), "*mut c_void");
+        assert_eq!(rt("const void *"), "*const c_void");
+    }
+
+    #[test]
+    fn rust_type_pointer_constness_is_per_level() {
+        // const T *const*: both levels const.
+        assert_eq!(rt("const GLchar *const*"), "*const *const GLchar");
+        // const T **: pointer-to-const under a MUTABLE outer pointer — the
+        // case the old single-const translator emitted as *const *const.
+        assert_eq!(rt("const GLcharARB **"), "*mut *const GLcharARB");
+        assert_eq!(rt("void **"), "*mut *mut c_void");
+    }
+
+    #[test]
+    fn rust_type_array_param_decays() {
+        assert_eq!(rt("const GLfloat coords[4]"), "*const GLfloat");
+        assert_eq!(rt("GLuint baseAndCount[2]"), "*mut GLuint");
+    }
 }
