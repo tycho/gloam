@@ -323,6 +323,15 @@ fn golden_rust_merged_gl_gles2() {
 }
 
 #[test]
+fn golden_rust_egl() {
+    // Full extension set — the production shape (ANGLE selection needs the
+    // client extensions) — pinning EGL_CAST constants, the native-type
+    // platform table, inline structs (EGLClientPixmapHI), and the
+    // client+display extension-string detection path.
+    check_rust("rust_egl", &["--api", "egl"], &["--alias"]);
+}
+
+#[test]
 fn golden_rust_vk_ext() {
     // Pins the Vulkan Rust surface end to end: typed enum groups, handles,
     // struct/union/bitfield emission, the phased loader, and — via

@@ -14,6 +14,7 @@
 //! so the output is valid under any edition; the pinned `edition = 2021` is
 //! just a stable default, not load-bearing.
 
+mod egl_loader;
 mod vk_loader;
 mod vk_types;
 
@@ -53,8 +54,8 @@ fn abi_scalar(base: &str) -> Option<&'static str> {
         // ptrdiff_t guard (LP64 there, so pointer-sized); ptrdiff_t is the
         // portable spelling of the same width.
         "long" => "isize",
-        "ptrdiff_t" => "isize",
-        "size_t" => "usize",
+        "ptrdiff_t" | "intptr_t" | "ssize_t" => "isize",
+        "size_t" | "uintptr_t" => "usize",
         "int8_t" | "khronos_int8_t" => "i8",
         "uint8_t" | "khronos_uint8_t" => "u8",
         "int16_t" | "khronos_int16_t" => "i16",
@@ -66,6 +67,9 @@ fn abi_scalar(base: &str) -> Option<&'static str> {
         "khronos_float_t" => "f32",
         "khronos_intptr_t" | "khronos_ssize_t" => "isize",
         "khronos_uintptr_t" | "khronos_usize_t" => "usize",
+        // Nanosecond-timestamp types (EGL_KHR_reusable_sync and friends).
+        "khronos_utime_nanoseconds_t" => "u64",
+        "khronos_stime_nanoseconds_t" => "i64",
         _ => return None,
     })
 }
@@ -88,11 +92,13 @@ fn cond_to_cfg(cond: &str) -> Result<&'static str> {
 /// (or verbatim when it names another emitted type), pointer levels wrapped
 /// per constness.  `defined` is the full set of names this module defines;
 /// `opaque` accumulates `struct`-keyword bases (incomplete C struct types)
-/// that need a zero-sized `#[repr(C)]` struct synthesized.
+/// that need a zero-sized `#[repr(C)]` struct synthesized; `platform`
+/// accumulates names satisfied by the spec's platform-type table.
 fn rust_target_type(
     ty: &TypeRef,
     defined: &std::collections::HashSet<&str>,
     opaque: &mut indexmap::IndexSet<String>,
+    platform: &mut PlatformSweep<'_>,
 ) -> Result<String> {
     let base: String = if ty.struct_kw {
         // Pointer to an incomplete struct (e.g. `struct __GLsync *`): give
@@ -101,12 +107,12 @@ fn rust_target_type(
         ty.base.clone()
     } else if let Some(scalar) = abi_scalar(&ty.base) {
         scalar.to_string()
-    } else if defined.contains(ty.base.as_str()) {
+    } else if defined.contains(ty.base.as_str()) || platform.record(&ty.base) {
         ty.base.clone()
     } else {
         bail!(
-            "typedef target '{}' is neither an ABI scalar nor a type defined \
-             in this module",
+            "typedef target '{}' is neither an ABI scalar, a type defined \
+             in this module, nor a known platform type",
             ty.base
         );
     };
@@ -122,24 +128,53 @@ fn rust_target_type(
     Ok(t)
 }
 
-/// Emit the GL base-type aliases, callback function-pointer types, and
-/// opaque handle structs — derived from the registry's structured type
-/// payloads (`TypeDef.payload`), not hand-maintained.  Only the ABI scalar
-/// map is hand-written; everything else follows the spec, including the
-/// platform-conditional typedefs (GLhandleARB is `void *` on Apple platforms
-/// and `unsigned int` elsewhere — a distinction a hand-copied table misses).
-fn emit_base_types(fs: &FeatureSet, s: &mut String) -> Result<()> {
+/// Collects the platform-table names a spec's emission actually references,
+/// so only used declarations are emitted.
+struct PlatformSweep<'a> {
+    decl: &'a dyn Fn(&str) -> Option<&'static str>,
+    used: indexmap::IndexSet<String>,
+}
+
+impl PlatformSweep<'_> {
+    fn record(&mut self, name: &str) -> bool {
+        if (self.decl)(name).is_some() {
+            self.used.insert(name.to_string());
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Emit a spec's base-type aliases, callback function-pointer types, opaque
+/// handle structs, and referenced platform types — derived from the
+/// registry's structured type payloads (`TypeDef.payload`), not
+/// hand-maintained.  Only the ABI scalar map and the per-spec platform
+/// table are hand-written; everything else follows the spec, including
+/// platform-conditional typedefs (GLhandleARB is `void *` on Apple
+/// platforms and `unsigned int` elsewhere — a distinction a hand-copied
+/// table misses).  `newtype_skip` names typedefs replaced by hand-emitted
+/// newtypes (GL's GLenum/GLbitfield); `platform_decl` maps platform type
+/// names (EGL's native window/display types) to their declarations.
+fn emit_base_types(
+    fs: &FeatureSet,
+    s: &mut String,
+    newtype_skip: &[&str],
+    platform_decl: &dyn Fn(&str) -> Option<&'static str>,
+) -> Result<()> {
     use crate::ir::{TypeCategory, TypePayload};
 
     // Full set of names this module defines, for validating alias targets
-    // that reference other GL types (e.g. GLvdpauSurfaceNV = GLintptr).
-    // The GLenum/GLbitfield newtypes are defined by NEWTYPES below.
+    // that reference other spec types (e.g. GLvdpauSurfaceNV = GLintptr).
     let mut defined: std::collections::HashSet<&str> =
         fs.types.iter().map(|t| t.name.as_str()).collect();
-    defined.insert("GLenum");
-    defined.insert("GLbitfield");
+    defined.extend(newtype_skip);
 
     let mut opaque: indexmap::IndexSet<String> = indexmap::IndexSet::new();
+    let mut platform = PlatformSweep {
+        decl: platform_decl,
+        used: indexmap::IndexSet::new(),
+    };
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
 
     for t in &fs.types {
@@ -147,10 +182,10 @@ fn emit_base_types(fs: &FeatureSet, s: &mut String) -> Result<()> {
             continue;
         }
         match &t.payload {
-            // The two scalar-enum newtypes replace their C typedefs.
-            TypePayload::Typedef(_) if t.name == "GLenum" || t.name == "GLbitfield" => {}
+            // Typedefs replaced by hand-emitted newtypes.
+            TypePayload::Typedef(_) if newtype_skip.contains(&t.name.as_str()) => {}
             TypePayload::Typedef(arms) => {
-                emit_typedef_arms(s, &t.name, arms, &defined, &mut opaque)?;
+                emit_typedef_arms(s, &t.name, arms, &defined, &mut opaque, &mut platform)?;
             }
             TypePayload::Funcpointer(sig) => {
                 let params = sig
@@ -171,6 +206,15 @@ fn emit_base_types(fs: &FeatureSet, s: &mut String) -> Result<()> {
                 );
             }
             TypePayload::Opaque => {
+                // `#define PFN... PFN...PROC` aliases are C-header naming
+                // shims for per-command function-pointer typedefs, a concept
+                // this backend replaces with dispatch methods — skip them.
+                // `#include` carriers (egl.xml's eglplatform entry has no
+                // category attribute, so the Include filter above misses it)
+                // are satisfied by the ABI map + platform table instead.
+                if t.raw_c.starts_with("#define PFN") || t.raw_c.starts_with("#include") {
+                    continue;
+                }
                 // Forward struct declarations (`struct _cl_context;`) become
                 // synthesized opaque types below.  Anything else opaque is a
                 // spec construct this backend has never seen: fail loudly.
@@ -192,15 +236,50 @@ fn emit_base_types(fs: &FeatureSet, s: &mut String) -> Result<()> {
                     ),
                 }
             }
-            TypePayload::Members(_) | TypePayload::Handle { .. } => bail!(
-                "type '{}': unexpected {} payload in a GL-family build",
-                t.name,
-                if matches!(t.payload, TypePayload::Members(_)) {
-                    "struct/union"
-                } else {
-                    "handle"
+            // Inline struct definitions (EGLClientPixmapHI, WGL's
+            // GPU_DEVICE): plain #[repr(C)] structs.
+            TypePayload::Members(members) => {
+                let _ = writeln!(
+                    s,
+                    "#[repr(C)]\n#[derive(Copy, Clone)]\npub struct {} {{",
+                    t.name
+                );
+                for m in members {
+                    if m.ty.bitfield.is_some() {
+                        bail!(
+                            "struct '{}' member '{}': bitfields are not supported \
+                             in GL-family structs",
+                            t.name,
+                            m.name
+                        );
+                    }
+                    let mut field =
+                        rust_target_type(&m.ty, &defined, &mut opaque, &mut platform)
+                            .map_err(|e| e.context(format!("{} member '{}'", t.name, m.name)))?;
+                    for dim in m.ty.array.iter().rev() {
+                        field = format!("[{field}; {dim}]");
+                    }
+                    let _ = writeln!(s, "    pub {}: {field},", sanitize_ident(&m.name));
                 }
+                s.push_str("}\n");
+            }
+            TypePayload::Handle { .. } => bail!(
+                "type '{}': unexpected handle payload in a GL-family build",
+                t.name
             ),
+        }
+    }
+
+    // Commands can reference platform types the typedefs never mention
+    // (EGL's native display/window/pixmap parameters).
+    for cmd in &fs.commands {
+        for ty in cmd.params.iter().map(|p| &p.ty).chain([&cmd.return_ty]) {
+            if !ty.struct_kw
+                && abi_scalar(&ty.base).is_none()
+                && !defined.contains(ty.base.as_str())
+            {
+                platform.record(&ty.base);
+            }
         }
     }
 
@@ -216,6 +295,16 @@ fn emit_base_types(fs: &FeatureSet, s: &mut String) -> Result<()> {
             );
         }
     }
+    if !platform.used.is_empty() {
+        s.push_str(
+            "\n// Platform types (in C these come from platform headers via\n\
+             // khrplatform/eglplatform); declared here with their per-target\n\
+             // ABI shapes.\n",
+        );
+        for name in &platform.used {
+            let _ = writeln!(s, "{}", (platform.decl)(name).unwrap());
+        }
+    }
     Ok(())
 }
 
@@ -229,10 +318,11 @@ fn emit_typedef_arms(
     arms: &[crate::ir::TypedefArm],
     defined: &std::collections::HashSet<&str>,
     opaque: &mut indexmap::IndexSet<String>,
+    platform: &mut PlatformSweep<'_>,
 ) -> Result<()> {
     let targets = arms
         .iter()
-        .map(|arm| rust_target_type(&arm.ty, defined, opaque))
+        .map(|arm| rust_target_type(&arm.ty, defined, opaque, platform))
         .collect::<Result<Vec<_>>>()?;
 
     if targets.windows(2).all(|w| w[0] == w[1]) {
@@ -288,15 +378,19 @@ pub fn generate(
     store: &SourceStore,
     command_line: &str,
 ) -> Result<GeneratedTree> {
-    if !matches!(fs.spec, Spec::Gl | Spec::Vk) {
+    if !matches!(fs.spec, Spec::Gl | Spec::Vk | Spec::Egl) {
         bail!(
-            "the rust backend currently supports the GL/GLES and Vulkan APIs; \
-             {} is not implemented yet",
+            "the rust backend currently supports the GL/GLES, Vulkan, and EGL \
+             APIs; {} is not implemented yet",
             fs.display_name
         );
     }
-    if fs.spec == Spec::Vk && args.mx_global {
-        bail!("--mx-global is not implemented for the Vulkan rust backend yet");
+    if fs.spec != Spec::Gl && args.mx_global {
+        bail!(
+            "--mx-global is only implemented for the GL rust backend so far \
+             (requested for {})",
+            fs.display_name
+        );
     }
 
     let stem = output_stem(fs);
@@ -313,6 +407,7 @@ pub fn generate(
     let preamble = rustify_preamble(&preamble::build_preamble(fs, &pins, command_line));
     let body = match fs.spec {
         Spec::Vk => normalize_eof(vk_loader::emit_vk_module(fs, &preamble)?),
+        Spec::Egl => normalize_eof(egl_loader::emit_egl_module(fs, &preamble)?),
         _ => normalize_eof(emit_module(fs, &preamble, args.mx_global)?),
     };
 
@@ -451,7 +546,7 @@ fn emit_module(fs: &FeatureSet, preamble: &str, mx_global: bool) -> Result<Strin
     );
 
     s.push_str("// ── GL base types ───────────────────────────────────────────\n");
-    emit_base_types(fs, &mut s)?;
+    emit_base_types(fs, &mut s, &["GLenum", "GLbitfield"], &|_| None)?;
     s.push('\n');
     s.push_str("// ── Enum newtypes ───────────────────────────────────────────\n");
     s.push_str(NEWTYPES);
@@ -1281,9 +1376,14 @@ fn emit_global_flag_query(s: &mut String, name: &str, full: &str, verb: &str) {
 /// `const GLchar *const*` prints `*const *const GLchar` while
 /// `const GLcharARB **` prints `*mut *const GLcharARB`.
 fn rust_type(ty: &TypeRef) -> String {
+    // Spec alias names pass through; raw C spellings map through the ABI
+    // table.  Mapping matters for correctness, not just style: a bare C
+    // `char` passed through verbatim would name RUST's 4-byte char and
+    // silently break the ABI (EGL_MESA_image_dma_buf_export uses `int *`
+    // and eglQueryString returns `const char *`).
     let base = match ty.base.as_str() {
-        "void" | "GLvoid" => "c_void",
-        other => other,
+        "GLvoid" => "c_void",
+        other => abi_scalar(other).unwrap_or(other),
     };
     let mut t = base.to_string();
     // Inner array dimensions (all but the outermost) survive parameter decay

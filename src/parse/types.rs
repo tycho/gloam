@@ -378,6 +378,7 @@ fn fn_sig(ret: &str, params: &[String]) -> Option<RawFnSig> {
 
 /// Structured payload for a finished C fragment, dispatched on shape:
 /// function-pointer typedefs, plain or preprocessor-conditional typedefs,
+/// inline struct definitions (EGL's EGLClientPixmapHI, WGL's GPU_DEVICE),
 /// anything else `Opaque`.
 fn text_payload(raw: &str) -> TypePayload {
     let t = raw.trim_start();
@@ -385,8 +386,46 @@ fn text_payload(raw: &str) -> TypePayload {
         funcpointer_text_payload(raw)
     } else if t.starts_with("typedef") || t.starts_with("#if") {
         typedef_text_payload(raw)
+    } else if t.starts_with("struct") && t.contains('{') {
+        struct_text_payload(raw)
     } else {
         TypePayload::Opaque
+    }
+}
+
+/// Parse an inline `struct Name { decl; decl; ... };` body into member
+/// records (the GL-family registries write these as raw text, unlike
+/// vk.xml's structured `<member>` elements).
+fn struct_text_payload(raw: &str) -> TypePayload {
+    let (Some(open), Some(close)) = (raw.find('{'), raw.rfind('}')) else {
+        return TypePayload::Opaque;
+    };
+    if close < open {
+        return TypePayload::Opaque;
+    }
+    let mut members: Vec<RawMember> = Vec::new();
+    for decl in raw[open + 1..close].split(';') {
+        let decl = decl.trim();
+        if decl.is_empty() {
+            continue;
+        }
+        let Ok(ty) = TypeRef::parse(decl) else {
+            return TypePayload::Opaque;
+        };
+        let Some(name) = ty.decl_name.clone() else {
+            return TypePayload::Opaque;
+        };
+        members.push(RawMember {
+            raw_c: decl.to_string(),
+            name,
+            ty,
+            values: None,
+        });
+    }
+    if members.is_empty() {
+        TypePayload::Opaque
+    } else {
+        TypePayload::Members(members)
     }
 }
 
