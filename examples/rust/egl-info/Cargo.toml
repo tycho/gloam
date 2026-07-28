@@ -1,0 +1,19 @@
+[package]
+name = "egl-info-rs"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "egl-info-rs"
+path = "src/main.rs"
+
+[dependencies]
+# The gloam-generated EGL loader crate (regenerate with the command in README.md).
+gloam_egl = { path = "gloam" }
+# Loads libEGL to bootstrap the proc-address source.
+libloading = "0.8"
+
+# Standalone workspace so this example stays out of the main gloam
+# workspace's build and lockfile.
+[workspace]

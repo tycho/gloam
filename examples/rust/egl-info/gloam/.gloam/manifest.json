@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "gloam": {
+    "version": "0.5.2",
+    "describe": "0.5.2-22-g6c4d2ba",
+    "commit": "6c4d2ba8f2f2fbd877e749411afe11f831c89d8b",
+    "command_line": "gloam --api egl --out-path examples/rust/egl-info/gloam rust --alias"
+  },
+  "provenance": {
+    "EGL/eglplatform.h": {
+      "repo": "KhronosGroup/EGL-Registry",
+      "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
+      "path_in_repo": "api/EGL/eglplatform.h",
+      "commit": "3d7796b3721d93976b6bfe536aa97bbc4bce8667",
+      "blob": "6786afd90b685895efa25b302afba68fc8296941"
+    },
+    "KHR/khrplatform.h": {
+      "repo": "KhronosGroup/EGL-Registry",
+      "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
+      "path_in_repo": "api/KHR/khrplatform.h",
+      "commit": "3d7796b3721d93976b6bfe536aa97bbc4bce8667",
+      "blob": "01646449caedc958effc3b450360aefd260671ab"
+    },
+    "egl.xml": {
+      "repo": "KhronosGroup/EGL-Registry",
+      "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
+      "path_in_repo": "api/egl.xml",
+      "commit": "3d7796b3721d93976b6bfe536aa97bbc4bce8667",
+      "blob": "ec184e75dfdb5d5244febe18a8f380cdea60bd03"
+    },
+    "egl_angle_ext.xml": {
+      "repo": "angle/angle",
+      "repo_url": "https://chromium.googlesource.com/angle/angle",
+      "path_in_repo": "scripts/egl_angle_ext.xml",
+      "commit": "6e09ee679387f2eadd22f2c35fdc7c774d2e71bb",
+      "blob": "f1bbc3a88789860a0e2c3e0348fa6c659eb41925"
+    },
+    "xxhash.h": {
+      "repo": "Cyan4973/xxHash",
+      "repo_url": "https://github.com/Cyan4973/xxHash",
+      "path_in_repo": "xxhash.h",
+      "commit": "e573d4d2aaeaba0f3e5a0a9a54144a1f2b4b56e7",
+      "blob": "dceb9216aa5ac144172ddab595f98c5b0f80e653"
+    }
+  },
+  "output": [
+    {
+      "path": "Cargo.toml",
+      "blob": "a60d4a710e739f9c76a4d343eddd261dda65417e",
+      "derived_from": []
+    },
+    {
+      "path": "src/lib.rs",
+      "blob": "88234e53a22b3d905c531a7da9980374dc4d8816",
+      "derived_from": [
+        "EGL/eglplatform.h",
+        "KHR/khrplatform.h",
+        "egl.xml",
+        "egl_angle_ext.xml",
+        "xxhash.h"
+      ]
+    }
+  ]
+}
