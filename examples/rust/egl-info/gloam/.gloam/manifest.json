@@ -2,8 +2,8 @@
   "schema_version": 2,
   "gloam": {
     "version": "0.5.2",
-    "describe": "0.5.2-23-g32827a1",
-    "commit": "32827a123e39284ef66afada4532853e99e3ac20",
+    "describe": "0.5.2-27-ga82eb35",
+    "commit": "a82eb35cee2a2b7bd1fe9167fcabc0948cf6c9c4",
     "command_line": "gloam --api egl --out-path examples/rust/egl-info/gloam rust --alias"
   },
   "provenance": {
@@ -50,8 +50,19 @@
       "derived_from": []
     },
     {
+      "path": "src/egl.rs",
+      "blob": "c4dc868711796cb3a5d93b534d0ab0f3111ad787",
+      "derived_from": [
+        "EGL/eglplatform.h",
+        "KHR/khrplatform.h",
+        "egl.xml",
+        "egl_angle_ext.xml",
+        "xxhash.h"
+      ]
+    },
+    {
       "path": "src/lib.rs",
-      "blob": "837f22b56e9e98b427f623c156f888575a2162d4",
+      "blob": "94bd1a9545dd2ad875be3b2bd662fc742a5c30b5",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
