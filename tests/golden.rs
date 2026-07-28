@@ -131,18 +131,31 @@ fn strip_rust_preamble(content: &str) -> &str {
     }
 }
 
-/// Generate one Rust-backend config and snapshot Cargo.toml + src/lib.rs.
+/// Generate one Rust-backend config and snapshot Cargo.toml plus every file
+/// under src/ (the crate-root lib.rs and one module file per spec).
 fn check_rust(name: &str, global_args: &[&str], rust_flags: &[&str]) {
     let dir = generate_rust(global_args, rust_flags);
 
-    let lib = common::read_rust_lib(dir.path());
     let manifest = common::read_rust_manifest(dir.path());
-
-    assert_single_trailing_newline(name, "lib.rs", &lib);
     assert_single_trailing_newline(name, "Cargo.toml", &manifest);
-
-    assert_matches_golden(name, "src/lib.rs", strip_rust_preamble(&lib));
     assert_matches_golden(name, "Cargo.toml", &manifest);
+
+    let src = dir.path().join("src");
+    let mut paths: Vec<_> = std::fs::read_dir(&src)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    paths.sort();
+    assert!(
+        paths.len() >= 2,
+        "[{name}] expected lib.rs + module file(s)"
+    );
+    for p in paths {
+        let content = std::fs::read_to_string(&p).unwrap();
+        let rel = format!("src/{}", p.file_name().unwrap().to_string_lossy());
+        assert_single_trailing_newline(name, &rel, &content);
+        assert_matches_golden(name, &rel, strip_rust_preamble(&content));
+    }
 }
 
 /// Generate one config and snapshot the primary .h/.c pair for `stem`.

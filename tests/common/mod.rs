@@ -158,10 +158,21 @@ pub fn generate_rust(global_args: &[&str], rust_flags: &[&str]) -> TempDir {
     dir
 }
 
-/// Read the generated crate's `src/lib.rs`.
+/// Read the generated crate's whole `src/` tree (lib.rs plus every per-spec
+/// module file), concatenated in filename order.
 pub fn read_rust_lib(out: &Path) -> String {
-    std::fs::read_to_string(out.join("src").join("lib.rs"))
-        .unwrap_or_else(|_| panic!("missing src/lib.rs"))
+    let src = out.join("src");
+    let mut paths: Vec<_> = std::fs::read_dir(&src)
+        .unwrap_or_else(|_| panic!("missing src/"))
+        .map(|e| e.unwrap().path())
+        .collect();
+    paths.sort();
+    let mut all = String::new();
+    for p in paths {
+        all.push_str(&std::fs::read_to_string(&p).unwrap());
+    }
+    assert!(!all.is_empty(), "empty src/ tree");
+    all
 }
 
 /// Read the generated crate's `Cargo.toml`.

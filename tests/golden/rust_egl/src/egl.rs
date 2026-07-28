@@ -1,0 +1,5484 @@
+#![allow(non_snake_case, non_camel_case_types, non_upper_case_globals, dead_code, clippy::all)]
+#![deny(unsafe_op_in_unsafe_fn)]
+
+use core::ffi::{CStr, c_char, c_void};
+
+// ── EGL base types ──────────────────────────────────────────
+pub type EGLBoolean = u32;
+pub type EGLenum = u32;
+pub type EGLClientBuffer = *mut c_void;
+pub type EGLConfig = *mut c_void;
+pub type EGLContext = *mut c_void;
+pub type EGLDeviceEXT = *mut c_void;
+pub type EGLDisplay = *mut c_void;
+pub type EGLImage = *mut c_void;
+pub type EGLImageKHR = *mut c_void;
+pub type EGLLabelKHR = *mut c_void;
+pub type EGLObjectKHR = *mut c_void;
+pub type EGLOutputLayerEXT = *mut c_void;
+pub type EGLOutputPortEXT = *mut c_void;
+pub type EGLStreamKHR = *mut c_void;
+pub type EGLSurface = *mut c_void;
+pub type EGLSync = *mut c_void;
+pub type EGLSyncKHR = *mut c_void;
+pub type EGLSyncNV = *mut c_void;
+pub type __eglMustCastToProperFunctionPointerType = Option<unsafe extern "system" fn()>;
+pub type EGLNativeFileDescriptorKHR = i32;
+pub type EGLAttribKHR = isize;
+pub type EGLAttrib = isize;
+pub type EGLTimeKHR = u64;
+pub type EGLTime = u64;
+pub type EGLTimeNV = u64;
+pub type EGLuint64NV = u64;
+pub type EGLnsecsANDROID = i64;
+pub type EGLuint64KHR = u64;
+pub type EGLsizeiANDROID = isize;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct EGLClientPixmapHI {
+    pub pData: *mut c_void,
+    pub iWidth: EGLint,
+    pub iHeight: EGLint,
+    pub iStride: EGLint,
+}
+pub type EGLDEBUGPROCKHR = Option<unsafe extern "system" fn(EGLenum, *const c_char, EGLint, EGLLabelKHR, EGLLabelKHR, *const c_char)>;
+pub type EGLSetBlobFuncANDROID = Option<unsafe extern "system" fn(*const c_void, EGLsizeiANDROID, *const c_void, EGLsizeiANDROID)>;
+pub type EGLGetBlobFuncANDROID = Option<unsafe extern "system" fn(*const c_void, EGLsizeiANDROID, *mut c_void, EGLsizeiANDROID) -> EGLsizeiANDROID>;
+
+// Opaque C struct types (incomplete in the spec).  Zero-sized so
+// pointers to them stay distinct types, exactly as in C.
+#[repr(C)]
+pub struct AHardwareBuffer {
+    _opaque: [u8; 0],
+}
+#[repr(C)]
+pub struct wl_buffer {
+    _opaque: [u8; 0],
+}
+#[repr(C)]
+pub struct wl_display {
+    _opaque: [u8; 0],
+}
+#[repr(C)]
+pub struct wl_resource {
+    _opaque: [u8; 0],
+}
+
+// Platform types (in C these come from platform headers via
+// khrplatform/eglplatform); declared here with their per-target
+// ABI shapes.
+pub type EGLint = i32;
+#[cfg(windows)]
+pub type EGLNativePixmapType = *mut c_void; // HBITMAP
+#[cfg(target_vendor = "apple")]
+pub type EGLNativePixmapType = *mut c_void;
+#[cfg(target_os = "android")]
+pub type EGLNativePixmapType = *mut c_void;
+#[cfg(not(any(windows, target_vendor = "apple", target_os = "android")))]
+pub type EGLNativePixmapType = core::ffi::c_ulong; // Pixmap (XID)
+#[cfg(windows)]
+pub type EGLNativeWindowType = *mut c_void; // HWND
+#[cfg(target_vendor = "apple")]
+pub type EGLNativeWindowType = *mut c_void;
+#[cfg(target_os = "android")]
+pub type EGLNativeWindowType = *mut ANativeWindow;
+#[cfg(not(any(windows, target_vendor = "apple", target_os = "android")))]
+pub type EGLNativeWindowType = core::ffi::c_ulong; // Window (XID)
+#[cfg(windows)]
+pub type EGLNativeDisplayType = *mut c_void; // HDC
+#[cfg(target_vendor = "apple")]
+pub type EGLNativeDisplayType = i32;
+#[cfg(target_os = "android")]
+pub type EGLNativeDisplayType = *mut c_void;
+#[cfg(not(any(windows, target_vendor = "apple", target_os = "android")))]
+pub type EGLNativeDisplayType = *mut c_void; // Display *
+
+// ── Constants ───────────────────────────────────────────────
+pub const EGL_PBUFFER_BIT: EGLenum = 0x0001;
+pub const EGL_PIXMAP_BIT: EGLenum = 0x0002;
+pub const EGL_WINDOW_BIT: EGLenum = 0x0004;
+pub const EGL_VG_COLORSPACE_LINEAR_BIT: EGLenum = 0x0020;
+pub const EGL_VG_COLORSPACE_LINEAR_BIT_KHR: EGLenum = 0x0020;
+pub const EGL_VG_ALPHA_FORMAT_PRE_BIT: EGLenum = 0x0040;
+pub const EGL_VG_ALPHA_FORMAT_PRE_BIT_KHR: EGLenum = 0x0040;
+pub const EGL_LOCK_SURFACE_BIT_KHR: EGLenum = 0x0080;
+pub const EGL_OPTIMAL_FORMAT_BIT_KHR: EGLenum = 0x0100;
+pub const EGL_MULTISAMPLE_RESOLVE_BOX_BIT: EGLenum = 0x0200;
+pub const EGL_SWAP_BEHAVIOR_PRESERVED_BIT: EGLenum = 0x0400;
+pub const EGL_STREAM_BIT_KHR: EGLenum = 0x0800;
+pub const EGL_MUTABLE_RENDER_BUFFER_BIT_KHR: EGLenum = 0x1000;
+pub const EGL_OPENGL_ES_BIT: EGLenum = 0x0001;
+pub const EGL_OPENVG_BIT: EGLenum = 0x0002;
+pub const EGL_OPENGL_ES2_BIT: EGLenum = 0x0004;
+pub const EGL_OPENGL_BIT: EGLenum = 0x0008;
+pub const EGL_OPENGL_ES3_BIT: EGLenum = 0x00000040;
+pub const EGL_OPENGL_ES3_BIT_KHR: EGLenum = 0x00000040;
+pub const EGL_READ_SURFACE_BIT_KHR: EGLenum = 0x0001;
+pub const EGL_WRITE_SURFACE_BIT_KHR: EGLenum = 0x0002;
+pub const EGL_NATIVE_BUFFER_USAGE_PROTECTED_BIT_ANDROID: EGLenum = 0x00000001;
+pub const EGL_NATIVE_BUFFER_USAGE_RENDERBUFFER_BIT_ANDROID: EGLenum = 0x00000002;
+pub const EGL_NATIVE_BUFFER_USAGE_TEXTURE_BIT_ANDROID: EGLenum = 0x00000004;
+pub const EGL_SYNC_FLUSH_COMMANDS_BIT: EGLenum = 0x0001;
+pub const EGL_SYNC_FLUSH_COMMANDS_BIT_KHR: EGLenum = 0x0001;
+pub const EGL_SYNC_FLUSH_COMMANDS_BIT_NV: EGLenum = 0x0001;
+pub const EGL_DRM_BUFFER_USE_SCANOUT_MESA: EGLenum = 0x00000001;
+pub const EGL_DRM_BUFFER_USE_SHARE_MESA: EGLenum = 0x00000002;
+pub const EGL_DRM_BUFFER_USE_CURSOR_MESA: EGLenum = 0x00000004;
+pub const EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR: EGLenum = 0x00000001;
+pub const EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR: EGLenum = 0x00000002;
+pub const EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR: EGLenum = 0x00000004;
+pub const EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT: EGLenum = 0x00000001;
+pub const EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR: EGLenum = 0x00000001;
+pub const EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT: EGLenum = 0x00000002;
+pub const EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT_KHR: EGLenum = 0x00000002;
+pub const EGL_CONTEXT_RELEASE_BEHAVIOR_NONE_KHR: EGLenum = 0;
+pub const EGL_CONTEXT_RELEASE_BEHAVIOR_KHR: EGLenum = 0x2097;
+pub const EGL_CONTEXT_RELEASE_BEHAVIOR_FLUSH_KHR: EGLenum = 0x2098;
+pub const EGL_FALSE: EGLenum = 0;
+pub const EGL_TRUE: EGLenum = 1;
+pub const EGL_DONT_CARE: EGLint = -1 as EGLint;
+pub const EGL_UNKNOWN: EGLint = -1 as EGLint;
+pub const EGL_NO_NATIVE_FENCE_FD_ANDROID: EGLint = -1;
+pub const EGL_DEPTH_ENCODING_NONE_NV: EGLenum = 0;
+pub const EGL_NO_CONTEXT: EGLContext = 0 as EGLContext;
+pub const EGL_NO_DEVICE_EXT: EGLDeviceEXT = 0 as EGLDeviceEXT;
+pub const EGL_NO_DISPLAY: EGLDisplay = 0 as EGLDisplay;
+pub const EGL_NO_IMAGE: EGLImage = 0 as EGLImage;
+pub const EGL_NO_IMAGE_KHR: EGLImageKHR = 0 as EGLImageKHR;
+pub const EGL_DEFAULT_DISPLAY: EGLNativeDisplayType = 0 as EGLNativeDisplayType;
+pub const EGL_NO_FILE_DESCRIPTOR_KHR: EGLNativeFileDescriptorKHR = -1 as EGLNativeFileDescriptorKHR;
+pub const EGL_NO_OUTPUT_LAYER_EXT: EGLOutputLayerEXT = 0 as EGLOutputLayerEXT;
+pub const EGL_NO_OUTPUT_PORT_EXT: EGLOutputPortEXT = 0 as EGLOutputPortEXT;
+pub const EGL_NO_STREAM_KHR: EGLStreamKHR = 0 as EGLStreamKHR;
+pub const EGL_NO_SURFACE: EGLSurface = 0 as EGLSurface;
+pub const EGL_NO_SYNC: EGLSync = 0 as EGLSync;
+pub const EGL_NO_SYNC_KHR: EGLSyncKHR = 0 as EGLSyncKHR;
+pub const EGL_NO_SYNC_NV: EGLSyncNV = 0 as EGLSyncNV;
+pub const EGL_NO_CONFIG_KHR: EGLConfig = 0 as EGLConfig;
+pub const EGL_DISPLAY_SCALING: EGLenum = 10000;
+pub const EGL_FOREVER: u64 = 0xFFFFFFFFFFFFFFFF;
+pub const EGL_FOREVER_KHR: u64 = 0xFFFFFFFFFFFFFFFF;
+pub const EGL_FOREVER_NV: u64 = 0xFFFFFFFFFFFFFFFF;
+pub const EGL_SUCCESS: EGLenum = 0x3000;
+pub const EGL_NOT_INITIALIZED: EGLenum = 0x3001;
+pub const EGL_BAD_ACCESS: EGLenum = 0x3002;
+pub const EGL_BAD_ALLOC: EGLenum = 0x3003;
+pub const EGL_BAD_ATTRIBUTE: EGLenum = 0x3004;
+pub const EGL_BAD_CONFIG: EGLenum = 0x3005;
+pub const EGL_BAD_CONTEXT: EGLenum = 0x3006;
+pub const EGL_BAD_CURRENT_SURFACE: EGLenum = 0x3007;
+pub const EGL_BAD_DISPLAY: EGLenum = 0x3008;
+pub const EGL_BAD_MATCH: EGLenum = 0x3009;
+pub const EGL_BAD_NATIVE_PIXMAP: EGLenum = 0x300A;
+pub const EGL_BAD_NATIVE_WINDOW: EGLenum = 0x300B;
+pub const EGL_BAD_PARAMETER: EGLenum = 0x300C;
+pub const EGL_BAD_SURFACE: EGLenum = 0x300D;
+pub const EGL_CONTEXT_LOST: EGLenum = 0x300E;
+pub const EGL_BUFFER_SIZE: EGLenum = 0x3020;
+pub const EGL_ALPHA_SIZE: EGLenum = 0x3021;
+pub const EGL_BLUE_SIZE: EGLenum = 0x3022;
+pub const EGL_GREEN_SIZE: EGLenum = 0x3023;
+pub const EGL_RED_SIZE: EGLenum = 0x3024;
+pub const EGL_DEPTH_SIZE: EGLenum = 0x3025;
+pub const EGL_STENCIL_SIZE: EGLenum = 0x3026;
+pub const EGL_CONFIG_CAVEAT: EGLenum = 0x3027;
+pub const EGL_CONFIG_ID: EGLenum = 0x3028;
+pub const EGL_LEVEL: EGLenum = 0x3029;
+pub const EGL_MAX_PBUFFER_HEIGHT: EGLenum = 0x302A;
+pub const EGL_MAX_PBUFFER_PIXELS: EGLenum = 0x302B;
+pub const EGL_MAX_PBUFFER_WIDTH: EGLenum = 0x302C;
+pub const EGL_NATIVE_RENDERABLE: EGLenum = 0x302D;
+pub const EGL_NATIVE_VISUAL_ID: EGLenum = 0x302E;
+pub const EGL_NATIVE_VISUAL_TYPE: EGLenum = 0x302F;
+pub const EGL_SAMPLES: EGLenum = 0x3031;
+pub const EGL_SAMPLE_BUFFERS: EGLenum = 0x3032;
+pub const EGL_SURFACE_TYPE: EGLenum = 0x3033;
+pub const EGL_TRANSPARENT_TYPE: EGLenum = 0x3034;
+pub const EGL_TRANSPARENT_BLUE_VALUE: EGLenum = 0x3035;
+pub const EGL_TRANSPARENT_GREEN_VALUE: EGLenum = 0x3036;
+pub const EGL_TRANSPARENT_RED_VALUE: EGLenum = 0x3037;
+pub const EGL_NONE: EGLenum = 0x3038;
+pub const EGL_BIND_TO_TEXTURE_RGB: EGLenum = 0x3039;
+pub const EGL_BIND_TO_TEXTURE_RGBA: EGLenum = 0x303A;
+pub const EGL_MIN_SWAP_INTERVAL: EGLenum = 0x303B;
+pub const EGL_MAX_SWAP_INTERVAL: EGLenum = 0x303C;
+pub const EGL_LUMINANCE_SIZE: EGLenum = 0x303D;
+pub const EGL_ALPHA_MASK_SIZE: EGLenum = 0x303E;
+pub const EGL_COLOR_BUFFER_TYPE: EGLenum = 0x303F;
+pub const EGL_RENDERABLE_TYPE: EGLenum = 0x3040;
+pub const EGL_MATCH_NATIVE_PIXMAP: EGLenum = 0x3041;
+pub const EGL_CONFORMANT: EGLenum = 0x3042;
+pub const EGL_CONFORMANT_KHR: EGLenum = 0x3042;
+pub const EGL_MATCH_FORMAT_KHR: EGLenum = 0x3043;
+pub const EGL_SLOW_CONFIG: EGLenum = 0x3050;
+pub const EGL_NON_CONFORMANT_CONFIG: EGLenum = 0x3051;
+pub const EGL_TRANSPARENT_RGB: EGLenum = 0x3052;
+pub const EGL_VENDOR: EGLenum = 0x3053;
+pub const EGL_VERSION: EGLenum = 0x3054;
+pub const EGL_EXTENSIONS: EGLenum = 0x3055;
+pub const EGL_HEIGHT: EGLenum = 0x3056;
+pub const EGL_WIDTH: EGLenum = 0x3057;
+pub const EGL_LARGEST_PBUFFER: EGLenum = 0x3058;
+pub const EGL_DRAW: EGLenum = 0x3059;
+pub const EGL_READ: EGLenum = 0x305A;
+pub const EGL_CORE_NATIVE_ENGINE: EGLenum = 0x305B;
+pub const EGL_NO_TEXTURE: EGLenum = 0x305C;
+pub const EGL_TEXTURE_RGB: EGLenum = 0x305D;
+pub const EGL_TEXTURE_RGBA: EGLenum = 0x305E;
+pub const EGL_TEXTURE_2D: EGLenum = 0x305F;
+pub const EGL_Y_INVERTED_NOK: EGLenum = 0x307F;
+pub const EGL_TEXTURE_FORMAT: EGLenum = 0x3080;
+pub const EGL_TEXTURE_TARGET: EGLenum = 0x3081;
+pub const EGL_MIPMAP_TEXTURE: EGLenum = 0x3082;
+pub const EGL_MIPMAP_LEVEL: EGLenum = 0x3083;
+pub const EGL_BACK_BUFFER: EGLenum = 0x3084;
+pub const EGL_SINGLE_BUFFER: EGLenum = 0x3085;
+pub const EGL_RENDER_BUFFER: EGLenum = 0x3086;
+pub const EGL_COLORSPACE: EGLenum = 0x3087;
+pub const EGL_VG_COLORSPACE: EGLenum = 0x3087;
+pub const EGL_ALPHA_FORMAT: EGLenum = 0x3088;
+pub const EGL_VG_ALPHA_FORMAT: EGLenum = 0x3088;
+pub const EGL_COLORSPACE_sRGB: EGLenum = 0x3089;
+pub const EGL_GL_COLORSPACE_SRGB: EGLenum = 0x3089;
+pub const EGL_GL_COLORSPACE_SRGB_KHR: EGLenum = 0x3089;
+pub const EGL_VG_COLORSPACE_sRGB: EGLenum = 0x3089;
+pub const EGL_COLORSPACE_LINEAR: EGLenum = 0x308A;
+pub const EGL_GL_COLORSPACE_LINEAR: EGLenum = 0x308A;
+pub const EGL_GL_COLORSPACE_LINEAR_KHR: EGLenum = 0x308A;
+pub const EGL_VG_COLORSPACE_LINEAR: EGLenum = 0x308A;
+pub const EGL_ALPHA_FORMAT_NONPRE: EGLenum = 0x308B;
+pub const EGL_VG_ALPHA_FORMAT_NONPRE: EGLenum = 0x308B;
+pub const EGL_ALPHA_FORMAT_PRE: EGLenum = 0x308C;
+pub const EGL_VG_ALPHA_FORMAT_PRE: EGLenum = 0x308C;
+pub const EGL_CLIENT_APIS: EGLenum = 0x308D;
+pub const EGL_RGB_BUFFER: EGLenum = 0x308E;
+pub const EGL_LUMINANCE_BUFFER: EGLenum = 0x308F;
+pub const EGL_HORIZONTAL_RESOLUTION: EGLenum = 0x3090;
+pub const EGL_VERTICAL_RESOLUTION: EGLenum = 0x3091;
+pub const EGL_PIXEL_ASPECT_RATIO: EGLenum = 0x3092;
+pub const EGL_SWAP_BEHAVIOR: EGLenum = 0x3093;
+pub const EGL_BUFFER_PRESERVED: EGLenum = 0x3094;
+pub const EGL_BUFFER_DESTROYED: EGLenum = 0x3095;
+pub const EGL_OPENVG_IMAGE: EGLenum = 0x3096;
+pub const EGL_CONTEXT_CLIENT_TYPE: EGLenum = 0x3097;
+pub const EGL_CONTEXT_CLIENT_VERSION: EGLenum = 0x3098;
+pub const EGL_CONTEXT_MAJOR_VERSION: EGLenum = 0x3098;
+pub const EGL_CONTEXT_MAJOR_VERSION_KHR: EGLenum = 0x3098;
+pub const EGL_MULTISAMPLE_RESOLVE: EGLenum = 0x3099;
+pub const EGL_MULTISAMPLE_RESOLVE_DEFAULT: EGLenum = 0x309A;
+pub const EGL_MULTISAMPLE_RESOLVE_BOX: EGLenum = 0x309B;
+pub const EGL_CL_EVENT_HANDLE: EGLenum = 0x309C;
+pub const EGL_CL_EVENT_HANDLE_KHR: EGLenum = 0x309C;
+pub const EGL_GL_COLORSPACE: EGLenum = 0x309D;
+pub const EGL_GL_COLORSPACE_KHR: EGLenum = 0x309D;
+pub const EGL_OPENGL_ES_API: EGLenum = 0x30A0;
+pub const EGL_OPENVG_API: EGLenum = 0x30A1;
+pub const EGL_OPENGL_API: EGLenum = 0x30A2;
+pub const EGL_NATIVE_PIXMAP_KHR: EGLenum = 0x30B0;
+pub const EGL_GL_TEXTURE_2D: EGLenum = 0x30B1;
+pub const EGL_GL_TEXTURE_2D_KHR: EGLenum = 0x30B1;
+pub const EGL_GL_TEXTURE_3D: EGLenum = 0x30B2;
+pub const EGL_GL_TEXTURE_3D_KHR: EGLenum = 0x30B2;
+pub const EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_X: EGLenum = 0x30B3;
+pub const EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_X_KHR: EGLenum = 0x30B3;
+pub const EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_X: EGLenum = 0x30B4;
+pub const EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_X_KHR: EGLenum = 0x30B4;
+pub const EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_Y: EGLenum = 0x30B5;
+pub const EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_Y_KHR: EGLenum = 0x30B5;
+pub const EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Y: EGLenum = 0x30B6;
+pub const EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Y_KHR: EGLenum = 0x30B6;
+pub const EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_Z: EGLenum = 0x30B7;
+pub const EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_Z_KHR: EGLenum = 0x30B7;
+pub const EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Z: EGLenum = 0x30B8;
+pub const EGL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Z_KHR: EGLenum = 0x30B8;
+pub const EGL_GL_RENDERBUFFER: EGLenum = 0x30B9;
+pub const EGL_GL_RENDERBUFFER_KHR: EGLenum = 0x30B9;
+pub const EGL_VG_PARENT_IMAGE_KHR: EGLenum = 0x30BA;
+pub const EGL_GL_TEXTURE_LEVEL: EGLenum = 0x30BC;
+pub const EGL_GL_TEXTURE_LEVEL_KHR: EGLenum = 0x30BC;
+pub const EGL_GL_TEXTURE_ZOFFSET: EGLenum = 0x30BD;
+pub const EGL_GL_TEXTURE_ZOFFSET_KHR: EGLenum = 0x30BD;
+pub const EGL_POST_SUB_BUFFER_SUPPORTED_NV: EGLenum = 0x30BE;
+pub const EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT: EGLenum = 0x30BF;
+pub const EGL_FORMAT_RGB_565_EXACT_KHR: EGLenum = 0x30C0;
+pub const EGL_FORMAT_RGB_565_KHR: EGLenum = 0x30C1;
+pub const EGL_FORMAT_RGBA_8888_EXACT_KHR: EGLenum = 0x30C2;
+pub const EGL_FORMAT_RGBA_8888_KHR: EGLenum = 0x30C3;
+pub const EGL_MAP_PRESERVE_PIXELS_KHR: EGLenum = 0x30C4;
+pub const EGL_LOCK_USAGE_HINT_KHR: EGLenum = 0x30C5;
+pub const EGL_BITMAP_POINTER_KHR: EGLenum = 0x30C6;
+pub const EGL_BITMAP_PITCH_KHR: EGLenum = 0x30C7;
+pub const EGL_BITMAP_ORIGIN_KHR: EGLenum = 0x30C8;
+pub const EGL_BITMAP_PIXEL_RED_OFFSET_KHR: EGLenum = 0x30C9;
+pub const EGL_BITMAP_PIXEL_GREEN_OFFSET_KHR: EGLenum = 0x30CA;
+pub const EGL_BITMAP_PIXEL_BLUE_OFFSET_KHR: EGLenum = 0x30CB;
+pub const EGL_BITMAP_PIXEL_ALPHA_OFFSET_KHR: EGLenum = 0x30CC;
+pub const EGL_BITMAP_PIXEL_LUMINANCE_OFFSET_KHR: EGLenum = 0x30CD;
+pub const EGL_LOWER_LEFT_KHR: EGLenum = 0x30CE;
+pub const EGL_UPPER_LEFT_KHR: EGLenum = 0x30CF;
+pub const EGL_IMAGE_PRESERVED: EGLenum = 0x30D2;
+pub const EGL_IMAGE_PRESERVED_KHR: EGLenum = 0x30D2;
+pub const EGL_COVERAGE_BUFFERS_NV: EGLenum = 0x30E0;
+pub const EGL_COVERAGE_SAMPLES_NV: EGLenum = 0x30E1;
+pub const EGL_DEPTH_ENCODING_NV: EGLenum = 0x30E2;
+pub const EGL_DEPTH_ENCODING_NONLINEAR_NV: EGLenum = 0x30E3;
+pub const EGL_SYNC_PRIOR_COMMANDS_COMPLETE_NV: EGLenum = 0x30E6;
+pub const EGL_SYNC_STATUS_NV: EGLenum = 0x30E7;
+pub const EGL_SIGNALED_NV: EGLenum = 0x30E8;
+pub const EGL_UNSIGNALED_NV: EGLenum = 0x30E9;
+pub const EGL_ALREADY_SIGNALED_NV: EGLenum = 0x30EA;
+pub const EGL_TIMEOUT_EXPIRED_NV: EGLenum = 0x30EB;
+pub const EGL_CONDITION_SATISFIED_NV: EGLenum = 0x30EC;
+pub const EGL_SYNC_TYPE_NV: EGLenum = 0x30ED;
+pub const EGL_SYNC_CONDITION_NV: EGLenum = 0x30EE;
+pub const EGL_SYNC_FENCE_NV: EGLenum = 0x30EF;
+pub const EGL_SYNC_PRIOR_COMMANDS_COMPLETE: EGLenum = 0x30F0;
+pub const EGL_SYNC_PRIOR_COMMANDS_COMPLETE_KHR: EGLenum = 0x30F0;
+pub const EGL_SYNC_STATUS: EGLenum = 0x30F1;
+pub const EGL_SYNC_STATUS_KHR: EGLenum = 0x30F1;
+pub const EGL_SIGNALED: EGLenum = 0x30F2;
+pub const EGL_SIGNALED_KHR: EGLenum = 0x30F2;
+pub const EGL_UNSIGNALED: EGLenum = 0x30F3;
+pub const EGL_UNSIGNALED_KHR: EGLenum = 0x30F3;
+pub const EGL_TIMEOUT_EXPIRED: EGLenum = 0x30F5;
+pub const EGL_TIMEOUT_EXPIRED_KHR: EGLenum = 0x30F5;
+pub const EGL_CONDITION_SATISFIED: EGLenum = 0x30F6;
+pub const EGL_CONDITION_SATISFIED_KHR: EGLenum = 0x30F6;
+pub const EGL_SYNC_TYPE: EGLenum = 0x30F7;
+pub const EGL_SYNC_TYPE_KHR: EGLenum = 0x30F7;
+pub const EGL_SYNC_CONDITION: EGLenum = 0x30F8;
+pub const EGL_SYNC_CONDITION_KHR: EGLenum = 0x30F8;
+pub const EGL_SYNC_FENCE: EGLenum = 0x30F9;
+pub const EGL_SYNC_FENCE_KHR: EGLenum = 0x30F9;
+pub const EGL_SYNC_REUSABLE_KHR: EGLenum = 0x30FA;
+pub const EGL_CONTEXT_MINOR_VERSION: EGLenum = 0x30FB;
+pub const EGL_CONTEXT_MINOR_VERSION_KHR: EGLenum = 0x30FB;
+pub const EGL_CONTEXT_FLAGS_KHR: EGLenum = 0x30FC;
+pub const EGL_CONTEXT_OPENGL_PROFILE_MASK: EGLenum = 0x30FD;
+pub const EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR: EGLenum = 0x30FD;
+pub const EGL_SYNC_CL_EVENT: EGLenum = 0x30FE;
+pub const EGL_SYNC_CL_EVENT_KHR: EGLenum = 0x30FE;
+pub const EGL_SYNC_CL_EVENT_COMPLETE: EGLenum = 0x30FF;
+pub const EGL_SYNC_CL_EVENT_COMPLETE_KHR: EGLenum = 0x30FF;
+pub const EGL_CONTEXT_PRIORITY_LEVEL_IMG: EGLenum = 0x3100;
+pub const EGL_CONTEXT_PRIORITY_HIGH_IMG: EGLenum = 0x3101;
+pub const EGL_CONTEXT_PRIORITY_MEDIUM_IMG: EGLenum = 0x3102;
+pub const EGL_CONTEXT_PRIORITY_LOW_IMG: EGLenum = 0x3103;
+pub const EGL_NATIVE_BUFFER_MULTIPLANE_SEPARATE_IMG: EGLenum = 0x3105;
+pub const EGL_NATIVE_BUFFER_PLANE_OFFSET_IMG: EGLenum = 0x3106;
+pub const EGL_BITMAP_PIXEL_SIZE_KHR: EGLenum = 0x3110;
+pub const EGL_COVERAGE_SAMPLE_RESOLVE_NV: EGLenum = 0x3131;
+pub const EGL_COVERAGE_SAMPLE_RESOLVE_DEFAULT_NV: EGLenum = 0x3132;
+pub const EGL_COVERAGE_SAMPLE_RESOLVE_NONE_NV: EGLenum = 0x3133;
+pub const EGL_MULTIVIEW_VIEW_COUNT_EXT: EGLenum = 0x3134;
+pub const EGL_AUTO_STEREO_NV: EGLenum = 0x3136;
+pub const EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT: EGLenum = 0x3138;
+pub const EGL_BUFFER_AGE_KHR: EGLenum = 0x313D;
+pub const EGL_BUFFER_AGE_EXT: EGLenum = 0x313D;
+pub const EGL_PLATFORM_DEVICE_EXT: EGLenum = 0x313F;
+pub const EGL_NATIVE_BUFFER_ANDROID: EGLenum = 0x3140;
+pub const EGL_PLATFORM_ANDROID_KHR: EGLenum = 0x3141;
+pub const EGL_RECORDABLE_ANDROID: EGLenum = 0x3142;
+pub const EGL_NATIVE_BUFFER_USAGE_ANDROID: EGLenum = 0x3143;
+pub const EGL_SYNC_NATIVE_FENCE_ANDROID: EGLenum = 0x3144;
+pub const EGL_SYNC_NATIVE_FENCE_FD_ANDROID: EGLenum = 0x3145;
+pub const EGL_SYNC_NATIVE_FENCE_SIGNALED_ANDROID: EGLenum = 0x3146;
+pub const EGL_FRAMEBUFFER_TARGET_ANDROID: EGLenum = 0x3147;
+pub const EGL_FRONT_BUFFER_AUTO_REFRESH_ANDROID: EGLenum = 0x314C;
+pub const EGL_GL_COLORSPACE_DEFAULT_EXT: EGLenum = 0x314D;
+pub const EGL_CONTEXT_OPENGL_DEBUG: EGLenum = 0x31B0;
+pub const EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE: EGLenum = 0x31B1;
+pub const EGL_CONTEXT_OPENGL_ROBUST_ACCESS: EGLenum = 0x31B2;
+pub const EGL_CONTEXT_OPENGL_NO_ERROR_KHR: EGLenum = 0x31B3;
+pub const EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_KHR: EGLenum = 0x31BD;
+pub const EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY: EGLenum = 0x31BD;
+pub const EGL_NO_RESET_NOTIFICATION: EGLenum = 0x31BE;
+pub const EGL_NO_RESET_NOTIFICATION_KHR: EGLenum = 0x31BE;
+pub const EGL_NO_RESET_NOTIFICATION_EXT: EGLenum = 0x31BE;
+pub const EGL_LOSE_CONTEXT_ON_RESET: EGLenum = 0x31BF;
+pub const EGL_LOSE_CONTEXT_ON_RESET_KHR: EGLenum = 0x31BF;
+pub const EGL_LOSE_CONTEXT_ON_RESET_EXT: EGLenum = 0x31BF;
+pub const EGL_DRM_BUFFER_FORMAT_MESA: EGLenum = 0x31D0;
+pub const EGL_DRM_BUFFER_USE_MESA: EGLenum = 0x31D1;
+pub const EGL_DRM_BUFFER_FORMAT_ARGB32_MESA: EGLenum = 0x31D2;
+pub const EGL_DRM_BUFFER_MESA: EGLenum = 0x31D3;
+pub const EGL_DRM_BUFFER_STRIDE_MESA: EGLenum = 0x31D4;
+pub const EGL_PLATFORM_X11_KHR: EGLenum = 0x31D5;
+pub const EGL_PLATFORM_X11_EXT: EGLenum = 0x31D5;
+pub const EGL_PLATFORM_X11_SCREEN_KHR: EGLenum = 0x31D6;
+pub const EGL_PLATFORM_X11_SCREEN_EXT: EGLenum = 0x31D6;
+pub const EGL_PLATFORM_GBM_KHR: EGLenum = 0x31D7;
+pub const EGL_PLATFORM_GBM_MESA: EGLenum = 0x31D7;
+pub const EGL_PLATFORM_WAYLAND_KHR: EGLenum = 0x31D8;
+pub const EGL_PLATFORM_WAYLAND_EXT: EGLenum = 0x31D8;
+pub const EGL_PLATFORM_XCB_EXT: EGLenum = 0x31DC;
+pub const EGL_PLATFORM_SURFACELESS_MESA: EGLenum = 0x31DD;
+pub const EGL_PLATFORM_XCB_SCREEN_EXT: EGLenum = 0x31DE;
+pub const EGL_PRESENT_OPAQUE_EXT: EGLenum = 0x31DF;
+pub const EGL_WAYLAND_BUFFER_WL: EGLenum = 0x31D5;
+pub const EGL_WAYLAND_PLANE_WL: EGLenum = 0x31D6;
+pub const EGL_TEXTURE_Y_U_V_WL: EGLenum = 0x31D7;
+pub const EGL_TEXTURE_Y_UV_WL: EGLenum = 0x31D8;
+pub const EGL_TEXTURE_Y_XUXV_WL: EGLenum = 0x31D9;
+pub const EGL_TEXTURE_EXTERNAL_WL: EGLenum = 0x31DA;
+pub const EGL_WAYLAND_Y_INVERTED_WL: EGLenum = 0x31DB;
+pub const EGL_STREAM_FIFO_LENGTH_KHR: EGLenum = 0x31FC;
+pub const EGL_STREAM_TIME_NOW_KHR: EGLenum = 0x31FD;
+pub const EGL_STREAM_TIME_CONSUMER_KHR: EGLenum = 0x31FE;
+pub const EGL_STREAM_TIME_PRODUCER_KHR: EGLenum = 0x31FF;
+pub const EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE: EGLenum = 0x3200;
+pub const EGL_FIXED_SIZE_ANGLE: EGLenum = 0x3201;
+pub const EGL_CONSUMER_LATENCY_USEC_KHR: EGLenum = 0x3210;
+pub const EGL_PRODUCER_FRAME_KHR: EGLenum = 0x3212;
+pub const EGL_CONSUMER_FRAME_KHR: EGLenum = 0x3213;
+pub const EGL_STREAM_STATE_KHR: EGLenum = 0x3214;
+pub const EGL_STREAM_STATE_CREATED_KHR: EGLenum = 0x3215;
+pub const EGL_STREAM_STATE_CONNECTING_KHR: EGLenum = 0x3216;
+pub const EGL_STREAM_STATE_EMPTY_KHR: EGLenum = 0x3217;
+pub const EGL_STREAM_STATE_NEW_FRAME_AVAILABLE_KHR: EGLenum = 0x3218;
+pub const EGL_STREAM_STATE_OLD_FRAME_AVAILABLE_KHR: EGLenum = 0x3219;
+pub const EGL_STREAM_STATE_DISCONNECTED_KHR: EGLenum = 0x321A;
+pub const EGL_BAD_STREAM_KHR: EGLenum = 0x321B;
+pub const EGL_BAD_STATE_KHR: EGLenum = 0x321C;
+pub const EGL_CONSUMER_ACQUIRE_TIMEOUT_USEC_KHR: EGLenum = 0x321E;
+pub const EGL_SYNC_NEW_FRAME_NV: EGLenum = 0x321F;
+pub const EGL_BAD_DEVICE_EXT: EGLenum = 0x322B;
+pub const EGL_DEVICE_EXT: EGLenum = 0x322C;
+pub const EGL_BAD_OUTPUT_LAYER_EXT: EGLenum = 0x322D;
+pub const EGL_BAD_OUTPUT_PORT_EXT: EGLenum = 0x322E;
+pub const EGL_SWAP_INTERVAL_EXT: EGLenum = 0x322F;
+pub const EGL_TRIPLE_BUFFER_NV: EGLenum = 0x3230;
+pub const EGL_QUADRUPLE_BUFFER_NV: EGLenum = 0x3231;
+pub const EGL_DRM_DEVICE_FILE_EXT: EGLenum = 0x3233;
+pub const EGL_DRM_CRTC_EXT: EGLenum = 0x3234;
+pub const EGL_DRM_PLANE_EXT: EGLenum = 0x3235;
+pub const EGL_DRM_CONNECTOR_EXT: EGLenum = 0x3236;
+pub const EGL_OPENWF_DEVICE_ID_EXT: EGLenum = 0x3237;
+pub const EGL_OPENWF_PIPELINE_ID_EXT: EGLenum = 0x3238;
+pub const EGL_OPENWF_PORT_ID_EXT: EGLenum = 0x3239;
+pub const EGL_CUDA_DEVICE_NV: EGLenum = 0x323A;
+pub const EGL_CUDA_EVENT_HANDLE_NV: EGLenum = 0x323B;
+pub const EGL_SYNC_CUDA_EVENT_NV: EGLenum = 0x323C;
+pub const EGL_SYNC_CUDA_EVENT_COMPLETE_NV: EGLenum = 0x323D;
+pub const EGL_STREAM_CROSS_PARTITION_NV: EGLenum = 0x323F;
+pub const EGL_STREAM_STATE_INITIALIZING_NV: EGLenum = 0x3240;
+pub const EGL_STREAM_TYPE_NV: EGLenum = 0x3241;
+pub const EGL_STREAM_PROTOCOL_NV: EGLenum = 0x3242;
+pub const EGL_STREAM_ENDPOINT_NV: EGLenum = 0x3243;
+pub const EGL_STREAM_LOCAL_NV: EGLenum = 0x3244;
+pub const EGL_STREAM_CROSS_PROCESS_NV: EGLenum = 0x3245;
+pub const EGL_STREAM_PROTOCOL_FD_NV: EGLenum = 0x3246;
+pub const EGL_STREAM_PRODUCER_NV: EGLenum = 0x3247;
+pub const EGL_STREAM_CONSUMER_NV: EGLenum = 0x3248;
+pub const EGL_STREAM_PROTOCOL_SOCKET_NV: EGLenum = 0x324B;
+pub const EGL_SOCKET_HANDLE_NV: EGLenum = 0x324C;
+pub const EGL_SOCKET_TYPE_NV: EGLenum = 0x324D;
+pub const EGL_SOCKET_TYPE_UNIX_NV: EGLenum = 0x324E;
+pub const EGL_SOCKET_TYPE_INET_NV: EGLenum = 0x324F;
+pub const EGL_MAX_STREAM_METADATA_BLOCKS_NV: EGLenum = 0x3250;
+pub const EGL_MAX_STREAM_METADATA_BLOCK_SIZE_NV: EGLenum = 0x3251;
+pub const EGL_MAX_STREAM_METADATA_TOTAL_SIZE_NV: EGLenum = 0x3252;
+pub const EGL_PRODUCER_METADATA_NV: EGLenum = 0x3253;
+pub const EGL_CONSUMER_METADATA_NV: EGLenum = 0x3254;
+pub const EGL_METADATA0_SIZE_NV: EGLenum = 0x3255;
+pub const EGL_METADATA1_SIZE_NV: EGLenum = 0x3256;
+pub const EGL_METADATA2_SIZE_NV: EGLenum = 0x3257;
+pub const EGL_METADATA3_SIZE_NV: EGLenum = 0x3258;
+pub const EGL_METADATA0_TYPE_NV: EGLenum = 0x3259;
+pub const EGL_METADATA1_TYPE_NV: EGLenum = 0x325A;
+pub const EGL_METADATA2_TYPE_NV: EGLenum = 0x325B;
+pub const EGL_METADATA3_TYPE_NV: EGLenum = 0x325C;
+pub const EGL_LINUX_DMA_BUF_EXT: EGLenum = 0x3270;
+pub const EGL_LINUX_DRM_FOURCC_EXT: EGLenum = 0x3271;
+pub const EGL_DMA_BUF_PLANE0_FD_EXT: EGLenum = 0x3272;
+pub const EGL_DMA_BUF_PLANE0_OFFSET_EXT: EGLenum = 0x3273;
+pub const EGL_DMA_BUF_PLANE0_PITCH_EXT: EGLenum = 0x3274;
+pub const EGL_DMA_BUF_PLANE1_FD_EXT: EGLenum = 0x3275;
+pub const EGL_DMA_BUF_PLANE1_OFFSET_EXT: EGLenum = 0x3276;
+pub const EGL_DMA_BUF_PLANE1_PITCH_EXT: EGLenum = 0x3277;
+pub const EGL_DMA_BUF_PLANE2_FD_EXT: EGLenum = 0x3278;
+pub const EGL_DMA_BUF_PLANE2_OFFSET_EXT: EGLenum = 0x3279;
+pub const EGL_DMA_BUF_PLANE2_PITCH_EXT: EGLenum = 0x327A;
+pub const EGL_YUV_COLOR_SPACE_HINT_EXT: EGLenum = 0x327B;
+pub const EGL_SAMPLE_RANGE_HINT_EXT: EGLenum = 0x327C;
+pub const EGL_YUV_CHROMA_HORIZONTAL_SITING_HINT_EXT: EGLenum = 0x327D;
+pub const EGL_YUV_CHROMA_VERTICAL_SITING_HINT_EXT: EGLenum = 0x327E;
+pub const EGL_ITU_REC601_EXT: EGLenum = 0x327F;
+pub const EGL_ITU_REC709_EXT: EGLenum = 0x3280;
+pub const EGL_ITU_REC2020_EXT: EGLenum = 0x3281;
+pub const EGL_YUV_FULL_RANGE_EXT: EGLenum = 0x3282;
+pub const EGL_YUV_NARROW_RANGE_EXT: EGLenum = 0x3283;
+pub const EGL_YUV_CHROMA_SITING_0_EXT: EGLenum = 0x3284;
+pub const EGL_YUV_CHROMA_SITING_0_5_EXT: EGLenum = 0x3285;
+pub const EGL_DISCARD_SAMPLES_ARM: EGLenum = 0x3286;
+pub const EGL_COLOR_COMPONENT_TYPE_UNSIGNED_INTEGER_ARM: EGLenum = 0x3287;
+pub const EGL_COLOR_COMPONENT_TYPE_INTEGER_ARM: EGLenum = 0x3288;
+pub const EGL_SYNC_PRIOR_COMMANDS_IMPLICIT_EXTERNAL_ARM: EGLenum = 0x328A;
+pub const EGL_SURFACE_COMPRESSION_PLANE1_EXT: EGLenum = 0x328E;
+pub const EGL_SURFACE_COMPRESSION_PLANE2_EXT: EGLenum = 0x328F;
+pub const EGL_NATIVE_BUFFER_TIZEN: EGLenum = 0x32A0;
+pub const EGL_NATIVE_SURFACE_TIZEN: EGLenum = 0x32A1;
+pub const EGL_PROTECTED_CONTENT_EXT: EGLenum = 0x32C0;
+pub const EGL_YUV_BUFFER_EXT: EGLenum = 0x3300;
+pub const EGL_YUV_ORDER_EXT: EGLenum = 0x3301;
+pub const EGL_YUV_ORDER_YUV_EXT: EGLenum = 0x3302;
+pub const EGL_YUV_ORDER_YVU_EXT: EGLenum = 0x3303;
+pub const EGL_YUV_ORDER_YUYV_EXT: EGLenum = 0x3304;
+pub const EGL_YUV_ORDER_UYVY_EXT: EGLenum = 0x3305;
+pub const EGL_YUV_ORDER_YVYU_EXT: EGLenum = 0x3306;
+pub const EGL_YUV_ORDER_VYUY_EXT: EGLenum = 0x3307;
+pub const EGL_YUV_ORDER_AYUV_EXT: EGLenum = 0x3308;
+pub const EGL_YUV_CSC_STANDARD_EXT: EGLenum = 0x330A;
+pub const EGL_YUV_CSC_STANDARD_601_EXT: EGLenum = 0x330B;
+pub const EGL_YUV_CSC_STANDARD_709_EXT: EGLenum = 0x330C;
+pub const EGL_YUV_CSC_STANDARD_2020_EXT: EGLenum = 0x330D;
+pub const EGL_YUV_NUMBER_OF_PLANES_EXT: EGLenum = 0x3311;
+pub const EGL_YUV_SUBSAMPLE_EXT: EGLenum = 0x3312;
+pub const EGL_YUV_SUBSAMPLE_4_2_0_EXT: EGLenum = 0x3313;
+pub const EGL_YUV_SUBSAMPLE_4_2_2_EXT: EGLenum = 0x3314;
+pub const EGL_YUV_SUBSAMPLE_4_4_4_EXT: EGLenum = 0x3315;
+pub const EGL_YUV_DEPTH_RANGE_EXT: EGLenum = 0x3317;
+pub const EGL_YUV_DEPTH_RANGE_LIMITED_EXT: EGLenum = 0x3318;
+pub const EGL_YUV_DEPTH_RANGE_FULL_EXT: EGLenum = 0x3319;
+pub const EGL_YUV_PLANE_BPP_EXT: EGLenum = 0x331A;
+pub const EGL_YUV_PLANE_BPP_0_EXT: EGLenum = 0x331B;
+pub const EGL_YUV_PLANE_BPP_8_EXT: EGLenum = 0x331C;
+pub const EGL_YUV_PLANE_BPP_10_EXT: EGLenum = 0x331D;
+pub const EGL_PENDING_METADATA_NV: EGLenum = 0x3328;
+pub const EGL_PENDING_FRAME_NV: EGLenum = 0x3329;
+pub const EGL_STREAM_TIME_PENDING_NV: EGLenum = 0x332A;
+pub const EGL_YUV_PLANE0_TEXTURE_UNIT_NV: EGLenum = 0x332C;
+pub const EGL_YUV_PLANE1_TEXTURE_UNIT_NV: EGLenum = 0x332D;
+pub const EGL_YUV_PLANE2_TEXTURE_UNIT_NV: EGLenum = 0x332E;
+pub const EGL_SUPPORT_RESET_NV: EGLenum = 0x3334;
+pub const EGL_SUPPORT_REUSE_NV: EGLenum = 0x3335;
+pub const EGL_STREAM_FIFO_SYNCHRONOUS_NV: EGLenum = 0x3336;
+pub const EGL_PRODUCER_MAX_FRAME_HINT_NV: EGLenum = 0x3337;
+pub const EGL_CONSUMER_MAX_FRAME_HINT_NV: EGLenum = 0x3338;
+pub const EGL_COLOR_COMPONENT_TYPE_EXT: EGLenum = 0x3339;
+pub const EGL_COLOR_COMPONENT_TYPE_FIXED_EXT: EGLenum = 0x333A;
+pub const EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT: EGLenum = 0x333B;
+pub const EGL_DRM_MASTER_FD_EXT: EGLenum = 0x333C;
+pub const EGL_OPENWF_DEVICE_EXT: EGLenum = 0x333D;
+pub const EGL_GL_COLORSPACE_BT2020_LINEAR_EXT: EGLenum = 0x333F;
+pub const EGL_GL_COLORSPACE_BT2020_PQ_EXT: EGLenum = 0x3340;
+pub const EGL_SMPTE2086_DISPLAY_PRIMARY_RX_EXT: EGLenum = 0x3341;
+pub const EGL_SMPTE2086_DISPLAY_PRIMARY_RY_EXT: EGLenum = 0x3342;
+pub const EGL_SMPTE2086_DISPLAY_PRIMARY_GX_EXT: EGLenum = 0x3343;
+pub const EGL_SMPTE2086_DISPLAY_PRIMARY_GY_EXT: EGLenum = 0x3344;
+pub const EGL_SMPTE2086_DISPLAY_PRIMARY_BX_EXT: EGLenum = 0x3345;
+pub const EGL_SMPTE2086_DISPLAY_PRIMARY_BY_EXT: EGLenum = 0x3346;
+pub const EGL_SMPTE2086_WHITE_POINT_X_EXT: EGLenum = 0x3347;
+pub const EGL_SMPTE2086_WHITE_POINT_Y_EXT: EGLenum = 0x3348;
+pub const EGL_SMPTE2086_MAX_LUMINANCE_EXT: EGLenum = 0x3349;
+pub const EGL_SMPTE2086_MIN_LUMINANCE_EXT: EGLenum = 0x334A;
+pub const EGL_METADATA_SCALING_EXT: EGLenum = 50000;
+pub const EGL_GENERATE_RESET_ON_VIDEO_MEMORY_PURGE_NV: EGLenum = 0x334C;
+pub const EGL_STREAM_CROSS_OBJECT_NV: EGLenum = 0x334D;
+pub const EGL_STREAM_CROSS_DISPLAY_NV: EGLenum = 0x334E;
+pub const EGL_STREAM_CROSS_SYSTEM_NV: EGLenum = 0x334F;
+pub const EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT: EGLenum = 0x3350;
+pub const EGL_GL_COLORSPACE_SCRGB_EXT: EGLenum = 0x3351;
+pub const EGL_TRACK_REFERENCES_KHR: EGLenum = 0x3352;
+pub const EGL_CONTEXT_PRIORITY_REALTIME_NV: EGLenum = 0x3357;
+pub const EGL_DEVICE_UUID_EXT: EGLenum = 0x335C;
+pub const EGL_DRIVER_UUID_EXT: EGLenum = 0x335D;
+pub const EGL_DRIVER_NAME_EXT: EGLenum = 0x335E;
+pub const EGL_RENDERER_EXT: EGLenum = 0x335F;
+pub const EGL_CTA861_3_MAX_CONTENT_LIGHT_LEVEL_EXT: EGLenum = 0x3360;
+pub const EGL_CTA861_3_MAX_FRAME_AVERAGE_LEVEL_EXT: EGLenum = 0x3361;
+pub const EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT: EGLenum = 0x3362;
+pub const EGL_GL_COLORSPACE_DISPLAY_P3_EXT: EGLenum = 0x3363;
+pub const EGL_SYNC_CLIENT_EXT: EGLenum = 0x3364;
+pub const EGL_SYNC_CLIENT_SIGNAL_EXT: EGLenum = 0x3365;
+pub const EGL_STREAM_FRAME_ORIGIN_X_NV: EGLenum = 0x3366;
+pub const EGL_STREAM_FRAME_ORIGIN_Y_NV: EGLenum = 0x3367;
+pub const EGL_STREAM_FRAME_MAJOR_AXIS_NV: EGLenum = 0x3368;
+pub const EGL_CONSUMER_AUTO_ORIENTATION_NV: EGLenum = 0x3369;
+pub const EGL_PRODUCER_AUTO_ORIENTATION_NV: EGLenum = 0x336A;
+pub const EGL_LEFT_NV: EGLenum = 0x336B;
+pub const EGL_RIGHT_NV: EGLenum = 0x336C;
+pub const EGL_TOP_NV: EGLenum = 0x336D;
+pub const EGL_BOTTOM_NV: EGLenum = 0x336E;
+pub const EGL_X_AXIS_NV: EGLenum = 0x336F;
+pub const EGL_Y_AXIS_NV: EGLenum = 0x3370;
+pub const EGL_STREAM_DMA_NV: EGLenum = 0x3371;
+pub const EGL_STREAM_DMA_SERVER_NV: EGLenum = 0x3372;
+pub const EGL_STREAM_CONSUMER_IMAGE_NV: EGLenum = 0x3373;
+pub const EGL_STREAM_IMAGE_ADD_NV: EGLenum = 0x3374;
+pub const EGL_STREAM_IMAGE_REMOVE_NV: EGLenum = 0x3375;
+pub const EGL_STREAM_IMAGE_AVAILABLE_NV: EGLenum = 0x3376;
+pub const EGL_DRM_RENDER_NODE_FILE_EXT: EGLenum = 0x3377;
+pub const EGL_STREAM_CONSUMER_IMAGE_USE_SCANOUT_NV: EGLenum = 0x3378;
+pub const EGL_ALLOC_NEW_DISPLAY_EXT: EGLenum = 0x3379;
+pub const EGL_D3D9_DEVICE_ANGLE: EGLenum = 0x33A0;
+pub const EGL_D3D11_DEVICE_ANGLE: EGLenum = 0x33A1;
+pub const EGL_OBJECT_THREAD_KHR: EGLenum = 0x33B0;
+pub const EGL_OBJECT_DISPLAY_KHR: EGLenum = 0x33B1;
+pub const EGL_OBJECT_CONTEXT_KHR: EGLenum = 0x33B2;
+pub const EGL_OBJECT_SURFACE_KHR: EGLenum = 0x33B3;
+pub const EGL_OBJECT_IMAGE_KHR: EGLenum = 0x33B4;
+pub const EGL_OBJECT_SYNC_KHR: EGLenum = 0x33B5;
+pub const EGL_OBJECT_STREAM_KHR: EGLenum = 0x33B6;
+pub const EGL_DEBUG_CALLBACK_KHR: EGLenum = 0x33B8;
+pub const EGL_DEBUG_MSG_CRITICAL_KHR: EGLenum = 0x33B9;
+pub const EGL_DEBUG_MSG_ERROR_KHR: EGLenum = 0x33BA;
+pub const EGL_DEBUG_MSG_WARN_KHR: EGLenum = 0x33BB;
+pub const EGL_DEBUG_MSG_INFO_KHR: EGLenum = 0x33BC;
+pub const EGL_TIMESTAMP_PENDING_ANDROID: EGLnsecsANDROID = -2 as EGLnsecsANDROID;
+pub const EGL_TIMESTAMP_INVALID_ANDROID: EGLnsecsANDROID = -1 as EGLnsecsANDROID;
+pub const EGL_TIMESTAMPS_ANDROID: EGLenum = 0x3430;
+pub const EGL_COMPOSITE_DEADLINE_ANDROID: EGLenum = 0x3431;
+pub const EGL_COMPOSITE_INTERVAL_ANDROID: EGLenum = 0x3432;
+pub const EGL_COMPOSITE_TO_PRESENT_LATENCY_ANDROID: EGLenum = 0x3433;
+pub const EGL_REQUESTED_PRESENT_TIME_ANDROID: EGLenum = 0x3434;
+pub const EGL_RENDERING_COMPLETE_TIME_ANDROID: EGLenum = 0x3435;
+pub const EGL_COMPOSITION_LATCH_TIME_ANDROID: EGLenum = 0x3436;
+pub const EGL_FIRST_COMPOSITION_START_TIME_ANDROID: EGLenum = 0x3437;
+pub const EGL_LAST_COMPOSITION_START_TIME_ANDROID: EGLenum = 0x3438;
+pub const EGL_FIRST_COMPOSITION_GPU_FINISHED_TIME_ANDROID: EGLenum = 0x3439;
+pub const EGL_DISPLAY_PRESENT_TIME_ANDROID: EGLenum = 0x343A;
+pub const EGL_DEQUEUE_READY_TIME_ANDROID: EGLenum = 0x343B;
+pub const EGL_READS_DONE_TIME_ANDROID: EGLenum = 0x343C;
+pub const EGL_DMA_BUF_PLANE3_FD_EXT: EGLenum = 0x3440;
+pub const EGL_DMA_BUF_PLANE3_OFFSET_EXT: EGLenum = 0x3441;
+pub const EGL_DMA_BUF_PLANE3_PITCH_EXT: EGLenum = 0x3442;
+pub const EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT: EGLenum = 0x3443;
+pub const EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT: EGLenum = 0x3444;
+pub const EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT: EGLenum = 0x3445;
+pub const EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT: EGLenum = 0x3446;
+pub const EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT: EGLenum = 0x3447;
+pub const EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT: EGLenum = 0x3448;
+pub const EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT: EGLenum = 0x3449;
+pub const EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT: EGLenum = 0x344A;
+pub const EGL_PRIMARY_COMPOSITOR_CONTEXT_EXT: EGLenum = 0x3460;
+pub const EGL_EXTERNAL_REF_ID_EXT: EGLenum = 0x3461;
+pub const EGL_COMPOSITOR_DROP_NEWEST_FRAME_EXT: EGLenum = 0x3462;
+pub const EGL_COMPOSITOR_KEEP_NEWEST_FRAME_EXT: EGLenum = 0x3463;
+pub const EGL_FRONT_BUFFER_EXT: EGLenum = 0x3464;
+pub const EGL_IMPORT_SYNC_TYPE_EXT: EGLenum = 0x3470;
+pub const EGL_IMPORT_IMPLICIT_SYNC_EXT: EGLenum = 0x3471;
+pub const EGL_IMPORT_EXPLICIT_SYNC_EXT: EGLenum = 0x3472;
+pub const EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT: EGLenum = 0x3490;
+pub const EGL_SURFACE_COMPRESSION_EXT: EGLenum = 0x34B0;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_NONE_EXT: EGLenum = 0x34B1;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_DEFAULT_EXT: EGLenum = 0x34B2;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_1BPC_EXT: EGLenum = 0x34B4;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_2BPC_EXT: EGLenum = 0x34B5;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_3BPC_EXT: EGLenum = 0x34B6;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_4BPC_EXT: EGLenum = 0x34B7;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_5BPC_EXT: EGLenum = 0x34B8;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_6BPC_EXT: EGLenum = 0x34B9;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_7BPC_EXT: EGLenum = 0x34BA;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_8BPC_EXT: EGLenum = 0x34BB;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_9BPC_EXT: EGLenum = 0x34BC;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_10BPC_EXT: EGLenum = 0x34BD;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_11BPC_EXT: EGLenum = 0x34BE;
+pub const EGL_SURFACE_COMPRESSION_FIXED_RATE_12BPC_EXT: EGLenum = 0x34BF;
+pub const EGL_CONFIG_SELECT_GROUP_EXT: EGLenum = 0x34C0;
+pub const EGL_GL_COLORSPACE_BT2020_HLG_EXT: EGLenum = 0x3540;
+pub const EGL_PLATFORM_SCREEN_QNX: EGLenum = 0x3550;
+pub const EGL_NATIVE_BUFFER_QNX: EGLenum = 0x3551;
+pub const EGL_TELEMETRY_HINT_ANDROID: EGLenum = 0x3570;
+pub const EGL_DEVICE_TYPE_EXT: EGLenum = 0x3590;
+pub const EGL_DEVICE_TYPE_OTHER_EXT: EGLenum = 0x3591;
+pub const EGL_DEVICE_TYPE_INTEGRATED_GPU_EXT: EGLenum = 0x3592;
+pub const EGL_DEVICE_TYPE_DISCRETE_GPU_EXT: EGLenum = 0x3593;
+pub const EGL_DEVICE_TYPE_CPU_EXT: EGLenum = 0x3594;
+pub const EGL_COLOR_FORMAT_HI: EGLenum = 0x8F70;
+pub const EGL_COLOR_RGB_HI: EGLenum = 0x8F71;
+pub const EGL_COLOR_RGBA_HI: EGLenum = 0x8F72;
+pub const EGL_COLOR_ARGB_HI: EGLenum = 0x8F73;
+pub const EGL_CLIENT_PIXMAP_POINTER_HI: EGLenum = 0x8F74;
+pub const EGL_PLATFORM_ANGLE_ANGLE: EGLenum = 0x3202;
+pub const EGL_PLATFORM_ANGLE_TYPE_ANGLE: EGLenum = 0x3203;
+pub const EGL_PLATFORM_ANGLE_MAX_VERSION_MAJOR_ANGLE: EGLenum = 0x3204;
+pub const EGL_PLATFORM_ANGLE_MAX_VERSION_MINOR_ANGLE: EGLenum = 0x3205;
+pub const EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE: EGLenum = 0x3206;
+pub const EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE: EGLenum = 0x3208;
+pub const EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE: EGLenum = 0x3209;
+pub const EGL_PLATFORM_ANGLE_DEVICE_TYPE_HARDWARE_ANGLE: EGLenum = 0x320A;
+pub const EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE: EGLenum = 0x320B;
+pub const EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_REFERENCE_ANGLE: EGLenum = 0x320C;
+pub const EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE: EGLenum = 0x320D;
+pub const EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE: EGLenum = 0x320E;
+pub const EGL_PLATFORM_ANGLE_ENABLE_AUTOMATIC_TRIM_ANGLE: EGLenum = 0x320F;
+pub const EGL_SWAP_INTERVAL_ANGLE: EGLenum = 0x322F;
+pub const EGL_DXGI_KEYED_MUTEX_ANGLE: EGLenum = 0x33A2;
+pub const EGL_X11_VISUAL_ID_ANGLE: EGLenum = 0x33A3;
+pub const EGL_D3D_TEXTURE_ANGLE: EGLenum = 0x33A3;
+pub const EGL_EXPERIMENTAL_PRESENT_PATH_ANGLE: EGLenum = 0x33A4;
+pub const EGL_DIRECT_COMPOSITION_ANGLE: EGLenum = 0x33A5;
+pub const EGL_OPTIMAL_SURFACE_ORIENTATION_ANGLE: EGLenum = 0x33A7;
+pub const EGL_SURFACE_ORIENTATION_ANGLE: EGLenum = 0x33A8;
+pub const EGL_EXPERIMENTAL_PRESENT_PATH_FAST_ANGLE: EGLenum = 0x33A9;
+pub const EGL_EXPERIMENTAL_PRESENT_PATH_COPY_ANGLE: EGLenum = 0x33AA;
+pub const EGL_D3D_TEXTURE_SUBRESOURCE_ID_ANGLE: EGLenum = 0x33AB;
+pub const EGL_CONTEXT_WEBGL_COMPATIBILITY_ANGLE: EGLenum = 0x33AC;
+pub const EGL_PLATFORM_ANGLE_TYPE_NULL_ANGLE: EGLenum = 0x33AE;
+pub const EGL_DISPLAY_TEXTURE_SHARE_GROUP_ANGLE: EGLenum = 0x33AF;
+pub const EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE: EGLenum = 0x3450;
+pub const EGL_PLATFORM_ANGLE_DEBUG_LAYERS_ENABLED: EGLenum = 0x3451;
+pub const EGL_CONTEXT_CLIENT_ARRAYS_ENABLED_ANGLE: EGLenum = 0x3452;
+pub const EGL_ROBUST_RESOURCE_INITIALIZATION_ANGLE: EGLenum = 0x3453;
+pub const EGL_IOSURFACE_ANGLE: EGLenum = 0x3454;
+pub const EGL_PROGRAM_CACHE_SIZE_ANGLE: EGLenum = 0x3455;
+pub const EGL_PROGRAM_CACHE_KEY_LENGTH_ANGLE: EGLenum = 0x3456;
+pub const EGL_PROGRAM_CACHE_RESIZE_ANGLE: EGLenum = 0x3457;
+pub const EGL_PROGRAM_CACHE_TRIM_ANGLE: EGLenum = 0x3458;
+pub const EGL_CONTEXT_PROGRAM_BINARY_CACHE_ENABLED_ANGLE: EGLenum = 0x3459;
+pub const EGL_IOSURFACE_PLANE_ANGLE: EGLenum = 0x345A;
+pub const EGL_TEXTURE_RECTANGLE_ANGLE: EGLenum = 0x345B;
+pub const EGL_TEXTURE_TYPE_ANGLE: EGLenum = 0x345C;
+pub const EGL_TEXTURE_INTERNAL_FORMAT_ANGLE: EGLenum = 0x345D;
+pub const EGL_PLATFORM_ANGLE_DEVICE_TYPE_NULL_ANGLE: EGLenum = 0x345E;
+pub const EGL_EXTENSIONS_ENABLED_ANGLE: EGLenum = 0x345F;
+pub const EGL_FEATURE_NAME_ANGLE: EGLenum = 0x3460;
+pub const EGL_FEATURE_CATEGORY_ANGLE: EGLenum = 0x3461;
+pub const EGL_CONTEXT_MEMORY_USAGE_ANGLE: EGLenum = 0x3462;
+pub const EGL_FEATURE_STATUS_ANGLE: EGLenum = 0x3464;
+pub const EGL_FEATURE_COUNT_ANGLE: EGLenum = 0x3465;
+pub const EGL_FEATURE_OVERRIDES_ENABLED_ANGLE: EGLenum = 0x3466;
+pub const EGL_FEATURE_OVERRIDES_DISABLED_ANGLE: EGLenum = 0x3467;
+pub const EGL_FEATURE_ALL_DISABLED_ANGLE: EGLenum = 0x3469;
+pub const EGL_PLATFORM_ANGLE_EGL_HANDLE_ANGLE: EGLenum = 0x3480;
+pub const EGL_CONTEXT_VIRTUALIZATION_GROUP_ANGLE: EGLenum = 0x3481;
+pub const EGL_POWER_PREFERENCE_ANGLE: EGLenum = 0x3482;
+pub const EGL_CONTEXT_OPENGL_BACKWARDS_COMPATIBLE_ANGLE: EGLenum = 0x3483;
+pub const EGL_CGL_CONTEXT_ANGLE: EGLenum = 0x3485;
+pub const EGL_CGL_PIXEL_FORMAT_ANGLE: EGLenum = 0x3486;
+pub const EGL_PLATFORM_ANGLE_DEVICE_TYPE_SWIFTSHADER_ANGLE: EGLenum = 0x3487;
+pub const EGL_PLATFORM_ANGLE_D3D11ON12_ANGLE: EGLenum = 0x3488;
+pub const EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE: EGLenum = 0x3489;
+pub const EGL_IOSURFACE_USAGE_HINT_ANGLE: EGLenum = 0x348A;
+pub const EGL_EAGL_CONTEXT_ANGLE: EGLenum = 0x348C;
+pub const EGL_DISPLAY_SEMAPHORE_SHARE_GROUP_ANGLE: EGLenum = 0x348D;
+pub const EGL_BIND_TO_TEXTURE_TARGET_ANGLE: EGLenum = 0x348D;
+pub const EGL_PLATFORM_ANGLE_DEVICE_TYPE_EGL_ANGLE: EGLenum = 0x348E;
+pub const EGL_EXTERNAL_CONTEXT_ANGLE: EGLenum = 0x348E;
+pub const EGL_PLATFORM_ANGLE_NATIVE_PLATFORM_TYPE_ANGLE: EGLenum = 0x348F;
+pub const EGL_EXTERNAL_SURFACE_ANGLE: EGLenum = 0x348F;
+pub const EGL_PLATFORM_ANGLE_D3D_LUID_HIGH_ANGLE: EGLenum = 0x34A0;
+pub const EGL_PLATFORM_ANGLE_D3D_LUID_LOW_ANGLE: EGLenum = 0x34A1;
+pub const EGL_PLATFORM_ANGLE_DEVICE_CONTEXT_VOLATILE_EAGL_ANGLE: EGLenum = 0x34A2;
+pub const EGL_PLATFORM_ANGLE_DEVICE_CONTEXT_VOLATILE_CGL_ANGLE: EGLenum = 0x34A3;
+pub const EGL_PLATFORM_VULKAN_DISPLAY_MODE_SIMPLE_ANGLE: EGLenum = 0x34A4;
+pub const EGL_PLATFORM_VULKAN_DISPLAY_MODE_HEADLESS_ANGLE: EGLenum = 0x34A5;
+pub const EGL_METAL_DEVICE_ANGLE: EGLenum = 0x34A6;
+pub const EGL_METAL_TEXTURE_ANGLE: EGLenum = 0x34A7;
+pub const EGL_VULKAN_VERSION_ANGLE: EGLenum = 0x34A8;
+pub const EGL_VULKAN_INSTANCE_ANGLE: EGLenum = 0x34A9;
+pub const EGL_VULKAN_INSTANCE_EXTENSIONS_ANGLE: EGLenum = 0x34AA;
+pub const EGL_VULKAN_PHYSICAL_DEVICE_ANGLE: EGLenum = 0x34AB;
+pub const EGL_VULKAN_DEVICE_ANGLE: EGLenum = 0x34AC;
+pub const EGL_VULKAN_DEVICE_EXTENSIONS_ANGLE: EGLenum = 0x34AD;
+pub const EGL_VULKAN_FEATURES_ANGLE: EGLenum = 0x34AE;
+pub const EGL_VULKAN_QUEUE_ANGLE: EGLenum = 0x34AF;
+pub const EGL_VULKAN_QUEUE_FAMILIY_INDEX_ANGLE: EGLenum = 0x34D0;
+pub const EGL_VULKAN_GET_INSTANCE_PROC_ADDR: EGLenum = 0x34D1;
+pub const EGL_CONTEXT_METAL_OWNERSHIP_IDENTITY_ANGLE: EGLenum = 0x34D2;
+pub const EGL_VULKAN_IMAGE_ANGLE: EGLenum = 0x34D3;
+pub const EGL_VULKAN_IMAGE_CREATE_INFO_HI_ANGLE: EGLenum = 0x34D4;
+pub const EGL_VULKAN_IMAGE_CREATE_INFO_LO_ANGLE: EGLenum = 0x34D5;
+pub const EGL_PLATFORM_ANGLE_DEVICE_ID_HIGH_ANGLE: EGLenum = 0x34D6;
+pub const EGL_PLATFORM_ANGLE_DEVICE_ID_LOW_ANGLE: EGLenum = 0x34D7;
+pub const EGL_SYNC_METAL_SHARED_EVENT_ANGLE: EGLenum = 0x34D8;
+pub const EGL_SYNC_METAL_SHARED_EVENT_OBJECT_ANGLE: EGLenum = 0x34D9;
+pub const EGL_SYNC_METAL_SHARED_EVENT_SIGNAL_VALUE_LO_ANGLE: EGLenum = 0x34DA;
+pub const EGL_SYNC_METAL_SHARED_EVENT_SIGNAL_VALUE_HI_ANGLE: EGLenum = 0x34DB;
+pub const EGL_SYNC_METAL_SHARED_EVENT_SIGNALED_ANGLE: EGLenum = 0x34DC;
+pub const EGL_PLATFORM_ANGLE_DISPLAY_KEY_ANGLE: EGLenum = 0x34DC;
+pub const EGL_METAL_TEXTURE_ARRAY_SLICE_ANGLE: EGLenum = 0x34DD;
+pub const EGL_SYNC_GLOBAL_FENCE_ANGLE: EGLenum = 0x34DE;
+pub const EGL_PLATFORM_ANGLE_TYPE_WEBGPU_ANGLE: EGLenum = 0x34DF;
+pub const EGL_SYNC_METAL_COMMANDS_SCHEDULED_ANGLE: EGLenum = 0x34E0;
+pub const EGL_PLATFORM_ANGLE_VULKAN_DEVICE_UUID_ANGLE: EGLenum = 0x34F0;
+pub const EGL_PLATFORM_ANGLE_VULKAN_DRIVER_UUID_ANGLE: EGLenum = 0x34F1;
+pub const EGL_PLATFORM_ANGLE_VULKAN_DRIVER_ID_ANGLE: EGLenum = 0x34F2;
+pub const EGL_CONTEXT_HARDENED_ANGLE: EGLenum = 0x34F8;
+pub const EGL_LOW_POWER_ANGLE: EGLenum = 0x0001;
+pub const EGL_HIGH_POWER_ANGLE: EGLenum = 0x0002;
+pub const EGL_SURFACE_ORIENTATION_INVERT_X_ANGLE: EGLenum = 0x0001;
+pub const EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE: EGLenum = 0x0002;
+
+// ── Command table ───────────────────────────────────────────
+pub const COMMAND_COUNT: usize = 182;
+pub const FEATURE_COUNT: usize = 6;
+
+#[rustfmt::skip]
+static FN_NAME_DATA: &[u8] = b"\
+    eglChooseConfig\0\
+    eglCopyBuffers\0\
+    eglCreateContext\0\
+    eglCreatePbufferSurface\0\
+    eglCreatePixmapSurface\0\
+    eglCreateWindowSurface\0\
+    eglDestroyContext\0\
+    eglDestroySurface\0\
+    eglGetConfigAttrib\0\
+    eglGetConfigs\0\
+    eglGetCurrentDisplay\0\
+    eglGetCurrentSurface\0\
+    eglGetDisplay\0\
+    eglGetError\0\
+    eglGetProcAddress\0\
+    eglInitialize\0\
+    eglMakeCurrent\0\
+    eglQueryContext\0\
+    eglQueryString\0\
+    eglQuerySurface\0\
+    eglSwapBuffers\0\
+    eglTerminate\0\
+    eglWaitGL\0\
+    eglWaitNative\0\
+    eglBindTexImage\0\
+    eglReleaseTexImage\0\
+    eglSurfaceAttrib\0\
+    eglSwapInterval\0\
+    eglBindAPI\0\
+    eglCreatePbufferFromClientBuffer\0\
+    eglQueryAPI\0\
+    eglReleaseThread\0\
+    eglWaitClient\0\
+    eglGetCurrentContext\0\
+    eglClientWaitSync\0\
+    eglCreateImage\0\
+    eglCreatePlatformPixmapSurface\0\
+    eglCreatePlatformWindowSurface\0\
+    eglCreateSync\0\
+    eglDestroyImage\0\
+    eglDestroySync\0\
+    eglGetPlatformDisplay\0\
+    eglGetSyncAttrib\0\
+    eglWaitSync\0\
+    eglSetBlobCacheFuncsANDROID\0\
+    eglCreateNativeClientBufferANDROID\0\
+    eglGetNativeClientBufferANDROID\0\
+    eglDupNativeFenceFDANDROID\0\
+    eglPresentationTimeANDROID\0\
+    eglGetCompositorTimingANDROID\0\
+    eglGetCompositorTimingSupportedANDROID\0\
+    eglGetFrameTimestampSupportedANDROID\0\
+    eglGetFrameTimestampsANDROID\0\
+    eglGetNextFrameIdANDROID\0\
+    eglQuerySurfacePointerANGLE\0\
+    eglGetMscRateANGLE\0\
+    eglClientSignalSyncEXT\0\
+    eglQueryDevicesEXT\0\
+    eglQueryDeviceAttribEXT\0\
+    eglQueryDeviceStringEXT\0\
+    eglQueryDisplayAttribEXT\0\
+    eglQueryDmaBufFormatsEXT\0\
+    eglQueryDmaBufModifiersEXT\0\
+    eglGetOutputLayersEXT\0\
+    eglGetOutputPortsEXT\0\
+    eglOutputLayerAttribEXT\0\
+    eglOutputPortAttribEXT\0\
+    eglQueryOutputLayerAttribEXT\0\
+    eglQueryOutputLayerStringEXT\0\
+    eglQueryOutputPortAttribEXT\0\
+    eglQueryOutputPortStringEXT\0\
+    eglCreatePlatformPixmapSurfaceEXT\0\
+    eglCreatePlatformWindowSurfaceEXT\0\
+    eglGetPlatformDisplayEXT\0\
+    eglStreamConsumerOutputEXT\0\
+    eglSwapBuffersWithDamageEXT\0\
+    eglUnsignalSyncEXT\0\
+    eglCreatePixmapSurfaceHI\0\
+    eglCreateSync64KHR\0\
+    eglDebugMessageControlKHR\0\
+    eglLabelObjectKHR\0\
+    eglQueryDebugKHR\0\
+    eglQueryDisplayAttribKHR\0\
+    eglClientWaitSyncKHR\0\
+    eglCreateSyncKHR\0\
+    eglDestroySyncKHR\0\
+    eglGetSyncAttribKHR\0\
+    eglCreateImageKHR\0\
+    eglDestroyImageKHR\0\
+    eglLockSurfaceKHR\0\
+    eglUnlockSurfaceKHR\0\
+    eglQuerySurface64KHR\0\
+    eglSetDamageRegionKHR\0\
+    eglSignalSyncKHR\0\
+    eglCreateStreamKHR\0\
+    eglDestroyStreamKHR\0\
+    eglQueryStreamKHR\0\
+    eglQueryStreamu64KHR\0\
+    eglStreamAttribKHR\0\
+    eglCreateStreamAttribKHR\0\
+    eglQueryStreamAttribKHR\0\
+    eglSetStreamAttribKHR\0\
+    eglStreamConsumerAcquireAttribKHR\0\
+    eglStreamConsumerReleaseAttribKHR\0\
+    eglStreamConsumerAcquireKHR\0\
+    eglStreamConsumerGLTextureExternalKHR\0\
+    eglStreamConsumerReleaseKHR\0\
+    eglCreateStreamFromFileDescriptorKHR\0\
+    eglGetStreamFileDescriptorKHR\0\
+    eglQueryStreamTimeKHR\0\
+    eglCreateStreamProducerSurfaceKHR\0\
+    eglSwapBuffersWithDamageKHR\0\
+    eglWaitSyncKHR\0\
+    eglCreateDRMImageMESA\0\
+    eglExportDRMImageMESA\0\
+    eglExportDMABUFImageMESA\0\
+    eglExportDMABUFImageQueryMESA\0\
+    eglGetDisplayDriverConfig\0\
+    eglGetDisplayDriverName\0\
+    eglSwapBuffersRegionNOK\0\
+    eglSwapBuffersRegion2NOK\0\
+    eglQueryNativeDisplayNV\0\
+    eglQueryNativePixmapNV\0\
+    eglQueryNativeWindowNV\0\
+    eglPostSubBufferNV\0\
+    eglStreamConsumerGLTextureExternalAttribsNV\0\
+    eglQueryStreamConsumerEventNV\0\
+    eglStreamAcquireImageNV\0\
+    eglStreamImageConsumerConnectNV\0\
+    eglStreamReleaseImageNV\0\
+    eglStreamFlushNV\0\
+    eglQueryDisplayAttribNV\0\
+    eglQueryStreamMetadataNV\0\
+    eglSetStreamMetadataNV\0\
+    eglResetStreamNV\0\
+    eglCreateStreamSyncNV\0\
+    eglClientWaitSyncNV\0\
+    eglCreateFenceSyncNV\0\
+    eglDestroySyncNV\0\
+    eglFenceNV\0\
+    eglGetSyncAttribNV\0\
+    eglSignalSyncNV\0\
+    eglGetSystemTimeFrequencyNV\0\
+    eglGetSystemTimeNV\0\
+    eglCompositorBindTexWindowEXT\0\
+    eglCompositorSetContextAttributesEXT\0\
+    eglCompositorSetContextListEXT\0\
+    eglCompositorSetSizeEXT\0\
+    eglCompositorSetWindowAttributesEXT\0\
+    eglCompositorSetWindowListEXT\0\
+    eglCompositorSwapPolicyEXT\0\
+    eglQuerySupportedCompressionRatesEXT\0\
+    eglBindWaylandDisplayWL\0\
+    eglQueryWaylandBufferWL\0\
+    eglUnbindWaylandDisplayWL\0\
+    eglCreateWaylandBufferFromImageWL\0\
+    eglQueryDeviceBinaryEXT\0\
+    eglDestroyDisplayEXT\0\
+    eglCreateDeviceANGLE\0\
+    eglReleaseDeviceANGLE\0\
+    eglQueryDisplayAttribANGLE\0\
+    eglQueryStringiANGLE\0\
+    eglAcquireExternalContextANGLE\0\
+    eglReleaseExternalContextANGLE\0\
+    eglCreateStreamProducerD3DTextureANGLE\0\
+    eglStreamPostD3DTextureANGLE\0\
+    eglGetSyncValuesCHROMIUM\0\
+    eglProgramCacheGetAttribANGLE\0\
+    eglProgramCachePopulateANGLE\0\
+    eglProgramCacheQueryANGLE\0\
+    eglProgramCacheResizeANGLE\0\
+    eglWaitUntilWorkScheduledANGLE\0\
+    eglPrepareSwapBuffersANGLE\0\
+    eglForceGPUSwitchANGLE\0\
+    eglHandleGPUSwitchANGLE\0\
+    eglReacquireHighPowerGPUANGLE\0\
+    eglReleaseHighPowerGPUANGLE\0\
+    eglExportVkImageANGLE\0\
+    eglLockVulkanQueueANGLE\0\
+    eglUnlockVulkanQueueANGLE\0\
+    eglCopyMetalSharedEventANGLE\0\
+    eglSetValidationEnabledANGLE\0\
+";
+
+// Byte offset of each command name in FN_NAME_DATA, indexed in
+// lockstep with the pfn table (slot [i] == command i).
+#[rustfmt::skip]
+static FN_NAME_OFFSETS: [u16; COMMAND_COUNT] = [
+          0, // [0] eglChooseConfig
+         16, // [1] eglCopyBuffers
+         31, // [2] eglCreateContext
+         48, // [3] eglCreatePbufferSurface
+         72, // [4] eglCreatePixmapSurface
+         95, // [5] eglCreateWindowSurface
+        118, // [6] eglDestroyContext
+        136, // [7] eglDestroySurface
+        154, // [8] eglGetConfigAttrib
+        173, // [9] eglGetConfigs
+        187, // [10] eglGetCurrentDisplay
+        208, // [11] eglGetCurrentSurface
+        229, // [12] eglGetDisplay
+        243, // [13] eglGetError
+        255, // [14] eglGetProcAddress
+        273, // [15] eglInitialize
+        287, // [16] eglMakeCurrent
+        302, // [17] eglQueryContext
+        318, // [18] eglQueryString
+        333, // [19] eglQuerySurface
+        349, // [20] eglSwapBuffers
+        364, // [21] eglTerminate
+        377, // [22] eglWaitGL
+        387, // [23] eglWaitNative
+        401, // [24] eglBindTexImage
+        417, // [25] eglReleaseTexImage
+        436, // [26] eglSurfaceAttrib
+        453, // [27] eglSwapInterval
+        469, // [28] eglBindAPI
+        480, // [29] eglCreatePbufferFromClientBuffer
+        513, // [30] eglQueryAPI
+        525, // [31] eglReleaseThread
+        542, // [32] eglWaitClient
+        556, // [33] eglGetCurrentContext
+        577, // [34] eglClientWaitSync
+        595, // [35] eglCreateImage
+        610, // [36] eglCreatePlatformPixmapSurface
+        641, // [37] eglCreatePlatformWindowSurface
+        672, // [38] eglCreateSync
+        686, // [39] eglDestroyImage
+        702, // [40] eglDestroySync
+        717, // [41] eglGetPlatformDisplay
+        739, // [42] eglGetSyncAttrib
+        756, // [43] eglWaitSync
+        768, // [44] eglSetBlobCacheFuncsANDROID
+        796, // [45] eglCreateNativeClientBufferANDROID
+        831, // [46] eglGetNativeClientBufferANDROID
+        863, // [47] eglDupNativeFenceFDANDROID
+        890, // [48] eglPresentationTimeANDROID
+        917, // [49] eglGetCompositorTimingANDROID
+        947, // [50] eglGetCompositorTimingSupportedANDROID
+        986, // [51] eglGetFrameTimestampSupportedANDROID
+       1023, // [52] eglGetFrameTimestampsANDROID
+       1052, // [53] eglGetNextFrameIdANDROID
+       1077, // [54] eglQuerySurfacePointerANGLE
+       1105, // [55] eglGetMscRateANGLE
+       1124, // [56] eglClientSignalSyncEXT
+       1147, // [57] eglQueryDevicesEXT
+       1166, // [58] eglQueryDeviceAttribEXT
+       1190, // [59] eglQueryDeviceStringEXT
+       1214, // [60] eglQueryDisplayAttribEXT
+       1239, // [61] eglQueryDmaBufFormatsEXT
+       1264, // [62] eglQueryDmaBufModifiersEXT
+       1291, // [63] eglGetOutputLayersEXT
+       1313, // [64] eglGetOutputPortsEXT
+       1334, // [65] eglOutputLayerAttribEXT
+       1358, // [66] eglOutputPortAttribEXT
+       1381, // [67] eglQueryOutputLayerAttribEXT
+       1410, // [68] eglQueryOutputLayerStringEXT
+       1439, // [69] eglQueryOutputPortAttribEXT
+       1467, // [70] eglQueryOutputPortStringEXT
+       1495, // [71] eglCreatePlatformPixmapSurfaceEXT
+       1529, // [72] eglCreatePlatformWindowSurfaceEXT
+       1563, // [73] eglGetPlatformDisplayEXT
+       1588, // [74] eglStreamConsumerOutputEXT
+       1615, // [75] eglSwapBuffersWithDamageEXT
+       1643, // [76] eglUnsignalSyncEXT
+       1662, // [77] eglCreatePixmapSurfaceHI
+       1687, // [78] eglCreateSync64KHR
+       1706, // [79] eglDebugMessageControlKHR
+       1732, // [80] eglLabelObjectKHR
+       1750, // [81] eglQueryDebugKHR
+       1767, // [82] eglQueryDisplayAttribKHR
+       1792, // [83] eglClientWaitSyncKHR
+       1813, // [84] eglCreateSyncKHR
+       1830, // [85] eglDestroySyncKHR
+       1848, // [86] eglGetSyncAttribKHR
+       1868, // [87] eglCreateImageKHR
+       1886, // [88] eglDestroyImageKHR
+       1905, // [89] eglLockSurfaceKHR
+       1923, // [90] eglUnlockSurfaceKHR
+       1943, // [91] eglQuerySurface64KHR
+       1964, // [92] eglSetDamageRegionKHR
+       1986, // [93] eglSignalSyncKHR
+       2003, // [94] eglCreateStreamKHR
+       2022, // [95] eglDestroyStreamKHR
+       2042, // [96] eglQueryStreamKHR
+       2060, // [97] eglQueryStreamu64KHR
+       2081, // [98] eglStreamAttribKHR
+       2100, // [99] eglCreateStreamAttribKHR
+       2125, // [100] eglQueryStreamAttribKHR
+       2149, // [101] eglSetStreamAttribKHR
+       2171, // [102] eglStreamConsumerAcquireAttribKHR
+       2205, // [103] eglStreamConsumerReleaseAttribKHR
+       2239, // [104] eglStreamConsumerAcquireKHR
+       2267, // [105] eglStreamConsumerGLTextureExternalKHR
+       2305, // [106] eglStreamConsumerReleaseKHR
+       2333, // [107] eglCreateStreamFromFileDescriptorKHR
+       2370, // [108] eglGetStreamFileDescriptorKHR
+       2400, // [109] eglQueryStreamTimeKHR
+       2422, // [110] eglCreateStreamProducerSurfaceKHR
+       2456, // [111] eglSwapBuffersWithDamageKHR
+       2484, // [112] eglWaitSyncKHR
+       2499, // [113] eglCreateDRMImageMESA
+       2521, // [114] eglExportDRMImageMESA
+       2543, // [115] eglExportDMABUFImageMESA
+       2568, // [116] eglExportDMABUFImageQueryMESA
+       2598, // [117] eglGetDisplayDriverConfig
+       2624, // [118] eglGetDisplayDriverName
+       2648, // [119] eglSwapBuffersRegionNOK
+       2672, // [120] eglSwapBuffersRegion2NOK
+       2697, // [121] eglQueryNativeDisplayNV
+       2721, // [122] eglQueryNativePixmapNV
+       2744, // [123] eglQueryNativeWindowNV
+       2767, // [124] eglPostSubBufferNV
+       2786, // [125] eglStreamConsumerGLTextureExternalAttribsNV
+       2830, // [126] eglQueryStreamConsumerEventNV
+       2860, // [127] eglStreamAcquireImageNV
+       2884, // [128] eglStreamImageConsumerConnectNV
+       2916, // [129] eglStreamReleaseImageNV
+       2940, // [130] eglStreamFlushNV
+       2957, // [131] eglQueryDisplayAttribNV
+       2981, // [132] eglQueryStreamMetadataNV
+       3006, // [133] eglSetStreamMetadataNV
+       3029, // [134] eglResetStreamNV
+       3046, // [135] eglCreateStreamSyncNV
+       3068, // [136] eglClientWaitSyncNV
+       3088, // [137] eglCreateFenceSyncNV
+       3109, // [138] eglDestroySyncNV
+       3126, // [139] eglFenceNV
+       3137, // [140] eglGetSyncAttribNV
+       3156, // [141] eglSignalSyncNV
+       3172, // [142] eglGetSystemTimeFrequencyNV
+       3200, // [143] eglGetSystemTimeNV
+       3219, // [144] eglCompositorBindTexWindowEXT
+       3249, // [145] eglCompositorSetContextAttributesEXT
+       3286, // [146] eglCompositorSetContextListEXT
+       3317, // [147] eglCompositorSetSizeEXT
+       3341, // [148] eglCompositorSetWindowAttributesEXT
+       3377, // [149] eglCompositorSetWindowListEXT
+       3407, // [150] eglCompositorSwapPolicyEXT
+       3434, // [151] eglQuerySupportedCompressionRatesEXT
+       3471, // [152] eglBindWaylandDisplayWL
+       3495, // [153] eglQueryWaylandBufferWL
+       3519, // [154] eglUnbindWaylandDisplayWL
+       3545, // [155] eglCreateWaylandBufferFromImageWL
+       3579, // [156] eglQueryDeviceBinaryEXT
+       3603, // [157] eglDestroyDisplayEXT
+       3624, // [158] eglCreateDeviceANGLE
+       3645, // [159] eglReleaseDeviceANGLE
+       3667, // [160] eglQueryDisplayAttribANGLE
+       3694, // [161] eglQueryStringiANGLE
+       3715, // [162] eglAcquireExternalContextANGLE
+       3746, // [163] eglReleaseExternalContextANGLE
+       3777, // [164] eglCreateStreamProducerD3DTextureANGLE
+       3816, // [165] eglStreamPostD3DTextureANGLE
+       3845, // [166] eglGetSyncValuesCHROMIUM
+       3870, // [167] eglProgramCacheGetAttribANGLE
+       3900, // [168] eglProgramCachePopulateANGLE
+       3929, // [169] eglProgramCacheQueryANGLE
+       3955, // [170] eglProgramCacheResizeANGLE
+       3982, // [171] eglWaitUntilWorkScheduledANGLE
+       4013, // [172] eglPrepareSwapBuffersANGLE
+       4040, // [173] eglForceGPUSwitchANGLE
+       4063, // [174] eglHandleGPUSwitchANGLE
+       4087, // [175] eglReacquireHighPowerGPUANGLE
+       4117, // [176] eglReleaseHighPowerGPUANGLE
+       4145, // [177] eglExportVkImageANGLE
+       4167, // [178] eglLockVulkanQueueANGLE
+       4191, // [179] eglUnlockVulkanQueueANGLE
+       4217, // [180] eglCopyMetalSharedEventANGLE
+       4246, // [181] eglSetValidationEnabledANGLE
+];
+
+#[rustfmt::skip]
+static FEATURE_RANGES: [(u16, u16, u16); 5] = [
+    (   0,    0,   24), // EGL_VERSION_1_0
+    (   1,   24,    4), // EGL_VERSION_1_1
+    (   2,   28,    5), // EGL_VERSION_1_2
+    (   4,   33,    1), // EGL_VERSION_1_4
+    (   5,   34,   10), // EGL_VERSION_1_5
+];
+
+#[rustfmt::skip]
+static EXT_RANGES_egl: [(u16, u16, u16); 72] = [
+    (   1,   44,    1), // EGL_ANDROID_blob_cache
+    (   2,   45,    1), // EGL_ANDROID_create_native_client_buffer
+    (   6,   46,    1), // EGL_ANDROID_get_native_client_buffer
+    (   8,   47,    1), // EGL_ANDROID_native_fence_sync
+    (   9,   48,    1), // EGL_ANDROID_presentation_time
+    (   5,   49,    5), // EGL_ANDROID_get_frame_timestamps
+    (  62,   54,    1), // EGL_ANGLE_query_surface_pointer
+    (  67,   55,    1), // EGL_ANGLE_sync_control_rate
+    (  80,   56,    1), // EGL_EXT_client_sync
+    (  84,   57,    4), // EGL_EXT_device_base
+    (  87,   57,    1), // EGL_EXT_device_enumeration
+    (  90,   58,    3), // EGL_EXT_device_query
+    ( 104,   61,    2), // EGL_EXT_image_dma_buf_import_modifiers
+    ( 108,   63,    8), // EGL_EXT_output_base
+    ( 112,   71,    3), // EGL_EXT_platform_base
+    ( 121,   74,    1), // EGL_EXT_stream_consumer_egloutput
+    ( 125,   75,    1), // EGL_EXT_swap_buffers_with_damage
+    ( 126,   76,    1), // EGL_EXT_sync_reuse
+    ( 128,   77,    1), // EGL_HI_clientpixmap
+    ( 133,   78,    1), // EGL_KHR_cl_event2
+    ( 139,   79,    3), // EGL_KHR_debug
+    ( 140,   82,    1), // EGL_KHR_display_reference
+    ( 141,   83,    4), // EGL_KHR_fence_sync
+    ( 148,   87,    2), // EGL_KHR_image
+    ( 149,   87,    2), // EGL_KHR_image_base
+    ( 151,   89,    2), // EGL_KHR_lock_surface
+    ( 153,   89,    3), // EGL_KHR_lock_surface3
+    ( 156,   92,    1), // EGL_KHR_partial_update
+    ( 161,   83,    4), // EGL_KHR_reusable_sync
+    ( 161,   93,    1), // EGL_KHR_reusable_sync
+    ( 162,   94,    5), // EGL_KHR_stream
+    ( 163,   99,    5), // EGL_KHR_stream_attrib
+    ( 164,  104,    3), // EGL_KHR_stream_consumer_gltexture
+    ( 165,  107,    2), // EGL_KHR_stream_cross_process_fd
+    ( 166,  109,    1), // EGL_KHR_stream_fifo
+    ( 168,  110,    1), // EGL_KHR_stream_producer_eglsurface
+    ( 170,  111,    1), // EGL_KHR_swap_buffers_with_damage
+    ( 172,  112,    1), // EGL_KHR_wait_sync
+    ( 173,  113,    2), // EGL_MESA_drm_image
+    ( 174,  115,    2), // EGL_MESA_image_dma_buf_export
+    ( 177,  117,    2), // EGL_MESA_query_driver
+    ( 178,  119,    1), // EGL_NOK_swap_region
+    ( 179,  120,    1), // EGL_NOK_swap_region2
+    ( 188,  121,    3), // EGL_NV_native_query
+    ( 190,  124,    1), // EGL_NV_post_sub_buffer
+    ( 195,  125,    1), // EGL_NV_stream_consumer_gltexture_yuv
+    ( 193,  126,    4), // EGL_NV_stream_consumer_eglimage
+    ( 204,  130,    1), // EGL_NV_stream_flush
+    ( 206,  131,    3), // EGL_NV_stream_metadata
+    ( 209,  134,    1), // EGL_NV_stream_reset
+    ( 213,  135,    1), // EGL_NV_stream_sync
+    ( 214,  136,    6), // EGL_NV_sync
+    ( 215,  142,    2), // EGL_NV_system_time
+    (  81,  144,    7), // EGL_EXT_compositor
+    ( 124,  151,    1), // EGL_EXT_surface_compression
+    ( 221,  152,    3), // EGL_WL_bind_wayland_display
+    ( 222,  155,    1), // EGL_WL_create_wayland_buffer_from_image
+    (  89,  156,    1), // EGL_EXT_device_persistent_id
+    (  93,  157,    1), // EGL_EXT_display_alloc
+    (  22,  158,    2), // EGL_ANGLE_device_creation
+    (  34,  160,    2), // EGL_ANGLE_feature_control
+    (  33,  162,    2), // EGL_ANGLE_external_context_and_surface
+    (  64,  164,    2), // EGL_ANGLE_stream_producer_d3d_texture
+    (  76,  166,    1), // EGL_CHROMIUM_sync_control
+    (  61,  167,    4), // EGL_ANGLE_program_cache_control
+    (  70,  171,    1), // EGL_ANGLE_wait_until_work_scheduled
+    (  60,  172,    1), // EGL_ANGLE_prepare_swap_buffers
+    (  59,  173,    4), // EGL_ANGLE_power_preference
+    (  69,  177,    1), // EGL_ANGLE_vulkan_image
+    (  27,  178,    2), // EGL_ANGLE_device_vulkan
+    (  41,  180,    1), // EGL_ANGLE_metal_shared_event_sync
+    (  43,  181,    1), // EGL_ANGLE_no_error
+];
+
+// ── Extensions ──────────────────────────────────────────────
+pub const EXT_COUNT: usize = 223;
+
+// XXH3-64 of each extension name, sorted for binary search.
+#[rustfmt::skip]
+static EXT_HASH_KEYS: [u64; EXT_COUNT] = [
+    0x0089c927779cc6ef, // EGL_KHR_gl_colorspace
+    0x008d04b1748738c1, // EGL_ANGLE_d3d_texture_client_buffer
+    0x00a9cc6756852346, // EGL_ANGLE_display_power_preference
+    0x00ba7a7f1c36e9e4, // EGL_ANGLE_device_metal
+    0x01e6ab8e204224c3, // EGL_EXT_gl_colorspace_scrgb
+    0x0391123aa67cc9fd, // EGL_EXT_client_sync
+    0x0659adf490093fcb, // EGL_EXT_output_drm
+    0x066d89176cab3c2c, // EGL_HI_colorformats
+    0x0a76d8252afa230a, // EGL_IMG_context_priority
+    0x0b5d7506753789de, // EGL_KHR_cl_event
+    0x0c3a9519d769be90, // EGL_EXT_image_dma_buf_import
+    0x0c5d5d4b9e76b0d3, // EGL_NV_stream_frame_limits
+    0x0e642f860b2670f4, // EGL_ANGLE_platform_angle
+    0x0ec61ed2c29b6b7e, // EGL_EXT_device_query_name
+    0x1160c225fe2a6bf5, // EGL_ANGLE_external_context_and_surface
+    0x140a1d4d56e89998, // EGL_NOK_texture_from_pixmap
+    0x15c4d55f4f359f01, // EGL_ANGLE_program_cache_control
+    0x16184f4f924509ef, // EGL_KHR_stream
+    0x16293db95b2e6807, // EGL_ANDROID_get_frame_timestamps
+    0x16756bf4b09c5e40, // EGL_KHR_gl_texture_2D_image
+    0x18d0970ca7b4c268, // EGL_ANGLE_global_fence_sync
+    0x1a98bf220bf010e1, // EGL_EXT_explicit_device
+    0x1b60d04af505e88c, // EGL_KHR_platform_android
+    0x1c79535a56a7c3da, // EGL_ANGLE_metal_commands_scheduled_sync
+    0x1d1cb192f9421f4c, // EGL_ANDROID_get_native_client_buffer
+    0x1d4a1428061a339a, // EGL_ANGLE_platform_angle_device_id
+    0x2050b7157f814d10, // EGL_ANGLE_keyed_mutex
+    0x205a0c44642ecfe4, // EGL_MESA_query_driver
+    0x2253fd149000c540, // EGL_ANDROID_GLES_layers
+    0x22f96d8668d51351, // EGL_ANGLE_device_eagl
+    0x24c124c0512e760a, // EGL_EXT_gl_colorspace_display_p3_linear
+    0x25e4685edc9371c5, // EGL_EXT_device_persistent_id
+    0x25ef29d5ba78dacb, // EGL_EXT_device_drm
+    0x270d8abedb2d3a6d, // EGL_KHR_config_attribs
+    0x27716290eb920120, // EGL_EXT_platform_wayland
+    0x2821ab7eeb491706, // EGL_NV_stream_cross_process
+    0x283ef3c9e93fa780, // EGL_EXT_surface_SMPTE2086_metadata
+    0x29d02d6b41d01c44, // EGL_NV_coverage_sample
+    0x2aa08328d074a816, // EGL_EXT_buffer_age
+    0x2baced719176deed, // EGL_NV_stream_consumer_gltexture_yuv
+    0x2c22f1ea2f02edae, // EGL_ANGLE_display_texture_share_group
+    0x2d155ccb3d2e416d, // EGL_ANGLE_platform_angle_webgpu
+    0x2db9bc2b87115201, // EGL_NV_stream_consumer_eglimage
+    0x2f6c882c1eab9296, // EGL_EXT_device_base
+    0x3114241b811aadf2, // EGL_KHR_stream_fifo
+    0x32f27a4c7977f1cc, // EGL_ANGLE_wait_until_work_scheduled
+    0x33597e019cc7811d, // EGL_NV_stream_flush
+    0x3385337af72503e9, // EGL_ANGLE_memory_usage_report
+    0x363e000d3383a473, // EGL_NV_stream_cross_object
+    0x375b95889c713c9a, // EGL_EXT_gl_colorspace_bt2020_hlg
+    0x37a228d0850f64a1, // EGL_NV_quadruple_buffer
+    0x38fe09b43c8ef819, // EGL_KHR_gl_texture_3D_image
+    0x3b9d20f1e7cea30c, // EGL_ANGLE_vulkan_image
+    0x3cc398fae4c2292e, // EGL_ANDROID_recordable
+    0x3db394a57b9600ed, // EGL_ANGLE_create_surface_swap_interval
+    0x3e707e46a988246f, // EGL_KHR_reusable_sync
+    0x3fc685858cb02200, // EGL_KHR_fence_sync
+    0x41534601630f79ce, // EGL_ANGLE_prepare_swap_buffers
+    0x42a3ca98a3fcecb6, // EGL_EXT_sync_reuse
+    0x450721831a3bcf73, // EGL_NV_stream_fifo_next
+    0x451b691d8d24df6c, // EGL_EXT_yuv_surface
+    0x460ce0075e78a2bd, // EGL_ANGLE_surface_d3d_texture_2d_share_handle
+    0x46817a7a0934b21a, // EGL_EXT_gl_colorspace_display_p3_passthrough
+    0x46e2ba77cc14c6da, // EGL_EXT_surface_compression
+    0x476226fa1413890a, // EGL_EXT_image_gl_colorspace
+    0x4c3836479bf75ba3, // EGL_EXT_device_query
+    0x4e02a91ae238a029, // EGL_KHR_stream_producer_aldatalocator
+    0x4e16c8c1f6a8131c, // EGL_KHR_create_context
+    0x4eac032f78eb1b97, // EGL_ANGLE_create_context_webgl_compatibility
+    0x4f20169819f31a19, // EGL_NV_depth_nonlinear
+    0x5027858c4c30d226, // EGL_ANGLE_metal_create_context_ownership_identity
+    0x5091e9def2327eea, // EGL_EXT_gl_colorspace_bt2020_linear
+    0x53a0e0b8eb5f3f00, // EGL_EXT_output_openwf
+    0x53d1f2866df11721, // EGL_NV_3dvision_surface
+    0x5557f40f2ef2066c, // EGL_NV_sync
+    0x55bf7befb5997e09, // EGL_NV_stream_socket_unix
+    0x5654a8bc12eeebab, // EGL_EXT_surface_CTA861_3_metadata
+    0x584d724a2585416b, // EGL_ANGLE_window_fixed_size
+    0x5b49c1a91e2bcce3, // EGL_ANGLE_platform_angle_device_context_volatile_cgl
+    0x5b61d2012f7861b3, // EGL_KHR_debug
+    0x5dd63931ba6563fb, // EGL_NV_stream_fifo_synchronous
+    0x5e7a56764d6c44b1, // EGL_EXT_present_opaque
+    0x5ee453db857b3c29, // EGL_ANGLE_create_context_backwards_compatible
+    0x5f5244f40c7ef900, // EGL_ANGLE_create_context_extensions_enabled
+    0x607598bc0d7426f5, // EGL_KHR_lock_surface2
+    0x63dc3010a72f0f41, // EGL_ANGLE_d3d_share_handle_client_buffer
+    0x655dcac0071412b7, // EGL_ANGLE_query_surface_pointer
+    0x67363c4648bf01a6, // EGL_ANGLE_platform_angle_d3d11on12
+    0x69ec6f07eb567773, // EGL_ANGLE_no_error
+    0x6ab80514da15b6f9, // EGL_ANGLE_platform_angle_null
+    0x6ad8d08948340894, // EGL_NV_stream_reset
+    0x6b5d9de25dfe7eba, // EGL_EXT_platform_xcb
+    0x6d3e7071805da5a8, // EGL_KHR_image_pixmap
+    0x6d7cb4f9ba09cb5d, // EGL_TIZEN_image_native_surface
+    0x6e333abff6cec928, // EGL_ANGLE_metal_shared_event_sync
+    0x6e523fb6f05a3d29, // EGL_KHR_stream_cross_process_fd
+    0x6f356a60670d8e5a, // EGL_ANGLE_device_vulkan
+    0x7084567bc80e8320, // EGL_IMG_image_plane_attribs
+    0x70fce70cba139c12, // EGL_KHR_cl_event2
+    0x7150da6f49b30f3e, // EGL_EXT_create_context_robustness
+    0x71dbd1513b2ad7e5, // EGL_TIZEN_image_native_buffer
+    0x7404e65415e0cf49, // EGL_ANGLE_platform_angle_d3d_luid
+    0x74855b1caf0bb727, // EGL_NV_robustness_video_memory_purge
+    0x75e923758d9b47fb, // EGL_KHR_stream_producer_eglsurface
+    0x76eb9817e8dc6c57, // EGL_KHR_wait_sync
+    0x76ecae883c1293e2, // EGL_ANGLE_platform_angle_vulkan_device_uuid
+    0x797c903a522c4c75, // EGL_NV_native_query
+    0x79e92599e5906543, // EGL_ARM_image_format
+    0x7a089e984094346a, // EGL_EXT_config_select_group
+    0x7ad217dadabe87cc, // EGL_EXT_compositor
+    0x7ae84605ae3ae44a, // EGL_NV_stream_dma
+    0x7b8ef4b379c8f0fd, // EGL_KHR_create_context_no_error
+    0x7d669bb43a324d63, // EGL_NV_stream_socket_inet
+    0x7e099daa98cd547e, // EGL_ANDROID_native_fence_sync
+    0x7fd85a1fe267fe03, // EGL_ANGLE_x11_visual
+    0x817f41736f96de51, // EGL_NV_stream_remote
+    0x8247503770574a19, // EGL_ANGLE_iosurface_client_buffer
+    0x836da10ce92250ef, // EGL_KHR_swap_buffers_with_damage
+    0x83f096c0f29ebb18, // EGL_EXT_protected_surface
+    0x85d84ed980a0f6c3, // EGL_EXT_device_drm_render_node
+    0x871bd75821391394, // EGL_KHR_image
+    0x87d534f485d23e03, // EGL_NV_context_priority_realtime
+    0x88e2a3925c1f8e55, // EGL_ANDROID_create_native_client_buffer
+    0x8a02851eceb4e60b, // EGL_MESA_drm_image
+    0x8da10d2afff88da2, // EGL_KHR_gl_texture_cubemap_image
+    0x8df4a934a55860db, // EGL_EXT_platform_device
+    0x8efc13d2448ab5b1, // EGL_QNX_platform_screen
+    0x91cb4ebfba10a35f, // EGL_EXT_protected_content
+    0x92732717613804d7, // EGL_KHR_platform_gbm
+    0x97b15fd0e09adf80, // EGL_NV_stream_cross_system
+    0x98778891a458759f, // EGL_KHR_surfaceless_context
+    0x98c1482cf6675807, // EGL_ANGLE_platform_angle_metal
+    0x9b7afb42d23ff24a, // EGL_ANGLE_vulkan_display
+    0x9c662d7d2c258a50, // EGL_EXT_bind_to_front
+    0x9d0b59cf206f7842, // EGL_KHR_stream_attrib
+    0x9d59eeae4c92e9f7, // EGL_EXT_gl_colorspace_scrgb_linear
+    0x9e02c97224491c29, // EGL_ANGLE_stream_producer_d3d_texture
+    0x9f0bdd4dde93e968, // EGL_EXT_multiview_window
+    0xa09fd39f9f1158a7, // EGL_EXT_image_dma_buf_import_modifiers
+    0xa2aecd33728540cb, // EGL_KHR_image_base
+    0xa3002402543e70a5, // EGL_WL_create_wayland_buffer_from_image
+    0xa31e0274c2bcafb4, // EGL_EXT_client_extensions
+    0xa388335593ecba25, // EGL_ANGLE_surface_orientation
+    0xa48498cc85257b13, // EGL_ANGLE_device_d3d
+    0xa5c94b3fdd6261da, // EGL_EXT_image_implicit_sync_control
+    0xa718f1a00dfc77b2, // EGL_MESA_platform_surfaceless
+    0xa841b196d3768c24, // EGL_EXT_platform_base
+    0xa9c339bb0bd9f8ff, // EGL_KHR_platform_wayland
+    0xaad3806034d0954d, // EGL_NV_post_sub_buffer
+    0xac63132cd757c637, // EGL_NV_stream_cross_partition
+    0xae00b1c9df43676f, // EGL_ARM_pixmap_multisample_discard
+    0xaf15d314b7e55c0f, // EGL_QNX_image_native_buffer
+    0xaf2ad94baa465742, // EGL_ANGLE_power_preference
+    0xb04bf399be660bca, // EGL_KHR_no_config_context
+    0xb151fe3f08ba15f6, // EGL_NV_post_convert_rounding
+    0xb2ad9cccda275eb4, // EGL_ANGLE_platform_angle_vulkan
+    0xb309a80c1c4fc565, // EGL_ANDROID_blob_cache
+    0xb32a3dd6b03226f2, // EGL_NV_device_cuda
+    0xb3c6378facb30b47, // EGL_ANGLE_platform_angle_d3d
+    0xb419931c39c7f38a, // EGL_ANGLE_platform_angle_opengl
+    0xb46eaf4ddee294f4, // EGL_NV_stream_socket
+    0xb95b474e87d914c0, // EGL_KHR_platform_x11
+    0xb9c6689d871a8219, // EGL_ANGLE_device_cgl
+    0xba24ab7c282aa98c, // EGL_NV_cuda_event
+    0xbb95b050ecd18b71, // EGL_EXT_device_openwf
+    0xbe47353c1f13390b, // EGL_ANGLE_platform_angle_device_type_egl
+    0xbec48c7959021479, // EGL_ANGLE_robust_resource_initialization
+    0xbf10c896f39ac381, // EGL_KHR_partial_update
+    0xbf4228511c15c43e, // EGL_NV_coverage_sample_resolve
+    0xbf886c3682e570aa, // EGL_EXT_device_enumeration
+    0xc03ef8c49f8daf6e, // EGL_ANGLE_experimental_present_path
+    0xc5c0850bfdef920f, // EGL_KHR_lock_surface3
+    0xc6c6646757ff2eb0, // EGL_NOK_swap_region
+    0xc795b75646aecc5b, // EGL_KHR_vg_parent_image
+    0xc81b6f913740e456, // EGL_WL_bind_wayland_display
+    0xc9df550ac4a1ec30, // EGL_ANGLE_direct_composition
+    0xcacecd1071a7c53d, // EGL_NOK_swap_region2
+    0xcb6e884a7e412a07, // EGL_NV_stream_origin
+    0xcbc83f2fb8143390, // EGL_ANGLE_sync_control_rate
+    0xcbf9865290d1d737, // EGL_MESA_platform_gbm
+    0xcc74201669ca5b5d, // EGL_KHR_get_all_proc_addresses
+    0xd01bc63b758f4cb9, // EGL_NV_stream_consumer_eglimage_use_scanout_attrib
+    0xd1965fc59df1967c, // EGL_KHR_lock_surface
+    0xd2d9e8394e86467a, // EGL_ANDROID_image_native_buffer
+    0xd324b54bf6a35048, // EGL_EXT_output_base
+    0xd59b8dcdd4961074, // EGL_ANGLE_colorspace_attribute_passthrough
+    0xd63b77d8efe7c73e, // EGL_EXT_gl_colorspace_display_p3
+    0xd669f40f3670027e, // EGL_ANGLE_device_d3d11
+    0xd798697a922f4f6f, // EGL_ANDROID_telemetry_hint
+    0xd7ca0046d8e351bd, // EGL_ANDROID_front_buffer_auto_refresh
+    0xd899fb78ae205e27, // EGL_NV_stream_metadata
+    0xd9b572ac9eb89474, // EGL_KHR_stream_consumer_gltexture
+    0xda20b827ff8ca001, // EGL_KHR_context_flush_control
+    0xdaf189f7653009bf, // EGL_HI_clientpixmap
+    0xdbf00a0a59a03004, // EGL_EXT_display_alloc
+    0xdfb98789892372eb, // EGL_NV_stream_sync
+    0xe1a6732356a0f69f, // EGL_NV_system_time
+    0xe34ca55588e959e9, // EGL_ANGLE_context_virtualization
+    0xe3ea63f73a400476, // EGL_ANDROID_presentation_time
+    0xe481bb03dc3ffd32, // EGL_ANGLE_device_creation
+    0xe548f3fc71409c63, // EGL_EXT_platform_x11
+    0xe6b4aba5bdfeb761, // EGL_ARM_implicit_external_sync
+    0xe9b9bdc50ba8347c, // EGL_ANDROID_framebuffer_target
+    0xe9d3e98ad0d51659, // EGL_ANGLE_platform_angle_device_type_swiftshader
+    0xea85ee216b66aed6, // EGL_ANGLE_metal_texture_client_buffer
+    0xed1190e49710ebde, // EGL_ANGLE_display_semaphore_share_group
+    0xef7264f8eef3335b, // EGL_KHR_client_get_all_proc_addresses
+    0xefb059a6e6841776, // EGL_EXT_pixel_format_float
+    0xf136655b938cfef7, // EGL_ANGLE_feature_control
+    0xf2594fbcdfa3f545, // EGL_ANGLE_create_context_client_arrays
+    0xf27d356bb04d147d, // EGL_ANGLE_platform_angle_device_context_volatile_eagl
+    0xf2c65c6b58412a19, // EGL_KHR_mutable_render_buffer
+    0xf2ec54e65029ed17, // EGL_NV_triple_buffer
+    0xf2fdf97c1361d5d7, // EGL_KHR_gl_renderbuffer_image
+    0xf8f8a54f12fe9ca2, // EGL_EXT_device_type
+    0xfb4d4422d07bc81c, // EGL_KHR_display_reference
+    0xfbac73bd87a06d67, // EGL_EXT_stream_consumer_egloutput
+    0xfc105cd6c3f68dbe, // EGL_NV_stream_cross_display
+    0xfc5bf7ce45097f02, // EGL_EXT_gl_colorspace_bt2020_pq
+    0xfd8d9ef9e9360c00, // EGL_EXT_query_reset_notification_strategy
+    0xff40140d7e6b5b22, // EGL_MESA_image_dma_buf_export
+    0xff56e7e2acee3106, // EGL_EXT_swap_buffers_with_damage
+    0xff8aede3988df0ec, // EGL_CHROMIUM_sync_control
+];
+// extArray index for the correspondingly-ranked EXT_HASH_KEYS entry.
+#[rustfmt::skip]
+static EXT_HASH_IDX: [u16; EXT_COUNT] = [
+    143, 20, 29, 26, 101, 80, 109, 129, 130, 132, 103, 205, 44, 91, 33, 180, 61, 162, 5, 145,
+    35, 94, 157, 39, 6, 50, 37, 177, 0, 25, 99, 89, 85, 135, 114, 199, 123, 183, 78, 195,
+    31, 58, 193, 84, 166, 70, 204, 38, 197, 95, 191, 146, 69, 10, 18, 161, 141, 60, 126, 202,
+    127, 65, 100, 124, 105, 90, 167, 137, 17, 186, 40, 96, 110, 181, 214, 212, 122, 71, 48, 139,
+    203, 117, 14, 16, 152, 19, 62, 46, 43, 54, 209, 116, 150, 220, 41, 165, 27, 131, 133, 83,
+    219, 47, 192, 168, 172, 57, 188, 73, 82, 81, 201, 138, 211, 8, 72, 208, 36, 170, 119, 86,
+    148, 182, 2, 173, 147, 113, 218, 118, 158, 200, 169, 53, 68, 77, 163, 102, 64, 107, 104, 149,
+    222, 79, 66, 23, 106, 176, 112, 159, 190, 198, 75, 217, 59, 155, 189, 56, 1, 187, 45, 55,
+    210, 160, 21, 185, 88, 51, 63, 156, 184, 87, 32, 153, 178, 171, 221, 28, 179, 207, 67, 175,
+    142, 194, 151, 7, 108, 12, 98, 24, 11, 4, 206, 164, 136, 128, 93, 213, 215, 13, 9, 22,
+    115, 74, 3, 52, 42, 30, 134, 111, 34, 15, 49, 154, 216, 144, 92, 140, 121, 196, 97, 120,
+    174, 125, 76,
+];
+
+// ── Unloaded-call handling ──────────────────────────────────
+/// Reached when a dispatch wrapper finds a null PFN: the function is not
+/// loaded (feature/extension absent, or the context was never loaded).
+/// Panics with the function's name from the name blob.
+#[cfg(not(feature = "no-error"))]
+#[cold]
+#[inline(never)]
+unsafe fn __missing(idx: usize) -> ! {
+    let off = FN_NAME_OFFSETS[idx] as usize;
+    let name = CStr::from_bytes_until_nul(&FN_NAME_DATA[off..]).unwrap_or(c"?");
+    panic!(
+        "{} is not loaded (unsupported by this context, or called before load)",
+        name.to_str().unwrap_or("?")
+    )
+}
+
+/// `no-error` build (the KHR_no_error analogue): promise the compiler the
+/// null case is impossible, so the dispatch match compiles to an
+/// unchecked call.  Calling an unloaded function is undefined behavior,
+/// exactly as in C.
+#[cfg(feature = "no-error")]
+#[inline(always)]
+unsafe fn __missing(_idx: usize) -> ! {
+    debug_assert!(false, "unloaded EGL function called in a no-error build");
+    unsafe { core::hint::unreachable_unchecked() }
+}
+
+// (canonical, secondary) command indices propagated by --alias.
+#[rustfmt::skip]
+static ALIAS_PAIRS: [(u16, u16); 6] = [
+    (  34,   83), // eglClientWaitSync <-> eglClientWaitSyncKHR
+    (  38,   78), // eglCreateSync <-> eglCreateSync64KHR
+    (  39,   88), // eglDestroyImage <-> eglDestroyImageKHR
+    (  40,   85), // eglDestroySync <-> eglDestroySyncKHR
+    (  60,   82), // eglQueryDisplayAttribEXT <-> eglQueryDisplayAttribKHR
+    ( 131,   82), // eglQueryDisplayAttribNV <-> eglQueryDisplayAttribKHR
+];
+
+// ── Context ─────────────────────────────────────────────────
+/// Why [`Egl::load_egl`] failed.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum LoadError {
+    /// `loader` returned null for `eglQueryString` — not an EGL
+    /// proc-address source.
+    MissingQueryString,
+    /// `EGL_VERSION` was null or unparseable for this display.
+    UnparseableVersion,
+    /// An extension string the C loader requires came back null
+    /// (client string, or display string for a real display).
+    MissingExtensionString,
+}
+
+impl core::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            LoadError::MissingQueryString => "eglQueryString is not available",
+            LoadError::UnparseableVersion => "EGL_VERSION missing or unparseable",
+            LoadError::MissingExtensionString => "EGL extension string missing",
+        })
+    }
+}
+
+impl core::error::Error for LoadError {}
+
+/// Loaded EGL entry points plus detected feature/extension presence.
+pub struct Egl {
+    pfns: [*const c_void; COMMAND_COUNT],
+    feat: [bool; FEATURE_COUNT],
+    ext: [bool; EXT_COUNT],
+    version: u32,
+}
+
+impl Egl {
+    /// Load EGL against `loader` (a GetProcAddress-style callback),
+    /// detecting the version then extensions for `display`.
+    ///
+    /// `EGL_NO_DISPLAY` is a supported phase-0: the version and
+    /// extensions then describe the *client* library (EGL 1.5
+    /// semantics) — enough to detect client extensions such as
+    /// `EGL_ANGLE_platform_angle` before any display exists.  Load
+    /// again with the real display for the full picture.
+    ///
+    /// # Safety
+    /// `loader` must yield pointers callable as the named EGL
+    /// functions; `display` must be `EGL_NO_DISPLAY` or valid.
+    pub unsafe fn load_egl(
+        display: EGLDisplay,
+        mut loader: impl FnMut(&CStr) -> *const c_void,
+    ) -> Result<Self, LoadError> {
+        unsafe { Self::load_egl_dyn(display, &mut loader) }
+    }
+
+    unsafe fn load_egl_dyn(
+        display: EGLDisplay,
+        loader: &mut dyn FnMut(&CStr) -> *const c_void,
+    ) -> Result<Self, LoadError> {
+        let mut egl = Self {
+            pfns: [core::ptr::null(); COMMAND_COUNT],
+            feat: [false; FEATURE_COUNT],
+            ext: [false; EXT_COUNT],
+            version: 0,
+        };
+        egl.pfns[18] = loader(c"eglQueryString");
+        if egl.pfns[18].is_null() {
+            return Err(LoadError::MissingQueryString);
+        }
+        let version = unsafe { egl.QueryString(display, EGL_VERSION as EGLint) };
+        egl.version = __parse_egl_version(version);
+        if egl.version == 0 {
+            return Err(LoadError::UnparseableVersion);
+        }
+        // Feature presence from the parsed version.
+        egl.feat[0] = egl.version >= 0x0100;
+        egl.feat[1] = egl.version >= 0x0101;
+        egl.feat[2] = egl.version >= 0x0102;
+        egl.feat[3] = egl.version >= 0x0103;
+        egl.feat[4] = egl.version >= 0x0104;
+        egl.feat[5] = egl.version >= 0x0105;
+        for &(fi, start, count) in FEATURE_RANGES.iter() {
+            if egl.feat[fi as usize] {
+                unsafe { egl.load_range(loader, start, count) };
+            }
+        }
+        unsafe { egl.detect_extensions(display)? };
+        for &(ei, start, count) in EXT_RANGES_egl.iter() {
+            if egl.ext[ei as usize] {
+                unsafe { egl.load_range(loader, start, count) };
+            }
+        }
+        egl.resolve_aliases();
+        Ok(egl)
+    }
+
+    #[inline]
+    unsafe fn load_range(
+        &mut self,
+        loader: &mut dyn FnMut(&CStr) -> *const c_void,
+        start: u16,
+        count: u16,
+    ) {
+        for i in start..start + count {
+            let idx = i as usize;
+            let off = FN_NAME_OFFSETS[idx] as usize;
+            let name =
+                unsafe { CStr::from_bytes_until_nul(&FN_NAME_DATA[off..]).unwrap_unchecked() };
+            self.pfns[idx] = loader(name);
+        }
+    }
+
+    /// Hash every space-separated extension name in the client string
+    /// — and the display string, for a real display — and flag matches
+    /// against the pre-baked table.  Mirrors the C loader's failure
+    /// rules: a null client string, or a null display string when
+    /// `display` is real, fails the load.
+    unsafe fn detect_extensions(&mut self, display: EGLDisplay) -> Result<(), LoadError> {
+        let client = unsafe { self.QueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS as EGLint) };
+        if client.is_null() {
+            return Err(LoadError::MissingExtensionString);
+        }
+        unsafe { self.hash_ext_words(client) };
+        if display != EGL_NO_DISPLAY {
+            let disp = unsafe { self.QueryString(display, EGL_EXTENSIONS as EGLint) };
+            if disp.is_null() {
+                return Err(LoadError::MissingExtensionString);
+            }
+            unsafe { self.hash_ext_words(disp) };
+        }
+        Ok(())
+    }
+
+    /// Tokenize a NUL-terminated, space-separated extension list and
+    /// set the flag for every known name (XXH3 + binary search — the
+    /// same pre-baked hashes the C loader uses).
+    unsafe fn hash_ext_words(&mut self, p: *const c_char) {
+        let bytes = unsafe { CStr::from_ptr(p) }.to_bytes();
+        for word in bytes.split(|&b| b == b' ') {
+            if word.is_empty() {
+                continue;
+            }
+            let h = xxhash_rust::xxh3::xxh3_64(word);
+            if let Ok(pos) = EXT_HASH_KEYS.binary_search(&h) {
+                self.ext[EXT_HASH_IDX[pos] as usize] = true;
+            }
+        }
+    }
+
+    /// Propagate each loaded pointer to its unloaded alias slot.
+    fn resolve_aliases(&mut self) {
+        for &(ci, si) in ALIAS_PAIRS.iter() {
+            let (c, d) = (self.pfns[ci as usize], self.pfns[si as usize]);
+            if c.is_null() && !d.is_null() {
+                self.pfns[ci as usize] = d;
+            } else if !c.is_null() && d.is_null() {
+                self.pfns[si as usize] = c;
+            }
+        }
+    }
+
+    /// Detected EGL version, packed as `major << 8 | minor`.
+    #[inline]
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+
+    // Dispatch wrappers.  The pointer local is named `__pfn` because
+    // parameter names could otherwise collide with it.
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ChooseConfig(&self, dpy: EGLDisplay, attrib_list: *const EGLint, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *const EGLint, *mut EGLConfig, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(0)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(0) },
+        };
+        unsafe { __pfn(dpy, attrib_list, configs, config_size, num_config) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CopyBuffers(&self, dpy: EGLDisplay, surface: EGLSurface, target: EGLNativePixmapType) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLNativePixmapType) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(1)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(1) },
+        };
+        unsafe { __pfn(dpy, surface, target) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateContext(&self, dpy: EGLDisplay, config: EGLConfig, share_context: EGLContext, attrib_list: *const EGLint) -> EGLContext {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, EGLContext, *const EGLint) -> EGLContext> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(2)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(2) },
+        };
+        unsafe { __pfn(dpy, config, share_context, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreatePbufferSurface(&self, dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, *const EGLint) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(3)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(3) },
+        };
+        unsafe { __pfn(dpy, config, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreatePixmapSurface(&self, dpy: EGLDisplay, config: EGLConfig, pixmap: EGLNativePixmapType, attrib_list: *const EGLint) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, EGLNativePixmapType, *const EGLint) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(4)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(4) },
+        };
+        unsafe { __pfn(dpy, config, pixmap, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateWindowSurface(&self, dpy: EGLDisplay, config: EGLConfig, win: EGLNativeWindowType, attrib_list: *const EGLint) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, EGLNativeWindowType, *const EGLint) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(5)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(5) },
+        };
+        unsafe { __pfn(dpy, config, win, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DestroyContext(&self, dpy: EGLDisplay, ctx: EGLContext) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLContext) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(6)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(6) },
+        };
+        unsafe { __pfn(dpy, ctx) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DestroySurface(&self, dpy: EGLDisplay, surface: EGLSurface) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(7)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(7) },
+        };
+        unsafe { __pfn(dpy, surface) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetConfigAttrib(&self, dpy: EGLDisplay, config: EGLConfig, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(8)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(8) },
+        };
+        unsafe { __pfn(dpy, config, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetConfigs(&self, dpy: EGLDisplay, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *mut EGLConfig, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(9)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(9) },
+        };
+        unsafe { __pfn(dpy, configs, config_size, num_config) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetCurrentDisplay(&self) -> EGLDisplay {
+        let __pfn: Option<unsafe extern "system" fn() -> EGLDisplay> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(10)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(10) },
+        };
+        unsafe { __pfn() }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetCurrentSurface(&self, readdraw: EGLint) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLint) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(11)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(11) },
+        };
+        unsafe { __pfn(readdraw) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetDisplay(&self, display_id: EGLNativeDisplayType) -> EGLDisplay {
+        let __pfn: Option<unsafe extern "system" fn(EGLNativeDisplayType) -> EGLDisplay> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(12)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(12) },
+        };
+        unsafe { __pfn(display_id) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetError(&self) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn() -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(13)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(13) },
+        };
+        unsafe { __pfn() }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetProcAddress(&self, procname: *const c_char) -> __eglMustCastToProperFunctionPointerType {
+        let __pfn: Option<unsafe extern "system" fn(*const c_char) -> __eglMustCastToProperFunctionPointerType> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(14)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(14) },
+        };
+        unsafe { __pfn(procname) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn Initialize(&self, dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *mut EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(15)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(15) },
+        };
+        unsafe { __pfn(dpy, major, minor) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn MakeCurrent(&self, dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLSurface, EGLContext) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(16)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(16) },
+        };
+        unsafe { __pfn(dpy, draw, read, ctx) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryContext(&self, dpy: EGLDisplay, ctx: EGLContext, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLContext, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(17)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(17) },
+        };
+        unsafe { __pfn(dpy, ctx, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryString(&self, dpy: EGLDisplay, name: EGLint) -> *const c_char {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint) -> *const c_char> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(18)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(18) },
+        };
+        unsafe { __pfn(dpy, name) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QuerySurface(&self, dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(19)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(19) },
+        };
+        unsafe { __pfn(dpy, surface, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SwapBuffers(&self, dpy: EGLDisplay, surface: EGLSurface) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(20)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(20) },
+        };
+        unsafe { __pfn(dpy, surface) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn Terminate(&self, dpy: EGLDisplay) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(21)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(21) },
+        };
+        unsafe { __pfn(dpy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn WaitGL(&self) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn() -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(22)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(22) },
+        };
+        unsafe { __pfn() }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn WaitNative(&self, engine: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(23)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(23) },
+        };
+        unsafe { __pfn(engine) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn BindTexImage(&self, dpy: EGLDisplay, surface: EGLSurface, buffer: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(24)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(24) },
+        };
+        unsafe { __pfn(dpy, surface, buffer) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ReleaseTexImage(&self, dpy: EGLDisplay, surface: EGLSurface, buffer: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(25)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(25) },
+        };
+        unsafe { __pfn(dpy, surface, buffer) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SurfaceAttrib(&self, dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(26)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(26) },
+        };
+        unsafe { __pfn(dpy, surface, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SwapInterval(&self, dpy: EGLDisplay, interval: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(27)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(27) },
+        };
+        unsafe { __pfn(dpy, interval) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn BindAPI(&self, api: EGLenum) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLenum) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(28)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(28) },
+        };
+        unsafe { __pfn(api) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreatePbufferFromClientBuffer(&self, dpy: EGLDisplay, buftype: EGLenum, buffer: EGLClientBuffer, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLenum, EGLClientBuffer, EGLConfig, *const EGLint) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(29)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(29) },
+        };
+        unsafe { __pfn(dpy, buftype, buffer, config, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryAPI(&self) -> EGLenum {
+        let __pfn: Option<unsafe extern "system" fn() -> EGLenum> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(30)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(30) },
+        };
+        unsafe { __pfn() }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ReleaseThread(&self) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn() -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(31)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(31) },
+        };
+        unsafe { __pfn() }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn WaitClient(&self) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn() -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(32)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(32) },
+        };
+        unsafe { __pfn() }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetCurrentContext(&self) -> EGLContext {
+        let __pfn: Option<unsafe extern "system" fn() -> EGLContext> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(33)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(33) },
+        };
+        unsafe { __pfn() }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ClientWaitSync(&self, dpy: EGLDisplay, sync: EGLSync, flags: EGLint, timeout: EGLTime) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSync, EGLint, EGLTime) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(34)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(34) },
+        };
+        unsafe { __pfn(dpy, sync, flags, timeout) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateImage(&self, dpy: EGLDisplay, ctx: EGLContext, target: EGLenum, buffer: EGLClientBuffer, attrib_list: *const EGLAttrib) -> EGLImage {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLContext, EGLenum, EGLClientBuffer, *const EGLAttrib) -> EGLImage> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(35)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(35) },
+        };
+        unsafe { __pfn(dpy, ctx, target, buffer, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreatePlatformPixmapSurface(&self, dpy: EGLDisplay, config: EGLConfig, native_pixmap: *mut c_void, attrib_list: *const EGLAttrib) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, *mut c_void, *const EGLAttrib) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(36)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(36) },
+        };
+        unsafe { __pfn(dpy, config, native_pixmap, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreatePlatformWindowSurface(&self, dpy: EGLDisplay, config: EGLConfig, native_window: *mut c_void, attrib_list: *const EGLAttrib) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, *mut c_void, *const EGLAttrib) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(37)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(37) },
+        };
+        unsafe { __pfn(dpy, config, native_window, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateSync(&self, dpy: EGLDisplay, type_: EGLenum, attrib_list: *const EGLAttrib) -> EGLSync {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLenum, *const EGLAttrib) -> EGLSync> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(38)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(38) },
+        };
+        unsafe { __pfn(dpy, type_, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DestroyImage(&self, dpy: EGLDisplay, image: EGLImage) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLImage) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(39)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(39) },
+        };
+        unsafe { __pfn(dpy, image) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DestroySync(&self, dpy: EGLDisplay, sync: EGLSync) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSync) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(40)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(40) },
+        };
+        unsafe { __pfn(dpy, sync) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetPlatformDisplay(&self, platform: EGLenum, native_display: *mut c_void, attrib_list: *const EGLAttrib) -> EGLDisplay {
+        let __pfn: Option<unsafe extern "system" fn(EGLenum, *mut c_void, *const EGLAttrib) -> EGLDisplay> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(41)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(41) },
+        };
+        unsafe { __pfn(platform, native_display, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetSyncAttrib(&self, dpy: EGLDisplay, sync: EGLSync, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSync, EGLint, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(42)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(42) },
+        };
+        unsafe { __pfn(dpy, sync, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn WaitSync(&self, dpy: EGLDisplay, sync: EGLSync, flags: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSync, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(43)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(43) },
+        };
+        unsafe { __pfn(dpy, sync, flags) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SetBlobCacheFuncsANDROID(&self, dpy: EGLDisplay, set: EGLSetBlobFuncANDROID, get: EGLGetBlobFuncANDROID) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSetBlobFuncANDROID, EGLGetBlobFuncANDROID)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(44)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(44) },
+        };
+        unsafe { __pfn(dpy, set, get) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateNativeClientBufferANDROID(&self, attrib_list: *const EGLint) -> EGLClientBuffer {
+        let __pfn: Option<unsafe extern "system" fn(*const EGLint) -> EGLClientBuffer> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(45)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(45) },
+        };
+        unsafe { __pfn(attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetNativeClientBufferANDROID(&self, buffer: *const AHardwareBuffer) -> EGLClientBuffer {
+        let __pfn: Option<unsafe extern "system" fn(*const AHardwareBuffer) -> EGLClientBuffer> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(46)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(46) },
+        };
+        unsafe { __pfn(buffer) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DupNativeFenceFDANDROID(&self, dpy: EGLDisplay, sync: EGLSyncKHR) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSyncKHR) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(47)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(47) },
+        };
+        unsafe { __pfn(dpy, sync) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn PresentationTimeANDROID(&self, dpy: EGLDisplay, surface: EGLSurface, time: EGLnsecsANDROID) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLnsecsANDROID) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(48)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(48) },
+        };
+        unsafe { __pfn(dpy, surface, time) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetCompositorTimingANDROID(&self, dpy: EGLDisplay, surface: EGLSurface, numTimestamps: EGLint, names: *const EGLint, values: *mut EGLnsecsANDROID) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint, *const EGLint, *mut EGLnsecsANDROID) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(49)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(49) },
+        };
+        unsafe { __pfn(dpy, surface, numTimestamps, names, values) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetCompositorTimingSupportedANDROID(&self, dpy: EGLDisplay, surface: EGLSurface, name: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(50)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(50) },
+        };
+        unsafe { __pfn(dpy, surface, name) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetFrameTimestampSupportedANDROID(&self, dpy: EGLDisplay, surface: EGLSurface, timestamp: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(51)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(51) },
+        };
+        unsafe { __pfn(dpy, surface, timestamp) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetFrameTimestampsANDROID(&self, dpy: EGLDisplay, surface: EGLSurface, frameId: EGLuint64KHR, numTimestamps: EGLint, timestamps: *const EGLint, values: *mut EGLnsecsANDROID) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLuint64KHR, EGLint, *const EGLint, *mut EGLnsecsANDROID) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(52)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(52) },
+        };
+        unsafe { __pfn(dpy, surface, frameId, numTimestamps, timestamps, values) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetNextFrameIdANDROID(&self, dpy: EGLDisplay, surface: EGLSurface, frameId: *mut EGLuint64KHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, *mut EGLuint64KHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(53)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(53) },
+        };
+        unsafe { __pfn(dpy, surface, frameId) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QuerySurfacePointerANGLE(&self, dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: *mut *mut c_void) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint, *mut *mut c_void) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(54)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(54) },
+        };
+        unsafe { __pfn(dpy, surface, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetMscRateANGLE(&self, dpy: EGLDisplay, surface: EGLSurface, numerator: *mut EGLint, denominator: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, *mut EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(55)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(55) },
+        };
+        unsafe { __pfn(dpy, surface, numerator, denominator) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ClientSignalSyncEXT(&self, dpy: EGLDisplay, sync: EGLSync, attrib_list: *const EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSync, *const EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(56)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(56) },
+        };
+        unsafe { __pfn(dpy, sync, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDevicesEXT(&self, max_devices: EGLint, devices: *mut EGLDeviceEXT, num_devices: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLint, *mut EGLDeviceEXT, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(57)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(57) },
+        };
+        unsafe { __pfn(max_devices, devices, num_devices) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDeviceAttribEXT(&self, device: EGLDeviceEXT, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDeviceEXT, EGLint, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(58)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(58) },
+        };
+        unsafe { __pfn(device, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDeviceStringEXT(&self, device: EGLDeviceEXT, name: EGLint) -> *const c_char {
+        let __pfn: Option<unsafe extern "system" fn(EGLDeviceEXT, EGLint) -> *const c_char> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(59)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(59) },
+        };
+        unsafe { __pfn(device, name) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDisplayAttribEXT(&self, dpy: EGLDisplay, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(60)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(60) },
+        };
+        unsafe { __pfn(dpy, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDmaBufFormatsEXT(&self, dpy: EGLDisplay, max_formats: EGLint, formats: *mut EGLint, num_formats: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, *mut EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(61)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(61) },
+        };
+        unsafe { __pfn(dpy, max_formats, formats, num_formats) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDmaBufModifiersEXT(&self, dpy: EGLDisplay, format: EGLint, max_modifiers: EGLint, modifiers: *mut EGLuint64KHR, external_only: *mut EGLBoolean, num_modifiers: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, EGLint, *mut EGLuint64KHR, *mut EGLBoolean, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(62)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(62) },
+        };
+        unsafe { __pfn(dpy, format, max_modifiers, modifiers, external_only, num_modifiers) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetOutputLayersEXT(&self, dpy: EGLDisplay, attrib_list: *const EGLAttrib, layers: *mut EGLOutputLayerEXT, max_layers: EGLint, num_layers: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *const EGLAttrib, *mut EGLOutputLayerEXT, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(63)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(63) },
+        };
+        unsafe { __pfn(dpy, attrib_list, layers, max_layers, num_layers) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetOutputPortsEXT(&self, dpy: EGLDisplay, attrib_list: *const EGLAttrib, ports: *mut EGLOutputPortEXT, max_ports: EGLint, num_ports: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *const EGLAttrib, *mut EGLOutputPortEXT, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(64)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(64) },
+        };
+        unsafe { __pfn(dpy, attrib_list, ports, max_ports, num_ports) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn OutputLayerAttribEXT(&self, dpy: EGLDisplay, layer: EGLOutputLayerEXT, attribute: EGLint, value: EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLOutputLayerEXT, EGLint, EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(65)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(65) },
+        };
+        unsafe { __pfn(dpy, layer, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn OutputPortAttribEXT(&self, dpy: EGLDisplay, port: EGLOutputPortEXT, attribute: EGLint, value: EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLOutputPortEXT, EGLint, EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(66)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(66) },
+        };
+        unsafe { __pfn(dpy, port, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryOutputLayerAttribEXT(&self, dpy: EGLDisplay, layer: EGLOutputLayerEXT, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLOutputLayerEXT, EGLint, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(67)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(67) },
+        };
+        unsafe { __pfn(dpy, layer, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryOutputLayerStringEXT(&self, dpy: EGLDisplay, layer: EGLOutputLayerEXT, name: EGLint) -> *const c_char {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLOutputLayerEXT, EGLint) -> *const c_char> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(68)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(68) },
+        };
+        unsafe { __pfn(dpy, layer, name) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryOutputPortAttribEXT(&self, dpy: EGLDisplay, port: EGLOutputPortEXT, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLOutputPortEXT, EGLint, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(69)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(69) },
+        };
+        unsafe { __pfn(dpy, port, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryOutputPortStringEXT(&self, dpy: EGLDisplay, port: EGLOutputPortEXT, name: EGLint) -> *const c_char {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLOutputPortEXT, EGLint) -> *const c_char> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(70)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(70) },
+        };
+        unsafe { __pfn(dpy, port, name) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreatePlatformPixmapSurfaceEXT(&self, dpy: EGLDisplay, config: EGLConfig, native_pixmap: *mut c_void, attrib_list: *const EGLint) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, *mut c_void, *const EGLint) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(71)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(71) },
+        };
+        unsafe { __pfn(dpy, config, native_pixmap, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreatePlatformWindowSurfaceEXT(&self, dpy: EGLDisplay, config: EGLConfig, native_window: *mut c_void, attrib_list: *const EGLint) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, *mut c_void, *const EGLint) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(72)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(72) },
+        };
+        unsafe { __pfn(dpy, config, native_window, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetPlatformDisplayEXT(&self, platform: EGLenum, native_display: *mut c_void, attrib_list: *const EGLint) -> EGLDisplay {
+        let __pfn: Option<unsafe extern "system" fn(EGLenum, *mut c_void, *const EGLint) -> EGLDisplay> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(73)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(73) },
+        };
+        unsafe { __pfn(platform, native_display, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamConsumerOutputEXT(&self, dpy: EGLDisplay, stream: EGLStreamKHR, layer: EGLOutputLayerEXT) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLOutputLayerEXT) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(74)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(74) },
+        };
+        unsafe { __pfn(dpy, stream, layer) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SwapBuffersWithDamageEXT(&self, dpy: EGLDisplay, surface: EGLSurface, rects: *const EGLint, n_rects: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, *const EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(75)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(75) },
+        };
+        unsafe { __pfn(dpy, surface, rects, n_rects) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn UnsignalSyncEXT(&self, dpy: EGLDisplay, sync: EGLSync, attrib_list: *const EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSync, *const EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(76)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(76) },
+        };
+        unsafe { __pfn(dpy, sync, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreatePixmapSurfaceHI(&self, dpy: EGLDisplay, config: EGLConfig, pixmap: *mut EGLClientPixmapHI) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, *mut EGLClientPixmapHI) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(77)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(77) },
+        };
+        unsafe { __pfn(dpy, config, pixmap) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateSync64KHR(&self, dpy: EGLDisplay, type_: EGLenum, attrib_list: *const EGLAttribKHR) -> EGLSyncKHR {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLenum, *const EGLAttribKHR) -> EGLSyncKHR> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(78)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(78) },
+        };
+        unsafe { __pfn(dpy, type_, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DebugMessageControlKHR(&self, callback: EGLDEBUGPROCKHR, attrib_list: *const EGLAttrib) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLDEBUGPROCKHR, *const EGLAttrib) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(79)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(79) },
+        };
+        unsafe { __pfn(callback, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn LabelObjectKHR(&self, display: EGLDisplay, objectType: EGLenum, object: EGLObjectKHR, label: EGLLabelKHR) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLenum, EGLObjectKHR, EGLLabelKHR) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(80)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(80) },
+        };
+        unsafe { __pfn(display, objectType, object, label) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDebugKHR(&self, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLint, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(81)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(81) },
+        };
+        unsafe { __pfn(attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDisplayAttribKHR(&self, dpy: EGLDisplay, name: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(82)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(82) },
+        };
+        unsafe { __pfn(dpy, name, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ClientWaitSyncKHR(&self, dpy: EGLDisplay, sync: EGLSyncKHR, flags: EGLint, timeout: EGLTimeKHR) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSyncKHR, EGLint, EGLTimeKHR) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(83)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(83) },
+        };
+        unsafe { __pfn(dpy, sync, flags, timeout) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateSyncKHR(&self, dpy: EGLDisplay, type_: EGLenum, attrib_list: *const EGLint) -> EGLSyncKHR {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLenum, *const EGLint) -> EGLSyncKHR> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(84)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(84) },
+        };
+        unsafe { __pfn(dpy, type_, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DestroySyncKHR(&self, dpy: EGLDisplay, sync: EGLSyncKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSyncKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(85)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(85) },
+        };
+        unsafe { __pfn(dpy, sync) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetSyncAttribKHR(&self, dpy: EGLDisplay, sync: EGLSyncKHR, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSyncKHR, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(86)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(86) },
+        };
+        unsafe { __pfn(dpy, sync, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateImageKHR(&self, dpy: EGLDisplay, ctx: EGLContext, target: EGLenum, buffer: EGLClientBuffer, attrib_list: *const EGLint) -> EGLImageKHR {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLContext, EGLenum, EGLClientBuffer, *const EGLint) -> EGLImageKHR> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(87)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(87) },
+        };
+        unsafe { __pfn(dpy, ctx, target, buffer, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DestroyImageKHR(&self, dpy: EGLDisplay, image: EGLImageKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLImageKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(88)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(88) },
+        };
+        unsafe { __pfn(dpy, image) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn LockSurfaceKHR(&self, dpy: EGLDisplay, surface: EGLSurface, attrib_list: *const EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, *const EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(89)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(89) },
+        };
+        unsafe { __pfn(dpy, surface, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn UnlockSurfaceKHR(&self, dpy: EGLDisplay, surface: EGLSurface) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(90)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(90) },
+        };
+        unsafe { __pfn(dpy, surface) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QuerySurface64KHR(&self, dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: *mut EGLAttribKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint, *mut EGLAttribKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(91)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(91) },
+        };
+        unsafe { __pfn(dpy, surface, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SetDamageRegionKHR(&self, dpy: EGLDisplay, surface: EGLSurface, rects: *mut EGLint, n_rects: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, *mut EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(92)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(92) },
+        };
+        unsafe { __pfn(dpy, surface, rects, n_rects) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SignalSyncKHR(&self, dpy: EGLDisplay, sync: EGLSyncKHR, mode: EGLenum) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSyncKHR, EGLenum) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(93)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(93) },
+        };
+        unsafe { __pfn(dpy, sync, mode) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateStreamKHR(&self, dpy: EGLDisplay, attrib_list: *const EGLint) -> EGLStreamKHR {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *const EGLint) -> EGLStreamKHR> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(94)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(94) },
+        };
+        unsafe { __pfn(dpy, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DestroyStreamKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(95)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(95) },
+        };
+        unsafe { __pfn(dpy, stream) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryStreamKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attribute: EGLenum, value: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLenum, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(96)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(96) },
+        };
+        unsafe { __pfn(dpy, stream, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryStreamu64KHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attribute: EGLenum, value: *mut EGLuint64KHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLenum, *mut EGLuint64KHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(97)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(97) },
+        };
+        unsafe { __pfn(dpy, stream, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamAttribKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attribute: EGLenum, value: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLenum, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(98)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(98) },
+        };
+        unsafe { __pfn(dpy, stream, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateStreamAttribKHR(&self, dpy: EGLDisplay, attrib_list: *const EGLAttrib) -> EGLStreamKHR {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *const EGLAttrib) -> EGLStreamKHR> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(99)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(99) },
+        };
+        unsafe { __pfn(dpy, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryStreamAttribKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attribute: EGLenum, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLenum, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(100)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(100) },
+        };
+        unsafe { __pfn(dpy, stream, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SetStreamAttribKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attribute: EGLenum, value: EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLenum, EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(101)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(101) },
+        };
+        unsafe { __pfn(dpy, stream, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamConsumerAcquireAttribKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attrib_list: *const EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, *const EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(102)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(102) },
+        };
+        unsafe { __pfn(dpy, stream, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamConsumerReleaseAttribKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attrib_list: *const EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, *const EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(103)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(103) },
+        };
+        unsafe { __pfn(dpy, stream, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamConsumerAcquireKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(104)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(104) },
+        };
+        unsafe { __pfn(dpy, stream) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamConsumerGLTextureExternalKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(105)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(105) },
+        };
+        unsafe { __pfn(dpy, stream) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamConsumerReleaseKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(106)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(106) },
+        };
+        unsafe { __pfn(dpy, stream) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateStreamFromFileDescriptorKHR(&self, dpy: EGLDisplay, file_descriptor: EGLNativeFileDescriptorKHR) -> EGLStreamKHR {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLNativeFileDescriptorKHR) -> EGLStreamKHR> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(107)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(107) },
+        };
+        unsafe { __pfn(dpy, file_descriptor) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetStreamFileDescriptorKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR) -> EGLNativeFileDescriptorKHR {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR) -> EGLNativeFileDescriptorKHR> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(108)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(108) },
+        };
+        unsafe { __pfn(dpy, stream) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryStreamTimeKHR(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attribute: EGLenum, value: *mut EGLTimeKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLenum, *mut EGLTimeKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(109)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(109) },
+        };
+        unsafe { __pfn(dpy, stream, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateStreamProducerSurfaceKHR(&self, dpy: EGLDisplay, config: EGLConfig, stream: EGLStreamKHR, attrib_list: *const EGLint) -> EGLSurface {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, EGLStreamKHR, *const EGLint) -> EGLSurface> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(110)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(110) },
+        };
+        unsafe { __pfn(dpy, config, stream, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SwapBuffersWithDamageKHR(&self, dpy: EGLDisplay, surface: EGLSurface, rects: *const EGLint, n_rects: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, *const EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(111)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(111) },
+        };
+        unsafe { __pfn(dpy, surface, rects, n_rects) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn WaitSyncKHR(&self, dpy: EGLDisplay, sync: EGLSyncKHR, flags: EGLint) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSyncKHR, EGLint) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(112)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(112) },
+        };
+        unsafe { __pfn(dpy, sync, flags) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateDRMImageMESA(&self, dpy: EGLDisplay, attrib_list: *const EGLint) -> EGLImageKHR {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *const EGLint) -> EGLImageKHR> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(113)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(113) },
+        };
+        unsafe { __pfn(dpy, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ExportDRMImageMESA(&self, dpy: EGLDisplay, image: EGLImageKHR, name: *mut EGLint, handle: *mut EGLint, stride: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLImageKHR, *mut EGLint, *mut EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(114)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(114) },
+        };
+        unsafe { __pfn(dpy, image, name, handle, stride) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ExportDMABUFImageMESA(&self, dpy: EGLDisplay, image: EGLImageKHR, fds: *mut i32, strides: *mut EGLint, offsets: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLImageKHR, *mut i32, *mut EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(115)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(115) },
+        };
+        unsafe { __pfn(dpy, image, fds, strides, offsets) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ExportDMABUFImageQueryMESA(&self, dpy: EGLDisplay, image: EGLImageKHR, fourcc: *mut i32, num_planes: *mut i32, modifiers: *mut EGLuint64KHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLImageKHR, *mut i32, *mut i32, *mut EGLuint64KHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(116)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(116) },
+        };
+        unsafe { __pfn(dpy, image, fourcc, num_planes, modifiers) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetDisplayDriverConfig(&self, dpy: EGLDisplay) -> *mut c_char {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay) -> *mut c_char> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(117)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(117) },
+        };
+        unsafe { __pfn(dpy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetDisplayDriverName(&self, dpy: EGLDisplay) -> *const c_char {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay) -> *const c_char> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(118)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(118) },
+        };
+        unsafe { __pfn(dpy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SwapBuffersRegionNOK(&self, dpy: EGLDisplay, surface: EGLSurface, numRects: EGLint, rects: *const EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint, *const EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(119)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(119) },
+        };
+        unsafe { __pfn(dpy, surface, numRects, rects) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SwapBuffersRegion2NOK(&self, dpy: EGLDisplay, surface: EGLSurface, numRects: EGLint, rects: *const EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint, *const EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(120)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(120) },
+        };
+        unsafe { __pfn(dpy, surface, numRects, rects) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryNativeDisplayNV(&self, dpy: EGLDisplay, display_id: *mut EGLNativeDisplayType) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *mut EGLNativeDisplayType) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(121)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(121) },
+        };
+        unsafe { __pfn(dpy, display_id) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryNativePixmapNV(&self, dpy: EGLDisplay, surf: EGLSurface, pixmap: *mut EGLNativePixmapType) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, *mut EGLNativePixmapType) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(122)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(122) },
+        };
+        unsafe { __pfn(dpy, surf, pixmap) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryNativeWindowNV(&self, dpy: EGLDisplay, surf: EGLSurface, window: *mut EGLNativeWindowType) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, *mut EGLNativeWindowType) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(123)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(123) },
+        };
+        unsafe { __pfn(dpy, surf, window) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn PostSubBufferNV(&self, dpy: EGLDisplay, surface: EGLSurface, x: EGLint, y: EGLint, width: EGLint, height: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, EGLint, EGLint, EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(124)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(124) },
+        };
+        unsafe { __pfn(dpy, surface, x, y, width, height) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamConsumerGLTextureExternalAttribsNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attrib_list: *const EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, *const EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(125)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(125) },
+        };
+        unsafe { __pfn(dpy, stream, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryStreamConsumerEventNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR, timeout: EGLTime, event: *mut EGLenum, aux: *mut EGLAttrib) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLTime, *mut EGLenum, *mut EGLAttrib) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(126)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(126) },
+        };
+        unsafe { __pfn(dpy, stream, timeout, event, aux) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamAcquireImageNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR, pImage: *mut EGLImage, sync: EGLSync) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, *mut EGLImage, EGLSync) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(127)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(127) },
+        };
+        unsafe { __pfn(dpy, stream, pImage, sync) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamImageConsumerConnectNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR, num_modifiers: EGLint, modifiers: *const EGLuint64KHR, attrib_list: *const EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLint, *const EGLuint64KHR, *const EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(128)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(128) },
+        };
+        unsafe { __pfn(dpy, stream, num_modifiers, modifiers, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamReleaseImageNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR, image: EGLImage, sync: EGLSync) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLImage, EGLSync) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(129)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(129) },
+        };
+        unsafe { __pfn(dpy, stream, image, sync) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamFlushNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(130)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(130) },
+        };
+        unsafe { __pfn(dpy, stream) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDisplayAttribNV(&self, dpy: EGLDisplay, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(131)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(131) },
+        };
+        unsafe { __pfn(dpy, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryStreamMetadataNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR, name: EGLenum, n: EGLint, offset: EGLint, size: EGLint, data: *mut c_void) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLenum, EGLint, EGLint, EGLint, *mut c_void) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(132)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(132) },
+        };
+        unsafe { __pfn(dpy, stream, name, n, offset, size, data) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SetStreamMetadataNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR, n: EGLint, offset: EGLint, size: EGLint, data: *const c_void) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLint, EGLint, EGLint, *const c_void) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(133)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(133) },
+        };
+        unsafe { __pfn(dpy, stream, n, offset, size, data) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ResetStreamNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(134)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(134) },
+        };
+        unsafe { __pfn(dpy, stream) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateStreamSyncNV(&self, dpy: EGLDisplay, stream: EGLStreamKHR, type_: EGLenum, attrib_list: *const EGLint) -> EGLSyncKHR {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, EGLenum, *const EGLint) -> EGLSyncKHR> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(135)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(135) },
+        };
+        unsafe { __pfn(dpy, stream, type_, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ClientWaitSyncNV(&self, sync: EGLSyncNV, flags: EGLint, timeout: EGLTimeNV) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLSyncNV, EGLint, EGLTimeNV) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(136)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(136) },
+        };
+        unsafe { __pfn(sync, flags, timeout) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateFenceSyncNV(&self, dpy: EGLDisplay, condition: EGLenum, attrib_list: *const EGLint) -> EGLSyncNV {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLenum, *const EGLint) -> EGLSyncNV> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(137)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(137) },
+        };
+        unsafe { __pfn(dpy, condition, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DestroySyncNV(&self, sync: EGLSyncNV) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLSyncNV) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(138)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(138) },
+        };
+        unsafe { __pfn(sync) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn FenceNV(&self, sync: EGLSyncNV) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLSyncNV) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(139)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(139) },
+        };
+        unsafe { __pfn(sync) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetSyncAttribNV(&self, sync: EGLSyncNV, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLSyncNV, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(140)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(140) },
+        };
+        unsafe { __pfn(sync, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SignalSyncNV(&self, sync: EGLSyncNV, mode: EGLenum) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLSyncNV, EGLenum) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(141)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(141) },
+        };
+        unsafe { __pfn(sync, mode) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetSystemTimeFrequencyNV(&self) -> EGLuint64NV {
+        let __pfn: Option<unsafe extern "system" fn() -> EGLuint64NV> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(142)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(142) },
+        };
+        unsafe { __pfn() }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetSystemTimeNV(&self) -> EGLuint64NV {
+        let __pfn: Option<unsafe extern "system" fn() -> EGLuint64NV> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(143)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(143) },
+        };
+        unsafe { __pfn() }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CompositorBindTexWindowEXT(&self, external_win_id: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(144)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(144) },
+        };
+        unsafe { __pfn(external_win_id) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CompositorSetContextAttributesEXT(&self, external_ref_id: EGLint, context_attributes: *const EGLint, num_entries: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLint, *const EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(145)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(145) },
+        };
+        unsafe { __pfn(external_ref_id, context_attributes, num_entries) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CompositorSetContextListEXT(&self, external_ref_ids: *const EGLint, num_entries: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(*const EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(146)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(146) },
+        };
+        unsafe { __pfn(external_ref_ids, num_entries) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CompositorSetSizeEXT(&self, external_win_id: EGLint, width: EGLint, height: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLint, EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(147)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(147) },
+        };
+        unsafe { __pfn(external_win_id, width, height) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CompositorSetWindowAttributesEXT(&self, external_win_id: EGLint, window_attributes: *const EGLint, num_entries: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLint, *const EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(148)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(148) },
+        };
+        unsafe { __pfn(external_win_id, window_attributes, num_entries) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CompositorSetWindowListEXT(&self, external_ref_id: EGLint, external_win_ids: *const EGLint, num_entries: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLint, *const EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(149)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(149) },
+        };
+        unsafe { __pfn(external_ref_id, external_win_ids, num_entries) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CompositorSwapPolicyEXT(&self, external_win_id: EGLint, policy: EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLint, EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(150)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(150) },
+        };
+        unsafe { __pfn(external_win_id, policy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QuerySupportedCompressionRatesEXT(&self, dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLAttrib, rates: *mut EGLint, rate_size: EGLint, num_rates: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLConfig, *const EGLAttrib, *mut EGLint, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(151)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(151) },
+        };
+        unsafe { __pfn(dpy, config, attrib_list, rates, rate_size, num_rates) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn BindWaylandDisplayWL(&self, dpy: EGLDisplay, display: *mut wl_display) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *mut wl_display) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(152)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(152) },
+        };
+        unsafe { __pfn(dpy, display) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryWaylandBufferWL(&self, dpy: EGLDisplay, buffer: *mut wl_resource, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *mut wl_resource, EGLint, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(153)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(153) },
+        };
+        unsafe { __pfn(dpy, buffer, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn UnbindWaylandDisplayWL(&self, dpy: EGLDisplay, display: *mut wl_display) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *mut wl_display) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(154)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(154) },
+        };
+        unsafe { __pfn(dpy, display) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateWaylandBufferFromImageWL(&self, dpy: EGLDisplay, image: EGLImageKHR) -> *mut wl_buffer {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLImageKHR) -> *mut wl_buffer> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(155)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(155) },
+        };
+        unsafe { __pfn(dpy, image) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDeviceBinaryEXT(&self, device: EGLDeviceEXT, name: EGLint, max_size: EGLint, value: *mut c_void, size: *mut EGLint) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDeviceEXT, EGLint, EGLint, *mut c_void, *mut EGLint) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(156)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(156) },
+        };
+        unsafe { __pfn(device, name, max_size, value, size) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn DestroyDisplayEXT(&self, dpy: EGLDisplay) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(157)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(157) },
+        };
+        unsafe { __pfn(dpy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateDeviceANGLE(&self, device_type: EGLint, native_device: *mut c_void, attrib_list: *const EGLAttrib) -> EGLDeviceEXT {
+        let __pfn: Option<unsafe extern "system" fn(EGLint, *mut c_void, *const EGLAttrib) -> EGLDeviceEXT> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(158)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(158) },
+        };
+        unsafe { __pfn(device_type, native_device, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ReleaseDeviceANGLE(&self, device: EGLDeviceEXT) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDeviceEXT) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(159)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(159) },
+        };
+        unsafe { __pfn(device) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryDisplayAttribANGLE(&self, dpy: EGLDisplay, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, *mut EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(160)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(160) },
+        };
+        unsafe { __pfn(dpy, attribute, value) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn QueryStringiANGLE(&self, dpy: EGLDisplay, name: EGLint, index: EGLint) -> *const c_char {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, EGLint) -> *const c_char> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(161)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(161) },
+        };
+        unsafe { __pfn(dpy, name, index) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn AcquireExternalContextANGLE(&self, dpy: EGLDisplay, drawAndRead: EGLSurface) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(162)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(162) },
+        };
+        unsafe { __pfn(dpy, drawAndRead) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ReleaseExternalContextANGLE(&self, dpy: EGLDisplay) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(163)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(163) },
+        };
+        unsafe { __pfn(dpy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CreateStreamProducerD3DTextureANGLE(&self, dpy: EGLDisplay, stream: EGLStreamKHR, attrib_list: *const EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, *const EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(164)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(164) },
+        };
+        unsafe { __pfn(dpy, stream, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn StreamPostD3DTextureANGLE(&self, dpy: EGLDisplay, stream: EGLStreamKHR, texture: *mut c_void, attrib_list: *const EGLAttrib) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLStreamKHR, *mut c_void, *const EGLAttrib) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(165)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(165) },
+        };
+        unsafe { __pfn(dpy, stream, texture, attrib_list) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn GetSyncValuesCHROMIUM(&self, dpy: EGLDisplay, surface: EGLSurface, ust: *mut EGLuint64KHR, msc: *mut EGLuint64KHR, sbc: *mut EGLuint64KHR) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface, *mut EGLuint64KHR, *mut EGLuint64KHR, *mut EGLuint64KHR) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(166)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(166) },
+        };
+        unsafe { __pfn(dpy, surface, ust, msc, sbc) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ProgramCacheGetAttribANGLE(&self, dpy: EGLDisplay, attrib: EGLenum) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLenum) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(167)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(167) },
+        };
+        unsafe { __pfn(dpy, attrib) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ProgramCachePopulateANGLE(&self, dpy: EGLDisplay, key: *const c_void, keysize: EGLint, binary: *const c_void, binarysize: EGLint) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, *const c_void, EGLint, *const c_void, EGLint)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(168)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(168) },
+        };
+        unsafe { __pfn(dpy, key, keysize, binary, binarysize) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ProgramCacheQueryANGLE(&self, dpy: EGLDisplay, index: EGLint, key: *mut c_void, keysize: *mut EGLint, binary: *mut c_void, binarysize: *mut EGLint) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, *mut c_void, *mut EGLint, *mut c_void, *mut EGLint)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(169)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(169) },
+        };
+        unsafe { __pfn(dpy, index, key, keysize, binary, binarysize) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ProgramCacheResizeANGLE(&self, dpy: EGLDisplay, limit: EGLint, mode: EGLint) -> EGLint {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, EGLint) -> EGLint> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(170)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(170) },
+        };
+        unsafe { __pfn(dpy, limit, mode) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn WaitUntilWorkScheduledANGLE(&self, dpy: EGLDisplay) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(171)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(171) },
+        };
+        unsafe { __pfn(dpy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn PrepareSwapBuffersANGLE(&self, dpy: EGLDisplay, surface: EGLSurface) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSurface) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(172)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(172) },
+        };
+        unsafe { __pfn(dpy, surface) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ForceGPUSwitchANGLE(&self, dpy: EGLDisplay, gpuIDHigh: EGLint, gpuIDLow: EGLint) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLint, EGLint)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(173)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(173) },
+        };
+        unsafe { __pfn(dpy, gpuIDHigh, gpuIDLow) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn HandleGPUSwitchANGLE(&self, dpy: EGLDisplay) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(174)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(174) },
+        };
+        unsafe { __pfn(dpy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ReacquireHighPowerGPUANGLE(&self, dpy: EGLDisplay, ctx: EGLContext) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLContext)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(175)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(175) },
+        };
+        unsafe { __pfn(dpy, ctx) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ReleaseHighPowerGPUANGLE(&self, dpy: EGLDisplay, ctx: EGLContext) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLContext)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(176)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(176) },
+        };
+        unsafe { __pfn(dpy, ctx) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn ExportVkImageANGLE(&self, dpy: EGLDisplay, image: EGLImage, vk_image: *mut c_void, vk_image_create_info: *mut c_void) -> EGLBoolean {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLImage, *mut c_void, *mut c_void) -> EGLBoolean> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(177)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(177) },
+        };
+        unsafe { __pfn(dpy, image, vk_image, vk_image_create_info) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn LockVulkanQueueANGLE(&self, dpy: EGLDisplay) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(178)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(178) },
+        };
+        unsafe { __pfn(dpy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn UnlockVulkanQueueANGLE(&self, dpy: EGLDisplay) {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(179)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(179) },
+        };
+        unsafe { __pfn(dpy) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn CopyMetalSharedEventANGLE(&self, dpy: EGLDisplay, sync: EGLSyncKHR) -> *mut c_void {
+        let __pfn: Option<unsafe extern "system" fn(EGLDisplay, EGLSyncKHR) -> *mut c_void> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(180)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(180) },
+        };
+        unsafe { __pfn(dpy, sync) }
+    }
+
+    /// # Safety
+    /// The context must be loaded; see [`Egl::load_egl`].
+    #[inline]
+    pub unsafe fn SetValidationEnabledANGLE(&self, validationState: EGLBoolean) {
+        let __pfn: Option<unsafe extern "system" fn(EGLBoolean)> =
+            unsafe { core::mem::transmute(*self.pfns.get_unchecked(181)) };
+        let __pfn = match __pfn {
+            Some(__f) => __f,
+            None => unsafe { __missing(181) },
+        };
+        unsafe { __pfn(validationState) }
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_GLES_layers`.
+    #[inline]
+    pub fn ANDROID_GLES_layers(&self) -> bool {
+        self.ext[0]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_blob_cache`.
+    #[inline]
+    pub fn ANDROID_blob_cache(&self) -> bool {
+        self.ext[1]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_create_native_client_buffer`.
+    #[inline]
+    pub fn ANDROID_create_native_client_buffer(&self) -> bool {
+        self.ext[2]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_framebuffer_target`.
+    #[inline]
+    pub fn ANDROID_framebuffer_target(&self) -> bool {
+        self.ext[3]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_front_buffer_auto_refresh`.
+    #[inline]
+    pub fn ANDROID_front_buffer_auto_refresh(&self) -> bool {
+        self.ext[4]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_get_frame_timestamps`.
+    #[inline]
+    pub fn ANDROID_get_frame_timestamps(&self) -> bool {
+        self.ext[5]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_get_native_client_buffer`.
+    #[inline]
+    pub fn ANDROID_get_native_client_buffer(&self) -> bool {
+        self.ext[6]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_image_native_buffer`.
+    #[inline]
+    pub fn ANDROID_image_native_buffer(&self) -> bool {
+        self.ext[7]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_native_fence_sync`.
+    #[inline]
+    pub fn ANDROID_native_fence_sync(&self) -> bool {
+        self.ext[8]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_presentation_time`.
+    #[inline]
+    pub fn ANDROID_presentation_time(&self) -> bool {
+        self.ext[9]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_recordable`.
+    #[inline]
+    pub fn ANDROID_recordable(&self) -> bool {
+        self.ext[10]
+    }
+
+    /// Whether the driver advertises `EGL_ANDROID_telemetry_hint`.
+    #[inline]
+    pub fn ANDROID_telemetry_hint(&self) -> bool {
+        self.ext[11]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_colorspace_attribute_passthrough`.
+    #[inline]
+    pub fn ANGLE_colorspace_attribute_passthrough(&self) -> bool {
+        self.ext[12]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_context_virtualization`.
+    #[inline]
+    pub fn ANGLE_context_virtualization(&self) -> bool {
+        self.ext[13]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_create_context_backwards_compatible`.
+    #[inline]
+    pub fn ANGLE_create_context_backwards_compatible(&self) -> bool {
+        self.ext[14]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_create_context_client_arrays`.
+    #[inline]
+    pub fn ANGLE_create_context_client_arrays(&self) -> bool {
+        self.ext[15]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_create_context_extensions_enabled`.
+    #[inline]
+    pub fn ANGLE_create_context_extensions_enabled(&self) -> bool {
+        self.ext[16]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_create_context_webgl_compatibility`.
+    #[inline]
+    pub fn ANGLE_create_context_webgl_compatibility(&self) -> bool {
+        self.ext[17]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_create_surface_swap_interval`.
+    #[inline]
+    pub fn ANGLE_create_surface_swap_interval(&self) -> bool {
+        self.ext[18]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_d3d_share_handle_client_buffer`.
+    #[inline]
+    pub fn ANGLE_d3d_share_handle_client_buffer(&self) -> bool {
+        self.ext[19]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_d3d_texture_client_buffer`.
+    #[inline]
+    pub fn ANGLE_d3d_texture_client_buffer(&self) -> bool {
+        self.ext[20]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_device_cgl`.
+    #[inline]
+    pub fn ANGLE_device_cgl(&self) -> bool {
+        self.ext[21]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_device_creation`.
+    #[inline]
+    pub fn ANGLE_device_creation(&self) -> bool {
+        self.ext[22]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_device_d3d`.
+    #[inline]
+    pub fn ANGLE_device_d3d(&self) -> bool {
+        self.ext[23]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_device_d3d11`.
+    #[inline]
+    pub fn ANGLE_device_d3d11(&self) -> bool {
+        self.ext[24]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_device_eagl`.
+    #[inline]
+    pub fn ANGLE_device_eagl(&self) -> bool {
+        self.ext[25]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_device_metal`.
+    #[inline]
+    pub fn ANGLE_device_metal(&self) -> bool {
+        self.ext[26]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_device_vulkan`.
+    #[inline]
+    pub fn ANGLE_device_vulkan(&self) -> bool {
+        self.ext[27]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_direct_composition`.
+    #[inline]
+    pub fn ANGLE_direct_composition(&self) -> bool {
+        self.ext[28]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_display_power_preference`.
+    #[inline]
+    pub fn ANGLE_display_power_preference(&self) -> bool {
+        self.ext[29]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_display_semaphore_share_group`.
+    #[inline]
+    pub fn ANGLE_display_semaphore_share_group(&self) -> bool {
+        self.ext[30]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_display_texture_share_group`.
+    #[inline]
+    pub fn ANGLE_display_texture_share_group(&self) -> bool {
+        self.ext[31]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_experimental_present_path`.
+    #[inline]
+    pub fn ANGLE_experimental_present_path(&self) -> bool {
+        self.ext[32]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_external_context_and_surface`.
+    #[inline]
+    pub fn ANGLE_external_context_and_surface(&self) -> bool {
+        self.ext[33]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_feature_control`.
+    #[inline]
+    pub fn ANGLE_feature_control(&self) -> bool {
+        self.ext[34]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_global_fence_sync`.
+    #[inline]
+    pub fn ANGLE_global_fence_sync(&self) -> bool {
+        self.ext[35]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_iosurface_client_buffer`.
+    #[inline]
+    pub fn ANGLE_iosurface_client_buffer(&self) -> bool {
+        self.ext[36]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_keyed_mutex`.
+    #[inline]
+    pub fn ANGLE_keyed_mutex(&self) -> bool {
+        self.ext[37]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_memory_usage_report`.
+    #[inline]
+    pub fn ANGLE_memory_usage_report(&self) -> bool {
+        self.ext[38]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_metal_commands_scheduled_sync`.
+    #[inline]
+    pub fn ANGLE_metal_commands_scheduled_sync(&self) -> bool {
+        self.ext[39]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_metal_create_context_ownership_identity`.
+    #[inline]
+    pub fn ANGLE_metal_create_context_ownership_identity(&self) -> bool {
+        self.ext[40]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_metal_shared_event_sync`.
+    #[inline]
+    pub fn ANGLE_metal_shared_event_sync(&self) -> bool {
+        self.ext[41]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_metal_texture_client_buffer`.
+    #[inline]
+    pub fn ANGLE_metal_texture_client_buffer(&self) -> bool {
+        self.ext[42]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_no_error`.
+    #[inline]
+    pub fn ANGLE_no_error(&self) -> bool {
+        self.ext[43]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle`.
+    #[inline]
+    pub fn ANGLE_platform_angle(&self) -> bool {
+        self.ext[44]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_d3d`.
+    #[inline]
+    pub fn ANGLE_platform_angle_d3d(&self) -> bool {
+        self.ext[45]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_d3d11on12`.
+    #[inline]
+    pub fn ANGLE_platform_angle_d3d11on12(&self) -> bool {
+        self.ext[46]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_d3d_luid`.
+    #[inline]
+    pub fn ANGLE_platform_angle_d3d_luid(&self) -> bool {
+        self.ext[47]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_context_volatile_cgl`.
+    #[inline]
+    pub fn ANGLE_platform_angle_device_context_volatile_cgl(&self) -> bool {
+        self.ext[48]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_context_volatile_eagl`.
+    #[inline]
+    pub fn ANGLE_platform_angle_device_context_volatile_eagl(&self) -> bool {
+        self.ext[49]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_id`.
+    #[inline]
+    pub fn ANGLE_platform_angle_device_id(&self) -> bool {
+        self.ext[50]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_type_egl`.
+    #[inline]
+    pub fn ANGLE_platform_angle_device_type_egl(&self) -> bool {
+        self.ext[51]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_type_swiftshader`.
+    #[inline]
+    pub fn ANGLE_platform_angle_device_type_swiftshader(&self) -> bool {
+        self.ext[52]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_metal`.
+    #[inline]
+    pub fn ANGLE_platform_angle_metal(&self) -> bool {
+        self.ext[53]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_null`.
+    #[inline]
+    pub fn ANGLE_platform_angle_null(&self) -> bool {
+        self.ext[54]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_opengl`.
+    #[inline]
+    pub fn ANGLE_platform_angle_opengl(&self) -> bool {
+        self.ext[55]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_vulkan`.
+    #[inline]
+    pub fn ANGLE_platform_angle_vulkan(&self) -> bool {
+        self.ext[56]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_vulkan_device_uuid`.
+    #[inline]
+    pub fn ANGLE_platform_angle_vulkan_device_uuid(&self) -> bool {
+        self.ext[57]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_platform_angle_webgpu`.
+    #[inline]
+    pub fn ANGLE_platform_angle_webgpu(&self) -> bool {
+        self.ext[58]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_power_preference`.
+    #[inline]
+    pub fn ANGLE_power_preference(&self) -> bool {
+        self.ext[59]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_prepare_swap_buffers`.
+    #[inline]
+    pub fn ANGLE_prepare_swap_buffers(&self) -> bool {
+        self.ext[60]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_program_cache_control`.
+    #[inline]
+    pub fn ANGLE_program_cache_control(&self) -> bool {
+        self.ext[61]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_query_surface_pointer`.
+    #[inline]
+    pub fn ANGLE_query_surface_pointer(&self) -> bool {
+        self.ext[62]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_robust_resource_initialization`.
+    #[inline]
+    pub fn ANGLE_robust_resource_initialization(&self) -> bool {
+        self.ext[63]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_stream_producer_d3d_texture`.
+    #[inline]
+    pub fn ANGLE_stream_producer_d3d_texture(&self) -> bool {
+        self.ext[64]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_surface_d3d_texture_2d_share_handle`.
+    #[inline]
+    pub fn ANGLE_surface_d3d_texture_2d_share_handle(&self) -> bool {
+        self.ext[65]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_surface_orientation`.
+    #[inline]
+    pub fn ANGLE_surface_orientation(&self) -> bool {
+        self.ext[66]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_sync_control_rate`.
+    #[inline]
+    pub fn ANGLE_sync_control_rate(&self) -> bool {
+        self.ext[67]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_vulkan_display`.
+    #[inline]
+    pub fn ANGLE_vulkan_display(&self) -> bool {
+        self.ext[68]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_vulkan_image`.
+    #[inline]
+    pub fn ANGLE_vulkan_image(&self) -> bool {
+        self.ext[69]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_wait_until_work_scheduled`.
+    #[inline]
+    pub fn ANGLE_wait_until_work_scheduled(&self) -> bool {
+        self.ext[70]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_window_fixed_size`.
+    #[inline]
+    pub fn ANGLE_window_fixed_size(&self) -> bool {
+        self.ext[71]
+    }
+
+    /// Whether the driver advertises `EGL_ANGLE_x11_visual`.
+    #[inline]
+    pub fn ANGLE_x11_visual(&self) -> bool {
+        self.ext[72]
+    }
+
+    /// Whether the driver advertises `EGL_ARM_image_format`.
+    #[inline]
+    pub fn ARM_image_format(&self) -> bool {
+        self.ext[73]
+    }
+
+    /// Whether the driver advertises `EGL_ARM_implicit_external_sync`.
+    #[inline]
+    pub fn ARM_implicit_external_sync(&self) -> bool {
+        self.ext[74]
+    }
+
+    /// Whether the driver advertises `EGL_ARM_pixmap_multisample_discard`.
+    #[inline]
+    pub fn ARM_pixmap_multisample_discard(&self) -> bool {
+        self.ext[75]
+    }
+
+    /// Whether the driver advertises `EGL_CHROMIUM_sync_control`.
+    #[inline]
+    pub fn CHROMIUM_sync_control(&self) -> bool {
+        self.ext[76]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_bind_to_front`.
+    #[inline]
+    pub fn EXT_bind_to_front(&self) -> bool {
+        self.ext[77]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_buffer_age`.
+    #[inline]
+    pub fn EXT_buffer_age(&self) -> bool {
+        self.ext[78]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_client_extensions`.
+    #[inline]
+    pub fn EXT_client_extensions(&self) -> bool {
+        self.ext[79]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_client_sync`.
+    #[inline]
+    pub fn EXT_client_sync(&self) -> bool {
+        self.ext[80]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_compositor`.
+    #[inline]
+    pub fn EXT_compositor(&self) -> bool {
+        self.ext[81]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_config_select_group`.
+    #[inline]
+    pub fn EXT_config_select_group(&self) -> bool {
+        self.ext[82]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_create_context_robustness`.
+    #[inline]
+    pub fn EXT_create_context_robustness(&self) -> bool {
+        self.ext[83]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_device_base`.
+    #[inline]
+    pub fn EXT_device_base(&self) -> bool {
+        self.ext[84]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_device_drm`.
+    #[inline]
+    pub fn EXT_device_drm(&self) -> bool {
+        self.ext[85]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_device_drm_render_node`.
+    #[inline]
+    pub fn EXT_device_drm_render_node(&self) -> bool {
+        self.ext[86]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_device_enumeration`.
+    #[inline]
+    pub fn EXT_device_enumeration(&self) -> bool {
+        self.ext[87]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_device_openwf`.
+    #[inline]
+    pub fn EXT_device_openwf(&self) -> bool {
+        self.ext[88]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_device_persistent_id`.
+    #[inline]
+    pub fn EXT_device_persistent_id(&self) -> bool {
+        self.ext[89]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_device_query`.
+    #[inline]
+    pub fn EXT_device_query(&self) -> bool {
+        self.ext[90]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_device_query_name`.
+    #[inline]
+    pub fn EXT_device_query_name(&self) -> bool {
+        self.ext[91]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_device_type`.
+    #[inline]
+    pub fn EXT_device_type(&self) -> bool {
+        self.ext[92]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_display_alloc`.
+    #[inline]
+    pub fn EXT_display_alloc(&self) -> bool {
+        self.ext[93]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_explicit_device`.
+    #[inline]
+    pub fn EXT_explicit_device(&self) -> bool {
+        self.ext[94]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_gl_colorspace_bt2020_hlg`.
+    #[inline]
+    pub fn EXT_gl_colorspace_bt2020_hlg(&self) -> bool {
+        self.ext[95]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_gl_colorspace_bt2020_linear`.
+    #[inline]
+    pub fn EXT_gl_colorspace_bt2020_linear(&self) -> bool {
+        self.ext[96]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_gl_colorspace_bt2020_pq`.
+    #[inline]
+    pub fn EXT_gl_colorspace_bt2020_pq(&self) -> bool {
+        self.ext[97]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_gl_colorspace_display_p3`.
+    #[inline]
+    pub fn EXT_gl_colorspace_display_p3(&self) -> bool {
+        self.ext[98]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_gl_colorspace_display_p3_linear`.
+    #[inline]
+    pub fn EXT_gl_colorspace_display_p3_linear(&self) -> bool {
+        self.ext[99]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_gl_colorspace_display_p3_passthrough`.
+    #[inline]
+    pub fn EXT_gl_colorspace_display_p3_passthrough(&self) -> bool {
+        self.ext[100]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_gl_colorspace_scrgb`.
+    #[inline]
+    pub fn EXT_gl_colorspace_scrgb(&self) -> bool {
+        self.ext[101]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_gl_colorspace_scrgb_linear`.
+    #[inline]
+    pub fn EXT_gl_colorspace_scrgb_linear(&self) -> bool {
+        self.ext[102]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_image_dma_buf_import`.
+    #[inline]
+    pub fn EXT_image_dma_buf_import(&self) -> bool {
+        self.ext[103]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_image_dma_buf_import_modifiers`.
+    #[inline]
+    pub fn EXT_image_dma_buf_import_modifiers(&self) -> bool {
+        self.ext[104]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_image_gl_colorspace`.
+    #[inline]
+    pub fn EXT_image_gl_colorspace(&self) -> bool {
+        self.ext[105]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_image_implicit_sync_control`.
+    #[inline]
+    pub fn EXT_image_implicit_sync_control(&self) -> bool {
+        self.ext[106]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_multiview_window`.
+    #[inline]
+    pub fn EXT_multiview_window(&self) -> bool {
+        self.ext[107]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_output_base`.
+    #[inline]
+    pub fn EXT_output_base(&self) -> bool {
+        self.ext[108]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_output_drm`.
+    #[inline]
+    pub fn EXT_output_drm(&self) -> bool {
+        self.ext[109]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_output_openwf`.
+    #[inline]
+    pub fn EXT_output_openwf(&self) -> bool {
+        self.ext[110]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_pixel_format_float`.
+    #[inline]
+    pub fn EXT_pixel_format_float(&self) -> bool {
+        self.ext[111]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_platform_base`.
+    #[inline]
+    pub fn EXT_platform_base(&self) -> bool {
+        self.ext[112]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_platform_device`.
+    #[inline]
+    pub fn EXT_platform_device(&self) -> bool {
+        self.ext[113]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_platform_wayland`.
+    #[inline]
+    pub fn EXT_platform_wayland(&self) -> bool {
+        self.ext[114]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_platform_x11`.
+    #[inline]
+    pub fn EXT_platform_x11(&self) -> bool {
+        self.ext[115]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_platform_xcb`.
+    #[inline]
+    pub fn EXT_platform_xcb(&self) -> bool {
+        self.ext[116]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_present_opaque`.
+    #[inline]
+    pub fn EXT_present_opaque(&self) -> bool {
+        self.ext[117]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_protected_content`.
+    #[inline]
+    pub fn EXT_protected_content(&self) -> bool {
+        self.ext[118]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_protected_surface`.
+    #[inline]
+    pub fn EXT_protected_surface(&self) -> bool {
+        self.ext[119]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_query_reset_notification_strategy`.
+    #[inline]
+    pub fn EXT_query_reset_notification_strategy(&self) -> bool {
+        self.ext[120]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_stream_consumer_egloutput`.
+    #[inline]
+    pub fn EXT_stream_consumer_egloutput(&self) -> bool {
+        self.ext[121]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_surface_CTA861_3_metadata`.
+    #[inline]
+    pub fn EXT_surface_CTA861_3_metadata(&self) -> bool {
+        self.ext[122]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_surface_SMPTE2086_metadata`.
+    #[inline]
+    pub fn EXT_surface_SMPTE2086_metadata(&self) -> bool {
+        self.ext[123]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_surface_compression`.
+    #[inline]
+    pub fn EXT_surface_compression(&self) -> bool {
+        self.ext[124]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_swap_buffers_with_damage`.
+    #[inline]
+    pub fn EXT_swap_buffers_with_damage(&self) -> bool {
+        self.ext[125]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_sync_reuse`.
+    #[inline]
+    pub fn EXT_sync_reuse(&self) -> bool {
+        self.ext[126]
+    }
+
+    /// Whether the driver advertises `EGL_EXT_yuv_surface`.
+    #[inline]
+    pub fn EXT_yuv_surface(&self) -> bool {
+        self.ext[127]
+    }
+
+    /// Whether the driver advertises `EGL_HI_clientpixmap`.
+    #[inline]
+    pub fn HI_clientpixmap(&self) -> bool {
+        self.ext[128]
+    }
+
+    /// Whether the driver advertises `EGL_HI_colorformats`.
+    #[inline]
+    pub fn HI_colorformats(&self) -> bool {
+        self.ext[129]
+    }
+
+    /// Whether the driver advertises `EGL_IMG_context_priority`.
+    #[inline]
+    pub fn IMG_context_priority(&self) -> bool {
+        self.ext[130]
+    }
+
+    /// Whether the driver advertises `EGL_IMG_image_plane_attribs`.
+    #[inline]
+    pub fn IMG_image_plane_attribs(&self) -> bool {
+        self.ext[131]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_cl_event`.
+    #[inline]
+    pub fn KHR_cl_event(&self) -> bool {
+        self.ext[132]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_cl_event2`.
+    #[inline]
+    pub fn KHR_cl_event2(&self) -> bool {
+        self.ext[133]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_client_get_all_proc_addresses`.
+    #[inline]
+    pub fn KHR_client_get_all_proc_addresses(&self) -> bool {
+        self.ext[134]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_config_attribs`.
+    #[inline]
+    pub fn KHR_config_attribs(&self) -> bool {
+        self.ext[135]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_context_flush_control`.
+    #[inline]
+    pub fn KHR_context_flush_control(&self) -> bool {
+        self.ext[136]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_create_context`.
+    #[inline]
+    pub fn KHR_create_context(&self) -> bool {
+        self.ext[137]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_create_context_no_error`.
+    #[inline]
+    pub fn KHR_create_context_no_error(&self) -> bool {
+        self.ext[138]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_debug`.
+    #[inline]
+    pub fn KHR_debug(&self) -> bool {
+        self.ext[139]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_display_reference`.
+    #[inline]
+    pub fn KHR_display_reference(&self) -> bool {
+        self.ext[140]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_fence_sync`.
+    #[inline]
+    pub fn KHR_fence_sync(&self) -> bool {
+        self.ext[141]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_get_all_proc_addresses`.
+    #[inline]
+    pub fn KHR_get_all_proc_addresses(&self) -> bool {
+        self.ext[142]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_gl_colorspace`.
+    #[inline]
+    pub fn KHR_gl_colorspace(&self) -> bool {
+        self.ext[143]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_gl_renderbuffer_image`.
+    #[inline]
+    pub fn KHR_gl_renderbuffer_image(&self) -> bool {
+        self.ext[144]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_gl_texture_2D_image`.
+    #[inline]
+    pub fn KHR_gl_texture_2D_image(&self) -> bool {
+        self.ext[145]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_gl_texture_3D_image`.
+    #[inline]
+    pub fn KHR_gl_texture_3D_image(&self) -> bool {
+        self.ext[146]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_gl_texture_cubemap_image`.
+    #[inline]
+    pub fn KHR_gl_texture_cubemap_image(&self) -> bool {
+        self.ext[147]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_image`.
+    #[inline]
+    pub fn KHR_image(&self) -> bool {
+        self.ext[148]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_image_base`.
+    #[inline]
+    pub fn KHR_image_base(&self) -> bool {
+        self.ext[149]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_image_pixmap`.
+    #[inline]
+    pub fn KHR_image_pixmap(&self) -> bool {
+        self.ext[150]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_lock_surface`.
+    #[inline]
+    pub fn KHR_lock_surface(&self) -> bool {
+        self.ext[151]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_lock_surface2`.
+    #[inline]
+    pub fn KHR_lock_surface2(&self) -> bool {
+        self.ext[152]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_lock_surface3`.
+    #[inline]
+    pub fn KHR_lock_surface3(&self) -> bool {
+        self.ext[153]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_mutable_render_buffer`.
+    #[inline]
+    pub fn KHR_mutable_render_buffer(&self) -> bool {
+        self.ext[154]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_no_config_context`.
+    #[inline]
+    pub fn KHR_no_config_context(&self) -> bool {
+        self.ext[155]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_partial_update`.
+    #[inline]
+    pub fn KHR_partial_update(&self) -> bool {
+        self.ext[156]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_platform_android`.
+    #[inline]
+    pub fn KHR_platform_android(&self) -> bool {
+        self.ext[157]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_platform_gbm`.
+    #[inline]
+    pub fn KHR_platform_gbm(&self) -> bool {
+        self.ext[158]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_platform_wayland`.
+    #[inline]
+    pub fn KHR_platform_wayland(&self) -> bool {
+        self.ext[159]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_platform_x11`.
+    #[inline]
+    pub fn KHR_platform_x11(&self) -> bool {
+        self.ext[160]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_reusable_sync`.
+    #[inline]
+    pub fn KHR_reusable_sync(&self) -> bool {
+        self.ext[161]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_stream`.
+    #[inline]
+    pub fn KHR_stream(&self) -> bool {
+        self.ext[162]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_stream_attrib`.
+    #[inline]
+    pub fn KHR_stream_attrib(&self) -> bool {
+        self.ext[163]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_stream_consumer_gltexture`.
+    #[inline]
+    pub fn KHR_stream_consumer_gltexture(&self) -> bool {
+        self.ext[164]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_stream_cross_process_fd`.
+    #[inline]
+    pub fn KHR_stream_cross_process_fd(&self) -> bool {
+        self.ext[165]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_stream_fifo`.
+    #[inline]
+    pub fn KHR_stream_fifo(&self) -> bool {
+        self.ext[166]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_stream_producer_aldatalocator`.
+    #[inline]
+    pub fn KHR_stream_producer_aldatalocator(&self) -> bool {
+        self.ext[167]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_stream_producer_eglsurface`.
+    #[inline]
+    pub fn KHR_stream_producer_eglsurface(&self) -> bool {
+        self.ext[168]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_surfaceless_context`.
+    #[inline]
+    pub fn KHR_surfaceless_context(&self) -> bool {
+        self.ext[169]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_swap_buffers_with_damage`.
+    #[inline]
+    pub fn KHR_swap_buffers_with_damage(&self) -> bool {
+        self.ext[170]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_vg_parent_image`.
+    #[inline]
+    pub fn KHR_vg_parent_image(&self) -> bool {
+        self.ext[171]
+    }
+
+    /// Whether the driver advertises `EGL_KHR_wait_sync`.
+    #[inline]
+    pub fn KHR_wait_sync(&self) -> bool {
+        self.ext[172]
+    }
+
+    /// Whether the driver advertises `EGL_MESA_drm_image`.
+    #[inline]
+    pub fn MESA_drm_image(&self) -> bool {
+        self.ext[173]
+    }
+
+    /// Whether the driver advertises `EGL_MESA_image_dma_buf_export`.
+    #[inline]
+    pub fn MESA_image_dma_buf_export(&self) -> bool {
+        self.ext[174]
+    }
+
+    /// Whether the driver advertises `EGL_MESA_platform_gbm`.
+    #[inline]
+    pub fn MESA_platform_gbm(&self) -> bool {
+        self.ext[175]
+    }
+
+    /// Whether the driver advertises `EGL_MESA_platform_surfaceless`.
+    #[inline]
+    pub fn MESA_platform_surfaceless(&self) -> bool {
+        self.ext[176]
+    }
+
+    /// Whether the driver advertises `EGL_MESA_query_driver`.
+    #[inline]
+    pub fn MESA_query_driver(&self) -> bool {
+        self.ext[177]
+    }
+
+    /// Whether the driver advertises `EGL_NOK_swap_region`.
+    #[inline]
+    pub fn NOK_swap_region(&self) -> bool {
+        self.ext[178]
+    }
+
+    /// Whether the driver advertises `EGL_NOK_swap_region2`.
+    #[inline]
+    pub fn NOK_swap_region2(&self) -> bool {
+        self.ext[179]
+    }
+
+    /// Whether the driver advertises `EGL_NOK_texture_from_pixmap`.
+    #[inline]
+    pub fn NOK_texture_from_pixmap(&self) -> bool {
+        self.ext[180]
+    }
+
+    /// Whether the driver advertises `EGL_NV_3dvision_surface`.
+    #[inline]
+    pub fn NV_3dvision_surface(&self) -> bool {
+        self.ext[181]
+    }
+
+    /// Whether the driver advertises `EGL_NV_context_priority_realtime`.
+    #[inline]
+    pub fn NV_context_priority_realtime(&self) -> bool {
+        self.ext[182]
+    }
+
+    /// Whether the driver advertises `EGL_NV_coverage_sample`.
+    #[inline]
+    pub fn NV_coverage_sample(&self) -> bool {
+        self.ext[183]
+    }
+
+    /// Whether the driver advertises `EGL_NV_coverage_sample_resolve`.
+    #[inline]
+    pub fn NV_coverage_sample_resolve(&self) -> bool {
+        self.ext[184]
+    }
+
+    /// Whether the driver advertises `EGL_NV_cuda_event`.
+    #[inline]
+    pub fn NV_cuda_event(&self) -> bool {
+        self.ext[185]
+    }
+
+    /// Whether the driver advertises `EGL_NV_depth_nonlinear`.
+    #[inline]
+    pub fn NV_depth_nonlinear(&self) -> bool {
+        self.ext[186]
+    }
+
+    /// Whether the driver advertises `EGL_NV_device_cuda`.
+    #[inline]
+    pub fn NV_device_cuda(&self) -> bool {
+        self.ext[187]
+    }
+
+    /// Whether the driver advertises `EGL_NV_native_query`.
+    #[inline]
+    pub fn NV_native_query(&self) -> bool {
+        self.ext[188]
+    }
+
+    /// Whether the driver advertises `EGL_NV_post_convert_rounding`.
+    #[inline]
+    pub fn NV_post_convert_rounding(&self) -> bool {
+        self.ext[189]
+    }
+
+    /// Whether the driver advertises `EGL_NV_post_sub_buffer`.
+    #[inline]
+    pub fn NV_post_sub_buffer(&self) -> bool {
+        self.ext[190]
+    }
+
+    /// Whether the driver advertises `EGL_NV_quadruple_buffer`.
+    #[inline]
+    pub fn NV_quadruple_buffer(&self) -> bool {
+        self.ext[191]
+    }
+
+    /// Whether the driver advertises `EGL_NV_robustness_video_memory_purge`.
+    #[inline]
+    pub fn NV_robustness_video_memory_purge(&self) -> bool {
+        self.ext[192]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_consumer_eglimage`.
+    #[inline]
+    pub fn NV_stream_consumer_eglimage(&self) -> bool {
+        self.ext[193]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_consumer_eglimage_use_scanout_attrib`.
+    #[inline]
+    pub fn NV_stream_consumer_eglimage_use_scanout_attrib(&self) -> bool {
+        self.ext[194]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_consumer_gltexture_yuv`.
+    #[inline]
+    pub fn NV_stream_consumer_gltexture_yuv(&self) -> bool {
+        self.ext[195]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_cross_display`.
+    #[inline]
+    pub fn NV_stream_cross_display(&self) -> bool {
+        self.ext[196]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_cross_object`.
+    #[inline]
+    pub fn NV_stream_cross_object(&self) -> bool {
+        self.ext[197]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_cross_partition`.
+    #[inline]
+    pub fn NV_stream_cross_partition(&self) -> bool {
+        self.ext[198]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_cross_process`.
+    #[inline]
+    pub fn NV_stream_cross_process(&self) -> bool {
+        self.ext[199]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_cross_system`.
+    #[inline]
+    pub fn NV_stream_cross_system(&self) -> bool {
+        self.ext[200]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_dma`.
+    #[inline]
+    pub fn NV_stream_dma(&self) -> bool {
+        self.ext[201]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_fifo_next`.
+    #[inline]
+    pub fn NV_stream_fifo_next(&self) -> bool {
+        self.ext[202]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_fifo_synchronous`.
+    #[inline]
+    pub fn NV_stream_fifo_synchronous(&self) -> bool {
+        self.ext[203]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_flush`.
+    #[inline]
+    pub fn NV_stream_flush(&self) -> bool {
+        self.ext[204]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_frame_limits`.
+    #[inline]
+    pub fn NV_stream_frame_limits(&self) -> bool {
+        self.ext[205]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_metadata`.
+    #[inline]
+    pub fn NV_stream_metadata(&self) -> bool {
+        self.ext[206]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_origin`.
+    #[inline]
+    pub fn NV_stream_origin(&self) -> bool {
+        self.ext[207]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_remote`.
+    #[inline]
+    pub fn NV_stream_remote(&self) -> bool {
+        self.ext[208]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_reset`.
+    #[inline]
+    pub fn NV_stream_reset(&self) -> bool {
+        self.ext[209]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_socket`.
+    #[inline]
+    pub fn NV_stream_socket(&self) -> bool {
+        self.ext[210]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_socket_inet`.
+    #[inline]
+    pub fn NV_stream_socket_inet(&self) -> bool {
+        self.ext[211]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_socket_unix`.
+    #[inline]
+    pub fn NV_stream_socket_unix(&self) -> bool {
+        self.ext[212]
+    }
+
+    /// Whether the driver advertises `EGL_NV_stream_sync`.
+    #[inline]
+    pub fn NV_stream_sync(&self) -> bool {
+        self.ext[213]
+    }
+
+    /// Whether the driver advertises `EGL_NV_sync`.
+    #[inline]
+    pub fn NV_sync(&self) -> bool {
+        self.ext[214]
+    }
+
+    /// Whether the driver advertises `EGL_NV_system_time`.
+    #[inline]
+    pub fn NV_system_time(&self) -> bool {
+        self.ext[215]
+    }
+
+    /// Whether the driver advertises `EGL_NV_triple_buffer`.
+    #[inline]
+    pub fn NV_triple_buffer(&self) -> bool {
+        self.ext[216]
+    }
+
+    /// Whether the driver advertises `EGL_QNX_image_native_buffer`.
+    #[inline]
+    pub fn QNX_image_native_buffer(&self) -> bool {
+        self.ext[217]
+    }
+
+    /// Whether the driver advertises `EGL_QNX_platform_screen`.
+    #[inline]
+    pub fn QNX_platform_screen(&self) -> bool {
+        self.ext[218]
+    }
+
+    /// Whether the driver advertises `EGL_TIZEN_image_native_buffer`.
+    #[inline]
+    pub fn TIZEN_image_native_buffer(&self) -> bool {
+        self.ext[219]
+    }
+
+    /// Whether the driver advertises `EGL_TIZEN_image_native_surface`.
+    #[inline]
+    pub fn TIZEN_image_native_surface(&self) -> bool {
+        self.ext[220]
+    }
+
+    /// Whether the driver advertises `EGL_WL_bind_wayland_display`.
+    #[inline]
+    pub fn WL_bind_wayland_display(&self) -> bool {
+        self.ext[221]
+    }
+
+    /// Whether the driver advertises `EGL_WL_create_wayland_buffer_from_image`.
+    #[inline]
+    pub fn WL_create_wayland_buffer_from_image(&self) -> bool {
+        self.ext[222]
+    }
+
+    /// Whether the driver supports `EGL_VERSION_1_0`.
+    #[inline]
+    pub fn VERSION_1_0(&self) -> bool {
+        self.feat[0]
+    }
+
+    /// Whether the driver supports `EGL_VERSION_1_1`.
+    #[inline]
+    pub fn VERSION_1_1(&self) -> bool {
+        self.feat[1]
+    }
+
+    /// Whether the driver supports `EGL_VERSION_1_2`.
+    #[inline]
+    pub fn VERSION_1_2(&self) -> bool {
+        self.feat[2]
+    }
+
+    /// Whether the driver supports `EGL_VERSION_1_3`.
+    #[inline]
+    pub fn VERSION_1_3(&self) -> bool {
+        self.feat[3]
+    }
+
+    /// Whether the driver supports `EGL_VERSION_1_4`.
+    #[inline]
+    pub fn VERSION_1_4(&self) -> bool {
+        self.feat[4]
+    }
+
+    /// Whether the driver supports `EGL_VERSION_1_5`.
+    #[inline]
+    pub fn VERSION_1_5(&self) -> bool {
+        self.feat[5]
+    }
+}
+
+/// Parse an EGL_VERSION string (`"1.5 (ANGLE ...)"`) into a packed
+/// `major << 8 | minor`, or 0 if unparseable.
+fn __parse_egl_version(p: *const c_char) -> u32 {
+    if p.is_null() {
+        return 0;
+    }
+    let bytes = unsafe { CStr::from_ptr(p) }.to_bytes();
+    let mut it = bytes.iter().copied().peekable();
+    let mut major: u32 = 0;
+    while let Some(c) = it.peek().copied().filter(|c| c.is_ascii_digit()) {
+        major = major * 10 + (c - b'0') as u32;
+        it.next();
+    }
+    let mut minor: u32 = 0;
+    if it.peek() == Some(&b'.') {
+        it.next();
+        while let Some(c) = it.peek().copied().filter(|c| c.is_ascii_digit()) {
+            minor = minor * 10 + (c - b'0') as u32;
+            it.next();
+        }
+    }
+    (major << 8) | minor
+}

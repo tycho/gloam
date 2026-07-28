@@ -140,29 +140,13 @@ pub(crate) fn execute(cli: Cli, command_line: &str) -> Result<()> {
         }
         Generator::Rust(rust_args) => {
             diag.info("generating Rust loader...");
-            // Every feature set writes the same crate paths (Cargo.toml,
-            // src/lib.rs), so a multi-spec request would silently clobber
-            // all but the last spec's loader.  Refuse until the backend
-            // grows a per-spec module layout.
-            if feature_sets.len() > 1 {
-                anyhow::bail!(
-                    "the rust backend generates one crate per invocation and \
-                     this request resolves to {} loaders ({}); generate each \
-                     spec into its own --out-path for now",
-                    feature_sets.len(),
-                    feature_sets
-                        .iter()
-                        .map(|fs| fs.display_name.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-            for fs in &feature_sets {
-                let tree = generator::rust::generate(fs, rust_args, out, &store, command_line)?;
-                pins.extend(tree.pins);
-                for f in tree.files {
-                    files.entry(f.path.clone()).or_insert(f);
-                }
+            // The backend sees all resolved feature sets at once: one crate,
+            // one module file per spec.
+            let tree =
+                generator::rust::generate(&feature_sets, rust_args, out, &store, command_line)?;
+            pins.extend(tree.pins);
+            for f in tree.files {
+                files.entry(f.path.clone()).or_insert(f);
             }
         }
         Generator::Lock(_) | Generator::Regen(_) => unreachable!("handled above"),

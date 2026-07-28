@@ -72,14 +72,31 @@ fn rust_backend_rejects_unsupported_specs() {
 }
 
 #[test]
-fn rust_backend_rejects_multi_spec_requests() {
-    // Multiple resolved loaders would clobber one crate's files.
-    let dir = tempfile::TempDir::new().unwrap();
-    gloam()
-        .args(["--api", "gl:core=3.3,egl", "--merge"])
-        .args(["--out-path", dir.path().to_str().unwrap(), "rust"])
-        .assert()
-        .failure();
+fn rust_multi_spec_emits_one_crate_with_per_spec_modules() {
+    let dir = generate_rust(
+        &["--api", "gl:core=3.3,egl", "--merge", "--extensions", ""],
+        &[],
+    );
+    let manifest = read_rust_manifest(dir.path());
+    assert!(manifest.contains("name = \"gloam_gl_egl\""));
+
+    let lib = std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+    assert!(lib.contains("pub mod gl;"));
+    assert!(lib.contains("pub mod egl;"));
+    // Loader types collide across modules (each has its own LoadError), so
+    // multi-spec crates do not re-export at the root.
+    assert!(!lib.contains("pub use self::"));
+
+    assert!(dir.path().join("src/gl.rs").exists());
+    assert!(dir.path().join("src/egl.rs").exists());
+}
+
+#[test]
+fn rust_single_spec_reexports_module_at_root() {
+    let dir = generate_rust(&["--api", "gl:core=3.3", "--extensions", ""], &[]);
+    let lib = std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+    assert!(lib.contains("pub mod gl;"));
+    assert!(lib.contains("pub use self::gl::*;"));
 }
 
 // ---------------------------------------------------------------------------

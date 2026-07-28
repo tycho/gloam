@@ -67,8 +67,7 @@ pub(super) fn emit_egl_module(fs: &FeatureSet, preamble: &str) -> Result<String>
     s.push_str(preamble);
     s.push('\n');
     s.push_str(
-        "#![no_std]\n\
-         #![allow(non_snake_case, non_camel_case_types, non_upper_case_globals, dead_code, clippy::all)]\n\
+        "#![allow(non_snake_case, non_camel_case_types, non_upper_case_globals, dead_code, clippy::all)]\n\
          #![deny(unsafe_op_in_unsafe_fn)]\n\n\
          use core::ffi::{CStr, c_char, c_void};\n\n",
     );
