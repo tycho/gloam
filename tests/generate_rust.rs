@@ -61,10 +61,22 @@ fn rust_constants_are_newtyped() {
 }
 
 #[test]
-fn rust_backend_rejects_non_gl_specs() {
+fn rust_backend_rejects_unsupported_specs() {
+    // WGL/GLX have no Rust backend yet (GL/GLES, Vulkan, and EGL do).
     let dir = tempfile::TempDir::new().unwrap();
     gloam()
-        .args(["--api", "egl"])
+        .args(["--api", "wgl"])
+        .args(["--out-path", dir.path().to_str().unwrap(), "rust"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn rust_backend_rejects_multi_spec_requests() {
+    // Multiple resolved loaders would clobber one crate's files.
+    let dir = tempfile::TempDir::new().unwrap();
+    gloam()
+        .args(["--api", "gl:core=3.3,egl", "--merge"])
         .args(["--out-path", dir.path().to_str().unwrap(), "rust"])
         .assert()
         .failure();
