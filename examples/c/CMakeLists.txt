@@ -8,8 +8,8 @@
 #   cmake -B build -S examples
 #   cmake --build build
 #
-# SDL3 (needed by gl-triangle) is taken from the system when a CMake package
-# is installed, otherwise fetched and built from source.
+# SDL3 (needed by gl-triangle and vk-cube) is taken from the system when a
+# CMake package is installed, otherwise fetched and built from source.
 
 cmake_minimum_required(VERSION 3.24)
 project(gloam-examples C)
@@ -33,4 +33,5 @@ if(NOT SDL3_FOUND)
 endif()
 
 add_subdirectory(gl-triangle)
+add_subdirectory(vk-cube)
 add_subdirectory(vk-info)

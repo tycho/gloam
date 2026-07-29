@@ -7,8 +7,10 @@ gloam is to generate once and commit the result to your project.
 | Example | Language | What it shows |
 | --- | --- | --- |
 | [c/gl-triangle](c/gl-triangle/) | C | The merged GL + GLES2 loader (the production pattern): an SDL3 window, desktop core-profile context with OpenGL ES fallback, one context struct serving both, `GL_KHR_debug` wired to a debug callback, and a spinning triangle. |
+| [c/vk-cube](c/vk-cube/) | C | Real Vulkan rendering: a spinning cube with a swapchain (recreated on resize), depth buffer, explicit layout barriers around 1.3 dynamic rendering, and two frames in flight — SDL3 window, `SDL_Vulkan_CreateSurface`, loader opened by the built-in `--loader`. |
 | [c/vk-info](c/vk-info/) | C | The phased Vulkan flow (`Initialize → LoadInstance → LoadDevice`) with the built-in `--loader` opening the platform Vulkan library — headless device info plus a cross-check of gloam's extension flags against what was actually enabled. |
 | [rust/gl-triangle](rust/gl-triangle/) | Rust | The generated loader as a crate (`gloam_gl`), consumed via the Rust-native `winit` + `glutin` stack: a desktop GL 3.3 context, `--mx-global` free-function dispatch, and a spinning triangle. |
+| [rust/vk-cube](rust/vk-cube/) | Rust | The same cube on the owned-context `Vk` API, `winit` windowing, and the surface created through the loader's own `vkCreate*SurfaceKHR` platform commands (selected from the `raw-window-handle` at runtime). |
 | [rust/vk-info](rust/vk-info/) | Rust | The phased Vulkan flow on the `gloam_vk` crate's `--mx-global` layer: `vk::initialize → load_instance → load_device`, headless device info, and per-extension presence flags. |
 | [rust/egl-info](rust/egl-info/) | Rust | The `gloam_egl` crate probing EGL client extensions, then initializing each ANGLE render backend via `EGL_ANGLE_platform_angle` (or the default display on plain EGL). |
 
@@ -22,6 +24,8 @@ cmake --build build
 ./build/gl-triangle/gl-triangle          # interactive spinning triangle
 ./build/gl-triangle/gl-triangle --ci     # one hidden frame + pixel check
 ./build/gl-triangle/gl-triangle --es     # force the OpenGL ES fallback path
+./build/vk-cube/vk-cube                  # interactive spinning cube
+./build/vk-cube/vk-cube --ci             # one hidden frame + pixel check
 ./build/vk-info/vk-info                  # headless device + extension table
 ```
 
@@ -36,6 +40,9 @@ automake "skip" convention), so they are safe to run in CI.
 cd examples/rust/gl-triangle
 cargo run            # interactive spinning triangle
 cargo run -- --ci    # one headless frame + pixel check (exit 0 = pass)
+
+cd ../vk-cube
+cargo run            # interactive spinning cube (--ci works here too)
 
 cd ../vk-info
 cargo run            # headless device info + extension flags
@@ -59,12 +66,18 @@ gloam --api gl:core=3.3,gles2=3.0 --merge \
       --extensions GL_KHR_debug,GL_EXT_texture_filter_anisotropic \
       --out-path gl-triangle/gloam c --alias
 gloam --api vk=1.3 \
+      --extensions VK_KHR_surface,VK_KHR_swapchain,VK_KHR_get_physical_device_properties2,VK_KHR_portability_enumeration \
+      --out-path vk-cube/gloam c --loader
+gloam --api vk=1.3 \
       --extensions VK_KHR_swapchain,VK_KHR_get_physical_device_properties2,VK_EXT_debug_utils,VK_KHR_timeline_semaphore,VK_KHR_synchronization2,VK_KHR_portability_enumeration \
       --out-path vk-info/gloam c --loader
 
 # from the repo root
 gloam --api gl:core=3.3,gles2=3.0 --merge \
       --out-path examples/rust/gl-triangle/gloam rust --alias --mx-global
+gloam --api vk=1.3 \
+      --extensions VK_KHR_surface,VK_KHR_swapchain,VK_KHR_win32_surface,VK_KHR_xlib_surface,VK_KHR_wayland_surface,VK_KHR_get_physical_device_properties2,VK_KHR_portability_enumeration \
+      --out-path examples/rust/vk-cube/gloam rust --alias
 gloam --api vk=1.3 \
       --extensions VK_KHR_swapchain,VK_KHR_get_physical_device_properties2,VK_EXT_debug_utils,VK_KHR_timeline_semaphore,VK_KHR_synchronization2,VK_KHR_portability_enumeration \
       --out-path examples/rust/vk-info/gloam rust --alias --mx-global

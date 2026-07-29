@@ -1,0 +1,29 @@
+[package]
+name = "vk-cube-rs"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "vk-cube-rs"
+path = "src/main.rs"
+
+[dependencies]
+# The gloam-generated Vulkan loader crate (regenerate with the command in
+# README.md).  Every platform-surface feature is enabled unconditionally:
+# the generated platform types are plain ABI declarations, so the unused
+# platforms' commands compile everywhere and simply never load.
+gloam_vk = { path = "gloam", features = [
+    "VK_USE_PLATFORM_WIN32_KHR",
+    "VK_USE_PLATFORM_XLIB_KHR",
+    "VK_USE_PLATFORM_WAYLAND_KHR",
+] }
+# Rust-native windowing (no C libraries to locate).
+winit = "0.30"
+raw-window-handle = "0.6"
+# Opens vulkan-1.dll / libvulkan.so.1 for vkGetInstanceProcAddr.
+libloading = "0.8"
+
+# Standalone workspace so the example's dependencies stay out of the main
+# gloam workspace's build and lockfile.
+[workspace]
