@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/tycho/gloam/compare/0.5.2...0.6.0) - 2026-07-29
+
+### Added
+
+- *(generator)* add Rust backend implementation
+- *(examples)* add C and Rust vk-cube examples
+- *(bundled)* embed specs/headers as DEFLATE blobs (~6 MiB smaller binary)
+
+### Other
+
+- add C and Rust loader consumer guides
+- regenerate example trees in the weekly bundled-update workflow
+- *(ci)* skip running certain workflows on non-GitHub hosting
+- *(ci)* run `cargo hack` with --feature-powerset flag
+- *(cargo)* bump rust-version to 1.95
+
 ## [0.5.2](https://github.com/tycho/gloam/compare/0.5.1...0.5.2) - 2026-07-24
 
 ### Added

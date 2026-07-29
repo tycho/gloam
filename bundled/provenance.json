@@ -26,7 +26,7 @@
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/egl_angle_ext.xml",
-      "commit": "6e09ee679387f2eadd22f2c35fdc7c774d2e71bb",
+      "commit": "880d825611b31a19f253c3e1531c07c829f64d57",
       "blob": "f1bbc3a88789860a0e2c3e0348fa6c659eb41925"
     },
     "gl.xml": {
@@ -40,8 +40,8 @@
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/gl_angle_ext.xml",
-      "commit": "6e09ee679387f2eadd22f2c35fdc7c774d2e71bb",
-      "blob": "1c4b34c8b37a5900244e89ef6883990f0452426e"
+      "commit": "880d825611b31a19f253c3e1531c07c829f64d57",
+      "blob": "59533582902a5666c699e16b8c6f72615791502c"
     },
     "glsl_exts.xml": {
       "repo": "tycho/gloam-registry",

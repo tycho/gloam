@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.5.2",
-    "describe": "0.5.2-43-ge68ba4c-dirty",
-    "commit": "e68ba4c3196517b2867804747163e749075abc0d",
+    "version": "0.6.0",
+    "describe": "0.6.0",
+    "commit": "",
     "command_line": "gloam --api egl --out-path examples/rust/egl-info/gloam rust --alias"
   },
   "provenance": {
@@ -32,7 +32,7 @@
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/egl_angle_ext.xml",
-      "commit": "6e09ee679387f2eadd22f2c35fdc7c774d2e71bb",
+      "commit": "880d825611b31a19f253c3e1531c07c829f64d57",
       "blob": "f1bbc3a88789860a0e2c3e0348fa6c659eb41925"
     },
     "xxhash.h": {
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/egl.rs",
-      "blob": "7fe55ebd7d39bc14c6859944aff4dc1826edabe6",
+      "blob": "1b4edd65384d9b6ad3db57a8474c482a8d2d6873",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",

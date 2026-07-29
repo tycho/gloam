@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.5.2",
-    "describe": "0.5.2-43-ge68ba4c-dirty",
-    "commit": "e68ba4c3196517b2867804747163e749075abc0d",
+    "version": "0.6.0",
+    "describe": "0.6.0",
+    "commit": "",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0 --merge --extensions GL_KHR_debug,GL_EXT_texture_filter_anisotropic --out-path gl-triangle/gloam c --alias"
   },
   "provenance": {
@@ -25,8 +25,8 @@
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/gl_angle_ext.xml",
-      "commit": "6e09ee679387f2eadd22f2c35fdc7c774d2e71bb",
-      "blob": "1c4b34c8b37a5900244e89ef6883990f0452426e"
+      "commit": "880d825611b31a19f253c3e1531c07c829f64d57",
+      "blob": "59533582902a5666c699e16b8c6f72615791502c"
     },
     "glsl_exts.xml": {
       "repo": "tycho/gloam-registry",
@@ -54,7 +54,7 @@
     },
     {
       "path": "include/gloam/gl.h",
-      "blob": "2fb007c4146135558e766ddc5520cd439369aad6",
+      "blob": "47de4fe84c41462a0aec45a8e4f0d9f88a15a880",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
@@ -73,7 +73,7 @@
     },
     {
       "path": "src/gl.c",
-      "blob": "9034076b797c5e268a78957bbf5985d46343b772",
+      "blob": "8751790cce3825865aeecba522e17bf1250fbc08",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
