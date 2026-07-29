@@ -5,11 +5,10 @@
 [Latest Version]: https://img.shields.io/crates/v/gloam.svg
 [crates.io]: https://crates.io/crates/gloam
 
-A loader generator for Vulkan, OpenGL, OpenGL ES, EGL, GLX, and WGL.
-Reads Khronos XML spec files and generates C dispatch code, with a Rust
-backend covering the same APIs. The gloam binary is fully
-self-contained — XML specs and auxiliary headers are embedded at compile
-time.
+A loader generator for Vulkan, OpenGL, OpenGL ES, EGL, GLX, and WGL.  Reads
+Khronos XML spec files and generates C or Rust dispatch code. The gloam binary
+is fully self-contained — XML specs and auxiliary headers are embedded at
+compile time.
 
 ## Why gloam?
 
@@ -50,7 +49,7 @@ Vulkan teardown-and-reinitialize cycle on Linux `x86_64` (see
 cargo install gloam
 ```
 
-Or build from source (requires Rust 1.88+):
+Or build from source (requires Rust 1.95+):
 
 ```sh
 cargo build --release
@@ -583,7 +582,7 @@ cargo build --release
 cargo test
 ```
 
-Requires Rust 1.88 or later. The `fetch` feature (enabled by default)
+Requires Rust 1.95 or later. The `fetch` feature (enabled by default)
 pulls in `ureq` for `--fetch` mode; disable with
 `--no-default-features` if not needed.
 
