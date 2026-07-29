@@ -306,6 +306,9 @@ exactly what the new version changed. `--fresh` re-resolves sources instead
 
 ## Generated output
 
+The highlights below cover the common paths; the complete consumer guide
+for the C output is [docs/c-loader.md](docs/c-loader.md).
+
 ### Context struct and dispatch
 
 Each API gets a context struct (`GloamGLContext`, `GloamVulkanContext`,
@@ -547,6 +550,10 @@ macros. After one `load_gl_global(...)`, every command is a free function
 (`gl::DrawArrays(...)`) with no context threading. See
 [examples/rust/gl-triangle](examples/rust/gl-triangle) for a complete
 winit + glutin application using this mode.
+
+The complete consumer guide — including cargo features, the Vulkan
+phased contract, and a C ↔ Rust equivalence map — is
+[docs/rust-loader.md](docs/rust-loader.md).
 
 ## Bundled specs
 
