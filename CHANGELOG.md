@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3](https://github.com/tycho/gloam/compare/0.5.2...0.5.3) - 2026-07-29
+
+### Added
+
+- *(generator)* per-spec module layout for Rust crates
+- *(generator)* EGL Rust loader
+- *(generator)* Vulkan Rust loader (phased, scope-aware)
+- *(generator)* Vulkan type printer for the Rust backend
+- *(generator)* derive Rust GL base types from registry payloads
+- *(parse)* structured TypePayload for spec type bodies
+- *(parse)* typed C declarator IR (TypeRef) for command params and returns
+- *(ci)* run `cargo hack` with --feature-powerset flag
+- *(regen)* add gloam regen subcommand for in-place tree regeneration
+- *(generator)* add Rust backend implementation
+
+### Fixed
+
+- *(generator)* refuse multi-spec requests in the Rust backend
+- *(resolve)* deterministic ordering for dependency-pulled extensions
+- *(ci)* skip running certain workflows on non-GitHub hosting
+- *(cargo)* unbreak build on Rust 1.88, hold rusqlite at 0.39
+
+### Other
+
+- *(cargo)* bump rust-version to 1.95
+- *(examples)* regenerate loader trees via gloam regen
+- update Rust-backend spec-support probes
+- *(examples)* regenerate loader trees via gloam regen
+- *(examples)* regenerate loader trees via gloam regen
+- *(examples)* regenerate loader trees via gloam regen
+- *(examples)* regenerate loader trees via gloam regen
+- *(cargo)* update base64 and rusqlite
+- document the rust and regen subcommands
+- *(examples)* regenerate loader trees via gloam regen
+- regenerate example trees in the weekly bundled-update workflow
+- *(xtask)* make regen a thin wrapper over gloam regen
+- *(bundled)* embed specs/headers as DEFLATE blobs (~6 MiB smaller binary)
+
 ## [0.5.2](https://github.com/tycho/gloam/compare/0.5.1...0.5.2) - 2026-07-24
 
 ### Added
