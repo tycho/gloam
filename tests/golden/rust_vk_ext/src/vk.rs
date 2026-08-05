@@ -1416,8 +1416,8 @@ pub const VK_AMD_EXTENSION_685_SPEC_VERSION: u32 = 0;
 pub const VK_AMD_EXTENSION_685_EXTENSION_NAME: &core::ffi::CStr = c"VK_AMD_extension_685";
 pub const VK_AMD_EXTENSION_687_SPEC_VERSION: u32 = 0;
 pub const VK_AMD_EXTENSION_687_EXTENSION_NAME: &core::ffi::CStr = c"VK_AMD_extension_687";
-pub const VK_AMD_EXTENSION_688_SPEC_VERSION: u32 = 0;
-pub const VK_AMD_EXTENSION_688_EXTENSION_NAME: &core::ffi::CStr = c"VK_AMD_extension_688";
+pub const VK_EXT_IMAGE_TILING_CONTROL_SPEC_VERSION: u32 = 1;
+pub const VK_EXT_IMAGE_TILING_CONTROL_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_image_tiling_control";
 pub const VK_AMD_EXTENSION_689_SPEC_VERSION: u32 = 0;
 pub const VK_AMD_EXTENSION_689_EXTENSION_NAME: &core::ffi::CStr = c"VK_AMD_extension_689";
 pub const VK_NV_COOPERATIVE_MATRIX_DECODE_VECTOR_SPEC_VERSION: u32 = 1;
@@ -1438,6 +1438,12 @@ pub const VK_NV_EXTENSION_697_SPEC_VERSION: u32 = 0;
 pub const VK_NV_EXTENSION_697_EXTENSION_NAME: &core::ffi::CStr = c"VK_NV_extension_697";
 pub const VK_HUAWEI_EXTENSION_698_SPEC_VERSION: u32 = 0;
 pub const VK_HUAWEI_EXTENSION_698_EXTENSION_NAME: &core::ffi::CStr = c"VK_HUAWEI_extension_698";
+pub const VK_QCOM_EXTENSION_699_SPEC_VERSION: u32 = 0;
+pub const VK_QCOM_EXTENSION_699_EXTENSION_NAME: &core::ffi::CStr = c"VK_QCOM_extension_699";
+pub const VK_EXT_EXTENSION_700_SPEC_VERSION: u32 = 0;
+pub const VK_EXT_EXTENSION_700_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_700";
+pub const VK_EXT_EXTENSION_701_SPEC_VERSION: u32 = 0;
+pub const VK_EXT_EXTENSION_701_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_701";
 
 // ── Enum groups ─────────────────────────────────────────────
 #[repr(transparent)]
@@ -3500,6 +3506,8 @@ pub const VK_STRUCTURE_TYPE_DATA_GRAPH_PIPELINE_NEURAL_STATISTICS_CREATE_INFO_AR
 pub const VK_STRUCTURE_TYPE_DATA_GRAPH_PIPELINE_SESSION_NEURAL_STATISTICS_CREATE_INFO_ARM: VkStructureType = VkStructureType(1000676001);
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DATA_GRAPH_NEURAL_ACCELERATOR_STATISTICS_FEATURES_ARM: VkStructureType = VkStructureType(1000676002);
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVE_RESTART_INDEX_FEATURES_EXT: VkStructureType = VkStructureType(1000678000);
+pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_TILING_CONTROL_FEATURES_EXT: VkStructureType = VkStructureType(1000687000);
+pub const VK_STRUCTURE_TYPE_IMAGE_TILING_CONTROL_CREATE_INFO_EXT: VkStructureType = VkStructureType(1000687001);
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_DECODE_VECTOR_FEATURES_NV: VkStructureType = VkStructureType(1000689000);
 pub const VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO_KHR: VkStructureType = VkStructureType(1000157000);
 pub const VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO_KHR: VkStructureType = VkStructureType(1000157001);
@@ -4054,6 +4062,7 @@ pub const VK_QUEUE_RESERVED_12_BIT_EXT: VkQueueFlagBits = 0x0000000000001000;
 pub const VK_QUEUE_RESERVED_9_BIT_EXT: VkQueueFlagBits = 0x0000000000000200;
 pub const VK_QUEUE_RESERVED_13_BIT_EXT: VkQueueFlagBits = 0x0000000000002000;
 pub const VK_QUEUE_RESERVED_11_BIT_ARM: VkQueueFlagBits = 0x0000000000000800;
+pub const VK_QUEUE_RESERVED_14_BIT_EXT: VkQueueFlagBits = 0x0000000000004000;
 
 pub type VkCullModeFlagBits = u32;
 pub const VK_CULL_MODE_NONE: VkCullModeFlagBits = 0;
@@ -7219,6 +7228,13 @@ pub struct VkNeuralAcceleratorStatisticsModeARM(pub i32);
 pub const VK_NEURAL_ACCELERATOR_STATISTICS_MODE_DISABLED_ARM: VkNeuralAcceleratorStatisticsModeARM = VkNeuralAcceleratorStatisticsModeARM(0);
 pub const VK_NEURAL_ACCELERATOR_STATISTICS_MODE_STATISTICS0_ARM: VkNeuralAcceleratorStatisticsModeARM = VkNeuralAcceleratorStatisticsModeARM(1);
 pub const VK_NEURAL_ACCELERATOR_STATISTICS_MODE_STATISTICS1_ARM: VkNeuralAcceleratorStatisticsModeARM = VkNeuralAcceleratorStatisticsModeARM(2);
+
+#[repr(transparent)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct VkImageTilingControlEXT(pub i32);
+pub const VK_IMAGE_TILING_CONTROL_DEFAULT_EXT: VkImageTilingControlEXT = VkImageTilingControlEXT(0);
+pub const VK_IMAGE_TILING_CONTROL_MIN_SIZE_EXT: VkImageTilingControlEXT = VkImageTilingControlEXT(1);
+pub const VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT: VkImageTilingControlEXT = VkImageTilingControlEXT(2);
 
 // ── Types ───────────────────────────────────────────────────
 #[repr(transparent)]
