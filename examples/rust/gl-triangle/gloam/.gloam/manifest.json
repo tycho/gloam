@@ -2,8 +2,8 @@
   "schema_version": 2,
   "gloam": {
     "version": "0.6.0",
-    "describe": "0.6.0+9f52e62.dirty",
-    "commit": "9f52e6265af88e5dbf300ed3b9126e917c2c3782",
+    "describe": "0.6.0+9b2e8e6.dirty",
+    "commit": "9b2e8e6b1500efa148a015d3c5d59509ae302ec6",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0 --merge --out-path examples/rust/gl-triangle/gloam rust --alias --mx-global"
   },
   "provenance": {
@@ -18,8 +18,8 @@
       "repo": "KhronosGroup/OpenGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/OpenGL-Registry",
       "path_in_repo": "xml/gl.xml",
-      "commit": "9d527dbc81bb76e35ba284fe385ed8a5ddb90cbc",
-      "blob": "902d7aabcd5e6d6fdb348b20f1a1b9733dac5fbb"
+      "commit": "e8f7cd0e35ac8d6f5667a021ff83d04b1fec41ef",
+      "blob": "7492d15565b79cf3844e3402858582f649677fec"
     },
     "gl_angle_ext.xml": {
       "repo": "angle/angle",
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/gl.rs",
-      "blob": "0df328de0a5a780dd3750d8de5589d9018b9439f",
+      "blob": "0e3d4a690d3792b8e9b28e7e351a4a83c9399371",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
