@@ -2,8 +2,8 @@
   "schema_version": 2,
   "gloam": {
     "version": "0.6.0",
-    "describe": "0.6.0+9f52e62.dirty",
-    "commit": "9f52e6265af88e5dbf300ed3b9126e917c2c3782",
+    "describe": "0.6.0+9b2e8e6.dirty",
+    "commit": "9b2e8e6b1500efa148a015d3c5d59509ae302ec6",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0,egl=1.5 --merge --extensions GL_KHR_debug,GL_EXT_texture_filter_anisotropic,EGL_ANGLE_platform_angle,EGL_ANGLE_platform_angle_d3d,EGL_ANGLE_platform_angle_metal,EGL_ANGLE_platform_angle_opengl,EGL_ANGLE_platform_angle_vulkan --out-path gl-triangle/gloam c --alias"
   },
   "provenance": {
@@ -39,8 +39,8 @@
       "repo": "KhronosGroup/OpenGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/OpenGL-Registry",
       "path_in_repo": "xml/gl.xml",
-      "commit": "9d527dbc81bb76e35ba284fe385ed8a5ddb90cbc",
-      "blob": "902d7aabcd5e6d6fdb348b20f1a1b9733dac5fbb"
+      "commit": "e8f7cd0e35ac8d6f5667a021ff83d04b1fec41ef",
+      "blob": "7492d15565b79cf3844e3402858582f649677fec"
     },
     "gl_angle_ext.xml": {
       "repo": "angle/angle",
@@ -83,7 +83,7 @@
     },
     {
       "path": "include/gloam/egl.h",
-      "blob": "63eef396d0bc819c82474285f52827483ce622d6",
+      "blob": "e1b88a52ffcaeec7b656a0e66f95674e1e3e5fb5",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
@@ -94,7 +94,7 @@
     },
     {
       "path": "include/gloam/gl.h",
-      "blob": "9917be7bad914e36d2eb7243ad99b83bc8986449",
+      "blob": "56297df309de26d4333012f36391251875923441",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
@@ -113,7 +113,7 @@
     },
     {
       "path": "src/egl.c",
-      "blob": "d298f7c3e32dcf840e2934def7b47a1ad10448cf",
+      "blob": "0791d5b597df278b028b7d5862abb7e9c63c3774",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
@@ -124,7 +124,7 @@
     },
     {
       "path": "src/gl.c",
-      "blob": "205c956dacc92962efa933a63775478d18d838aa",
+      "blob": "b3a1fdb1bb02b3a76a11895821b7b44e12412e90",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",

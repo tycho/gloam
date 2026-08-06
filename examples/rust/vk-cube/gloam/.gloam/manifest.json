@@ -2,8 +2,8 @@
   "schema_version": 2,
   "gloam": {
     "version": "0.6.0",
-    "describe": "0.6.0+9f52e62.dirty",
-    "commit": "9f52e6265af88e5dbf300ed3b9126e917c2c3782",
+    "describe": "0.6.0+9b2e8e6.dirty",
+    "commit": "9b2e8e6b1500efa148a015d3c5d59509ae302ec6",
     "command_line": "gloam --api vk=1.3 --extensions VK_KHR_surface,VK_KHR_swapchain,VK_KHR_win32_surface,VK_KHR_xlib_surface,VK_KHR_wayland_surface,VK_KHR_get_physical_device_properties2,VK_KHR_portability_enumeration --out-path examples/rust/vk-cube/gloam rust --alias"
   },
   "provenance": {
@@ -46,7 +46,7 @@
     },
     {
       "path": "src/vk.rs",
-      "blob": "b24938d2cb7a9610563c7beb21755a26d10951e0",
+      "blob": "1323defe181639fffd98876954431f312a6a960e",
       "derived_from": [
         "vk.xml",
         "vulkan/vk_platform.h",
