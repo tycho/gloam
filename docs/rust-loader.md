@@ -114,12 +114,26 @@ version capping against the driver works identically, and
 commands from device extensions, pre-device-creation; presence flags are
 still only set by `load_device`). Presence queries are methods
 (`vk.KHR_swapchain()`), and `vk.version()` is the applied packed version.
+Extension flags are scope-exact, as in C: each load phase assigns exactly
+its own scope's flags and leaves the other scope untouched.
+
+Presence *probing* is decoupled from the context: `VkExtensions` is a
+standalone snapshot with one query method per extension, filled by
+`vk.query_instance_extensions()` / `vk.query_device_extensions(pd)` (one
+enumeration answers every known extension — probe each candidate device
+once during selection) or `VkExtensions::from_properties(&props)` (pure,
+from your own enumeration). `vk.load_device_from_query(device, pd,
+&snapshot)` / `vk.load_instance_from_query(...)` are phase variants that
+copy a snapshot's flags instead of hashing an enabled-name list, so the
+winner's selection probe is reused without re-enumerating.
 
 `vk.discover(instance, physical_device, device)` is the C `--loader`
 discovery mode: it enumerates extension properties itself, with the same
-caveat that detection means *supported*, not *enabled*. It is the one
-API that allocates, so it sits behind the default-on `alloc` cargo
-feature; the phased loaders never allocate and work with
+caveat that detection means *supported*, not *enabled*. Passing a
+different `physical_device` than the previous call invalidates and
+re-queries all device-derived state. `discover` and the `query_*`
+probes are the APIs that allocate, so they sit behind the default-on
+`alloc` cargo feature; the phased loaders never allocate and work with
 `default-features = false`.
 
 There is no `Finalize` — dropping the `Vk` (or overwriting it with
@@ -156,7 +170,8 @@ if gl::KHR_debug() { /* ... */ }
 ```
 
 Vulkan gets `initialize_global` / `load_instance_global` /
-`load_device_global` / `discover_global`, and every module gets
+`load_device_global` / `discover_global` (plus `query_*_extensions_global`
+and `load_*_from_query_global` probe mirrors), and every module gets
 `global()`, which returns `&'static` access to the underlying context
 for passing into context-taking code.
 
@@ -208,6 +223,11 @@ Loading and lifecycle:
 | `gloamVulkanLoadInstance(inst, ver, n, names)` | `vk.load_instance(instance, api_version, &[&CStr])` |
 | `gloamVulkanLoadPhysicalDeviceExtension[s](...)` | `vk.load_physical_device_extensions(&[&CStr])` |
 | `gloamVulkanLoadDevice(dev, pd, n, names)` | `vk.load_device(device, physical_device, &[&CStr])` |
+| `gloamVulkanQueryInstanceExtensions(&out)` | `vk.query_instance_extensions() -> Option<VkExtensions>` |
+| `gloamVulkanQueryDeviceExtensions(pd, &out)` | `vk.query_device_extensions(pd) -> Option<VkExtensions>` |
+| `gloamVulkanHashExtensionProperties(n, props, &out)` | `VkExtensions::from_properties(&props)` |
+| `gloamVulkanLoadInstanceFromQuery(inst, ver, &exts)` | `vk.load_instance_from_query(instance, api_version, &exts)` |
+| `gloamVulkanLoadDeviceFromQuery(dev, pd, &exts)` | `vk.load_device_from_query(device, physical_device, &exts)` |
 | `gloamLoaderLoadVulkan(inst, pd, dev)` (discovery) | `vk.discover(instance, physical_device, device)` |
 | `gloamVulkanFinalize()` | drop the `Vk` |
 | `gloamLoaderLoad*` (dlopen layer) | not generated — open the library yourself |

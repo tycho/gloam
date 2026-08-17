@@ -436,6 +436,34 @@ These functions do **not** set the `GLOAM_VK_*` extension presence
 macros — those are only set by `gloamVulkanLoadDevice` after the
 extension is actually enabled.
 
+#### Extension probing and device selection
+
+Presence questions are answered by the probe API without touching the
+context. `GloamVulkanExtensions` is a standalone snapshot with the same
+named flags as the context; one enumeration fills it for every extension
+the loader knows, which makes probing each candidate during device
+selection a single `vkEnumerateDeviceExtensionProperties` call no matter
+how many extensions the selection checks:
+
+```c
+GloamVulkanExtensions exts;
+for (uint32_t i = 0; i < num_devices; ++i) {
+    if (!gloamVulkanQueryDeviceExtensions(devices[i], &exts) ||
+        !exts.KHR_swapchain)
+        continue;
+    /* ...queue/feature checks; keep the winner and its `exts`... */
+}
+
+// Phase 2 variant: reuse the winner's snapshot — no re-enumeration,
+// flags then mean "advertised" rather than "enabled".
+gloamVulkanLoadDeviceFromQuery(device, physicalDevice, &exts);
+```
+
+`gloamVulkanQueryInstanceExtensions` is the instance-scope counterpart,
+and `gloamVulkanHashExtensionProperties(count, props, &exts)` builds a
+snapshot from a `VkExtensionProperties` array you already enumerated
+yourself (a pure function — no Vulkan calls).
+
 ### Discovery mode
 
 With `--loader`, gloam also generates a discovery API that calls

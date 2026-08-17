@@ -167,6 +167,11 @@ phase returns nonzero on success. Details:
   and uses `vkGetInstanceProcAddr` or `vkGetDeviceProcAddr` accordingly,
   so device-scope calls skip the loader trampoline.
 
+Extension flags are **scope-exact**: `gloamVulkanLoadInstance` assigns
+every instance-scope flag from its list (absent means cleared) and never
+touches device-scope flags; `gloamVulkanLoadDevice` does the reverse.
+Reloading a scope can therefore never leave stale flags behind.
+
 **Phase 1.5 (rare):** some device extensions carry instance-scope query
 commands that must be callable *before* device creation —
 `vkGetPhysicalDeviceFragmentShadingRatesKHR` is the canonical example.
@@ -175,6 +180,31 @@ commands that must be callable *before* device creation —
 those commands between phases 1 and 2. They do **not** set presence
 flags; only `gloamVulkanLoadDevice` does, once the extension is actually
 enabled.
+
+**Extension probing.** Presence questions — which extensions does this
+implementation advertise? — are answered by the probe API without
+touching the context. `GloamVulkanExtensions` is a standalone snapshot
+with the same named flags as the context; one enumeration fills it for
+every extension the loader knows:
+
+```c
+GloamVulkanExtensions exts;
+gloamVulkanQueryInstanceExtensions(&exts);       /* after phase 0 */
+gloamVulkanQueryDeviceExtensions(pd, &exts);     /* after phase 1 */
+gloamVulkanHashExtensionProperties(n, props, &exts); /* from your own
+                                                        enumeration; pure */
+if (exts.KHR_swapchain) { /* advertised (not necessarily enabled) */ }
+```
+
+This makes device selection cheap: probe each candidate once (a single
+`vkEnumerateDeviceExtensionProperties` call answers *all* extensions the
+selection cares about), pick a winner, and hand the winner's snapshot to
+`gloamVulkanLoadDeviceFromQuery(device, pd, &exts)` — a phase-2 variant
+that copies the snapshot's device-scope flags instead of hashing an
+enabled-name list, so device extensions are never enumerated twice.
+(`gloamVulkanLoadInstanceFromQuery` is the phase-1 counterpart.) On a
+context loaded this way the presence flags mean *advertised* rather than
+*enabled* — the application chooses which semantics it wants.
 
 **Discovery mode** (generated with `--loader`) enumerates instead of
 being told:
@@ -187,7 +217,10 @@ gloamLoaderUnloadVulkan();
 ```
 
 Each call loads what the passed handles allow, calling
-`vkEnumerate*ExtensionProperties` to detect extensions. Two caveats make
+`vkEnumerate*ExtensionProperties` to detect extensions; each scope is
+enumerated once and cached, and passing a *different* physical device
+than the previous call invalidates and re-queries all device-derived
+state (device version, device-scope flags). Two caveats make
 enabled-list the recommended flow: detection means *supported*, not
 *enabled* (using a detected-but-unenabled extension violates Vulkan
 validity), and the enumeration calls are expensive — the Khronos loader
