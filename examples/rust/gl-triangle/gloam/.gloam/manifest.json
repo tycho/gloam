@@ -2,8 +2,8 @@
   "schema_version": 2,
   "gloam": {
     "version": "0.6.0",
-    "describe": "0.6.0+9b2e8e6.dirty",
-    "commit": "9b2e8e6b1500efa148a015d3c5d59509ae302ec6",
+    "describe": "0.6.0+c0a8de2.dirty",
+    "commit": "c0a8de236a67a27846ea21b7d4ca44c4bb887d22",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0 --merge --out-path examples/rust/gl-triangle/gloam rust --alias --mx-global"
   },
   "provenance": {
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/gl.rs",
-      "blob": "0e3d4a690d3792b8e9b28e7e351a4a83c9399371",
+      "blob": "9ac3a82b9ef6f4208f8c953fbb44c87e08f4c243",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",

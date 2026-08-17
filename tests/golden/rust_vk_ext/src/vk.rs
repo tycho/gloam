@@ -1362,8 +1362,8 @@ pub const VK_KHR_MAINTENANCE_11_SPEC_VERSION: u32 = 1;
 pub const VK_KHR_MAINTENANCE_11_EXTENSION_NAME: &core::ffi::CStr = c"VK_KHR_maintenance11";
 pub const VK_ARM_EXTENSION_659_SPEC_VERSION: u32 = 0;
 pub const VK_ARM_EXTENSION_659_EXTENSION_NAME: &core::ffi::CStr = c"VK_ARM_extension_659";
-pub const VK_EXT_EXTENSION_660_SPEC_VERSION: u32 = 0;
-pub const VK_EXT_EXTENSION_660_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_660";
+pub const VK_EXT_COOPERATIVE_MATRIX_MAINTENANCE_1_SPEC_VERSION: u32 = 1;
+pub const VK_EXT_COOPERATIVE_MATRIX_MAINTENANCE_1_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_cooperative_matrix_maintenance1";
 pub const VK_KHR_EXTENSION_661_SPEC_VERSION: u32 = 0;
 pub const VK_KHR_EXTENSION_661_EXTENSION_NAME: &core::ffi::CStr = c"VK_KHR_extension_661";
 pub const VK_VALVE_EXTENSION_662_SPEC_VERSION: u32 = 0;
@@ -1444,6 +1444,18 @@ pub const VK_EXT_EXTENSION_700_SPEC_VERSION: u32 = 0;
 pub const VK_EXT_EXTENSION_700_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_700";
 pub const VK_EXT_EXTENSION_701_SPEC_VERSION: u32 = 0;
 pub const VK_EXT_EXTENSION_701_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_701";
+pub const VK_KHR_EXTENSION_702_SPEC_VERSION: u32 = 0;
+pub const VK_KHR_EXTENSION_702_EXTENSION_NAME: &core::ffi::CStr = c"VK_KHR_extension_702";
+pub const VK_NV_EXTENSION_703_SPEC_VERSION: u32 = 0;
+pub const VK_NV_EXTENSION_703_EXTENSION_NAME: &core::ffi::CStr = c"VK_NV_extension_703";
+pub const VK_EXT_EXTENSION_704_SPEC_VERSION: u32 = 0;
+pub const VK_EXT_EXTENSION_704_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_704";
+pub const VK_EXT_EXTENSION_705_SPEC_VERSION: u32 = 0;
+pub const VK_EXT_EXTENSION_705_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_705";
+pub const VK_EXT_EXTENSION_706_SPEC_VERSION: u32 = 0;
+pub const VK_EXT_EXTENSION_706_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_706";
+pub const VK_EXT_EXTENSION_707_SPEC_VERSION: u32 = 0;
+pub const VK_EXT_EXTENSION_707_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_707";
 
 // ── Enum groups ─────────────────────────────────────────────
 #[repr(transparent)]
@@ -3489,6 +3501,9 @@ pub const VK_STRUCTURE_TYPE_COMPUTE_OCCUPANCY_PRIORITY_PARAMETERS_NV: VkStructur
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_OCCUPANCY_PRIORITY_FEATURES_NV: VkStructureType = VkStructureType(1000645001);
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_11_FEATURES_KHR: VkStructureType = VkStructureType(1000657000);
 pub const VK_STRUCTURE_TYPE_QUEUE_FAMILY_OPTIMAL_IMAGE_TRANSFER_GRANULARITY_PROPERTIES_KHR: VkStructureType = VkStructureType(1000657001);
+pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_MAINTENANCE_1_FEATURES_EXT: VkStructureType = VkStructureType(1000659000);
+pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_INFO_2_EXT: VkStructureType = VkStructureType(1000659001);
+pub const VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_2_EXT: VkStructureType = VkStructureType(1000659002);
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_PARTITIONED_FEATURES_EXT: VkStructureType = VkStructureType(1000662000);
 pub const VK_STRUCTURE_TYPE_UBM_SURFACE_CREATE_INFO_SEC: VkStructureType = VkStructureType(1000664000);
 pub const VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_4_KHR: VkStructureType = VkStructureType(1000668000);
@@ -5392,6 +5407,7 @@ pub const VK_DRIVER_ID_VULKAN_SC_EMULATION_ON_VULKAN: VkDriverId = VkDriverId(27
 pub const VK_DRIVER_ID_MESA_KOSMICKRISP: VkDriverId = VkDriverId(28);
 pub const VK_DRIVER_ID_MESA_GFXSTREAM: VkDriverId = VkDriverId(29);
 pub const VK_DRIVER_ID_APE_SOFT: VkDriverId = VkDriverId(30);
+pub const VK_DRIVER_ID_RESERVED_31: VkDriverId = VkDriverId(31);
 pub const VK_DRIVER_ID_AMD_PROPRIETARY_KHR: VkDriverId = VkDriverId(1);
 pub const VK_DRIVER_ID_AMD_OPEN_SOURCE_KHR: VkDriverId = VkDriverId(2);
 pub const VK_DRIVER_ID_MESA_RADV_KHR: VkDriverId = VkDriverId(3);
@@ -6182,6 +6198,9 @@ pub type VkVideoEncodeFlagBitsKHR = u32;
 pub const VK_VIDEO_ENCODE_INTRA_REFRESH_BIT_KHR: VkVideoEncodeFlagBitsKHR = 0x0000000000000004;
 pub const VK_VIDEO_ENCODE_WITH_QUANTIZATION_DELTA_MAP_BIT_KHR: VkVideoEncodeFlagBitsKHR = 0x0000000000000001;
 pub const VK_VIDEO_ENCODE_WITH_EMPHASIS_MAP_BIT_KHR: VkVideoEncodeFlagBitsKHR = 0x0000000000000002;
+
+pub type VkCooperativeMatrixFlagBitsEXT = u32;
+pub const VK_COOPERATIVE_MATRIX_SATURATING_ACCUMULATION_BIT_EXT: VkCooperativeMatrixFlagBitsEXT = 0x0000000000000001;
 
 pub type VkVideoEncodeUsageFlagBitsKHR = u32;
 pub const VK_VIDEO_ENCODE_USAGE_DEFAULT_KHR: VkVideoEncodeUsageFlagBitsKHR = 0;
@@ -8110,6 +8129,7 @@ pub type VkVideoEncodeAV1CapabilityFlagsKHR = VkFlags;
 pub type VkVideoEncodeAV1StdFlagsKHR = VkFlags;
 pub type VkVideoEncodeAV1RateControlFlagsKHR = VkFlags;
 pub type VkVideoEncodeAV1SuperblockSizeFlagsKHR = VkFlags;
+pub type VkCooperativeMatrixFlagsEXT = VkFlags;
 pub type VkAccessFlags2 = VkFlags64;
 pub type VkPipelineStageFlags2 = VkFlags64;
 pub type VkFormatFeatureFlags2 = VkFlags64;
