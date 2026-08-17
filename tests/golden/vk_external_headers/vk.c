@@ -896,7 +896,10 @@ static int gloam_vk_find_core(GloamVulkanContext *context, VkPhysicalDevice phys
  *      commands get the fast vkGetDeviceProcAddr path.
  *
  * Each call is additive: context state from previous calls is preserved and
- * only new or better-scoped slots are updated.
+ * only new or better-scoped slots are updated. The exception is a change of
+ * physical device: passing a different physical_device than the previous
+ * call invalidates all device-derived state (device api version, device-
+ * scope extension flags), which is re-established against the new device.
  *
  * Requires context->GetInstanceProcAddr to be set before the first call.
  * context->GetDeviceProcAddr is resolved automatically when an instance is
@@ -907,7 +910,6 @@ static int gloamVulkanDiscoverContext(GloamVulkanContext *context, VkInstance in
     int version;
     uint32_t i;
     GLOAM_UNUSED(kFnCount_Vulkan);
-    GLOAM_UNUSED(gloam_hash_ext_string);
 
     if (!context->GetInstanceProcAddr)
         return 0;
@@ -917,6 +919,16 @@ static int gloamVulkanDiscoverContext(GloamVulkanContext *context, VkInstance in
         context->GetDeviceProcAddr =
             (PFN_vkGetDeviceProcAddr)context->GetInstanceProcAddr(
                 instance, "vkGetDeviceProcAddr");
+
+    /* A physical device other than the one whose state is cached invalidates
+     * all device-derived state; it is re-queried against the new device.
+     */
+    if (physical_device != NULL &&
+            context->vk_loaded_physical_device != physical_device) {
+        context->vk_device_version = 0;
+        context->vk_found_device_exts = 0;
+        context->vk_loaded_physical_device = physical_device;
+    }
 
     /* Bootstrap: EnumerateInstanceVersion is Global-scope — it can be loaded
      * before any instance exists — and must be available before find_core.
@@ -966,8 +978,10 @@ void gloamVulkanInitializeCustom(PFN_vkGetInstanceProcAddr getInstanceProcAddr)
  * vkGetInstanceProcAddr. Device-scope commands in instance extensions (e.g.
  * VK_EXT_debug_utils) are skipped here and picked up by LoadDevice.
  *
- * Sets featArray from api_version. Sets extArray for enabled instance
- * extensions. Runs alias resolution. Returns 1 on success.
+ * Sets featArray from api_version. Assigns the instance-scope extArray
+ * flags from the enabled list (exactly: instance extensions absent from the
+ * list are cleared; device-scope flags are untouched). Runs alias
+ * resolution. Returns 1 on success.
  */
 int gloamVulkanLoadInstanceContext(GloamVulkanContext *context, VkInstance instance, uint32_t api_version,
                                    uint32_t num_instance_extensions, const char *const *instance_extensions)
@@ -1015,6 +1029,7 @@ int gloamVulkanLoadInstance(VkInstance instance, uint32_t api_version, uint32_t 
 void gloamVulkanLoadPhysicalDeviceExtensionsContext(GloamVulkanContext *context,  uint32_t num_device_extensions, const char *const *device_extensions)
 {
 
+    GLOAM_UNUSED(context);
     GLOAM_UNUSED(num_device_extensions);
     GLOAM_UNUSED(device_extensions);
 }
@@ -1044,8 +1059,10 @@ void gloamVulkanLoadPhysicalDeviceExtension(const char *device_extension)
  * each command to the correct proc-addr function based on scope: Instance-scope
  * via vkGetInstanceProcAddr, Device-scope via vkGetDeviceProcAddr.
  *
- * Updates featArray from the device's api_version. Sets extArray for enabled
- * device extensions. Runs alias resolution. Returns 1 on success.
+ * Updates featArray from the device's api_version. Assigns the device-scope
+ * extArray flags from the enabled list (exactly: device extensions absent
+ * from the list are cleared; instance-scope flags are untouched). Runs
+ * alias resolution. Returns 1 on success.
  */
 int gloamVulkanLoadDeviceContext(GloamVulkanContext *context, VkDevice device, VkPhysicalDevice physical_device,
                                  uint32_t num_device_extensions, const char *const *device_extensions)
@@ -1073,6 +1090,7 @@ int gloamVulkanLoadDeviceContext(GloamVulkanContext *context, VkDevice device, V
     }
 
     context->vk_loaded_device = device;
+    context->vk_loaded_physical_device = physical_device;
     GLOAM_UNUSED(num_device_extensions);
     GLOAM_UNUSED(device_extensions);
     return 1;

@@ -798,71 +798,110 @@ static void gloam_vk_load_global_pfns(GloamVulkanContext *context, PFN_vkGetInst
     }
 }
 
+/* Assign the presence flag of every extArray index in `idx_table` from a
+ * sorted hash list: 1 if the extension's hash is found, else 0. Exact
+ * assignment — every listed slot is (re)initialized, never OR-merged — so
+ * stale flags from a previous enumeration of the same scope cannot survive.
+ * The index tables are scope-partitioned (kExtIdxInstance_* / kExtIdxDevice_*),
+ * so assigning one scope never disturbs flags owned by the other.
+ */
+static void gloam_vk_assign_ext_slots(unsigned char *ext_array, const uint16_t *idx_table, uint32_t idx_count, const uint64_t *exts, uint32_t num_exts)
+{
+    uint32_t i;
+    for (i = 0; i < idx_count; ++i) {
+        const uint16_t extIdx = idx_table[i];
+        ext_array[extIdx] = (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_Vulkan[extIdx]);
+    }
+}
+
+/* Hash a user-provided extension name array and assign one scope's presence
+ * flags from it (see gloam_vk_assign_ext_slots). An empty list clears the
+ * scope's flags rather than preserving stale ones.
+ */
+static int gloam_vk_apply_extensions(GloamVulkanContext *context, const uint16_t *idx_table, uint32_t idx_count, uint32_t num_exts, const char *const *ext_names)
+{
+    uint32_t i;
+    uint64_t *exts = NULL;
+
+    if (num_exts != 0) {
+        exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
+        if (!exts)
+            return 0;
+        for (i = 0; i < num_exts; ++i)
+            exts[i] = gloam_hash_string(ext_names[i], strlen(ext_names[i]));
+        gloam_sort_hashes(exts, num_exts);
+    }
+
+    gloam_vk_assign_ext_slots(context->extArray, idx_table, idx_count, exts, num_exts);
+
+    free(exts);
+    return 1;
+}
+
+/* Copy one scope's presence flags from a probe snapshot into an extArray.
+ * Exact assignment over the scope's index table, like the helpers above.
+ */
+static void gloam_vk_copy_ext_slots(unsigned char *dst, const unsigned char *src, const uint16_t *idx_table, uint32_t idx_count)
+{
+    uint32_t i;
+    for (i = 0; i < idx_count; ++i)
+        dst[idx_table[i]] = src[idx_table[i]];
+}
+
 /* ==========================================================================
  * Driver extension query (shared across per-API sections)
  * ==========================================================================
  */
 
-/* Enumerate Vulkan extensions and return a heap-allocated, sorted array of
- * XXH3-64 hashes. Only enumerates scopes not yet cached on the context:
- * instance extensions are skipped if vk_found_instance_exts is set, device
- * extensions are skipped if vk_found_device_exts is set. The caller
- * (find_extensions) uses |= when merging results so bits only accumulate.
+/* Enumerate one Vulkan extension scope — instance when physical_device is
+ * NULL, device otherwise — into a heap-allocated, sorted array of XXH3-64
+ * hashes. Pure query: touches no context state beyond reading the
+ * Enumerate* PFNs, so the discovery loader and the probe API share it.
+ * A scope advertising zero extensions yields a NULL array and count 0.
  */
 static int gloam_vk_get_extensions(GloamVulkanContext *context,  VkPhysicalDevice physical_device, uint64_t **out_exts, uint32_t *out_num_exts)
 {
-    uint32_t inst_count = 0, dev_count = 0, total, i;
+    uint32_t count = 0, i;
     VkExtensionProperties *props = NULL;
     uint64_t *exts = NULL;
 
-    if (!context->vk_found_instance_exts) {
+    *out_exts = NULL;
+    *out_num_exts = 0;
+
+    if (physical_device == NULL) {
         if (!context->EnumerateInstanceExtensionProperties)
             return 0;
-        context->EnumerateInstanceExtensionProperties(NULL, &inst_count, NULL);
+        context->EnumerateInstanceExtensionProperties(NULL, &count, NULL);
+    } else {
+        if (!context->EnumerateDeviceExtensionProperties)
+            return 0;
+        context->EnumerateDeviceExtensionProperties(physical_device, NULL, &count, NULL);
     }
-    if (physical_device != NULL && !context->vk_found_device_exts &&
-            context->EnumerateDeviceExtensionProperties != NULL)
-        context->EnumerateDeviceExtensionProperties(physical_device, NULL, &dev_count, NULL);
 
-    total = inst_count + dev_count;
-    if (total == 0) {
-        *out_exts = NULL;
-        *out_num_exts = 0;
+    if (count == 0)
         return 1;
-    }
 
-    /* Single allocation covers the larger of inst / dev for the props buffer,
-     * and the exact total for the hash array.
-     */
-    props = (VkExtensionProperties *)calloc(
-        (inst_count > dev_count ? inst_count : dev_count), sizeof(*props));
-    exts  = (uint64_t *)calloc(total, sizeof(uint64_t));
+    props = (VkExtensionProperties *)calloc(count, sizeof(*props));
+    exts  = (uint64_t *)calloc(count, sizeof(uint64_t));
     if (!props || !exts) {
         free(props);
         free(exts);
         return 0;
     }
 
-    if (inst_count) {
-        context->EnumerateInstanceExtensionProperties(NULL, &inst_count, props);
-        for (i = 0; i < inst_count; ++i)
-            exts[i] = gloam_hash_string(props[i].extensionName,
-                                        strlen(props[i].extensionName));
-        context->vk_found_instance_exts = 1;
-    }
+    if (physical_device == NULL)
+        context->EnumerateInstanceExtensionProperties(NULL, &count, props);
+    else
+        context->EnumerateDeviceExtensionProperties(physical_device, NULL, &count, props);
 
-    if (dev_count) {
-        context->EnumerateDeviceExtensionProperties(physical_device, NULL, &dev_count, props);
-        for (i = 0; i < dev_count; ++i)
-            exts[inst_count + i] = gloam_hash_string(props[i].extensionName,
-                                                     strlen(props[i].extensionName));
-        context->vk_found_device_exts = 1;
-    }
+    for (i = 0; i < count; ++i)
+        exts[i] = gloam_hash_string(props[i].extensionName,
+                                    strlen(props[i].extensionName));
 
     free(props);
-    gloam_sort_hashes(exts, total);
+    gloam_sort_hashes(exts, count);
     *out_exts     = exts;
-    *out_num_exts = total;
+    *out_num_exts = count;
     return 1;
 }
 
@@ -882,36 +921,58 @@ static const uint16_t kExtIdx_vk[] = {
        1, /* VK_KHR_swapchain */
 };
 
+/* Scope-partitioned views of the extension set. Instance-scope extensions
+ * belong to vkEnumerateInstanceExtensionProperties / instance-create enabled
+ * lists; device-scope to their per-device equivalents. Detection assigns
+ * exactly one scope's extArray slots at a time, so establishing one scope
+ * never disturbs flags owned by the other.
+ */
+static const uint16_t kExtIdxInstance_vk[] = {
+       0, /* VK_KHR_surface */
+};
+static const uint16_t kExtIdxDevice_vk[] = {
+       1, /* VK_KHR_swapchain */
+};
+
 /* Extension PFN range table for vk. */
 static const GloamPfnRange_t kExtPfnRanges_vk[] = {
     {    1,  137,    9 }, /* VK_KHR_swapchain */
     {    0,  146,    5 }, /* VK_KHR_surface */
 };
 
-/* Search pre-baked kExtHashes_Vulkan against the sorted driver hash list and set
- * extArray flags for every matching extension.
+/* Search pre-baked kExtHashes_Vulkan against each scope's sorted driver hash
+ * list and assign that scope's extArray flags.
  */
 static int gloam_vk_find_extensions_vk(GloamVulkanContext *context, VkPhysicalDevice physical_device)
 {
     uint64_t *exts = NULL;
-    uint32_t  num_exts = 0, i;
+    uint32_t  num_exts = 0;
 
-    /* Skip if there is nothing new to enumerate. */
-    if (context->vk_found_instance_exts &&
-        (physical_device == NULL || context->vk_found_device_exts))
-        return 1;
-
-    if (!gloam_vk_get_extensions(context, physical_device, &exts, &num_exts))
-        return 0;
-
-    /* |= so that bits from a previous call (instance-only) are preserved
-       when this call adds device extensions. */
-    for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_vk); ++i) {
-        const uint16_t extIdx = kExtIdx_vk[i];
-        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_Vulkan[extIdx]);
+    /* Each scope is enumerated once and assigned exactly (see
+     * gloam_vk_assign_ext_slots); the caller invalidates the device scope
+     * when the physical device changes.
+     */
+    if (!context->vk_found_instance_exts) {
+        if (!gloam_vk_get_extensions(context, NULL, &exts, &num_exts))
+            return 0;
+        gloam_vk_assign_ext_slots(context->extArray, kExtIdxInstance_vk,
+            GLOAM_ARRAYSIZE(kExtIdxInstance_vk), exts, num_exts);
+        free(exts);
+        exts = NULL;
+        num_exts = 0;
+        context->vk_found_instance_exts = 1;
     }
 
-    free(exts);
+    if (physical_device != NULL && !context->vk_found_device_exts &&
+            context->EnumerateDeviceExtensionProperties != NULL) {
+        if (!gloam_vk_get_extensions(context, physical_device, &exts, &num_exts))
+            return 0;
+        gloam_vk_assign_ext_slots(context->extArray, kExtIdxDevice_vk,
+            GLOAM_ARRAYSIZE(kExtIdxDevice_vk), exts, num_exts);
+        free(exts);
+        context->vk_found_device_exts = 1;
+    }
+
     return 1;
 }
 
@@ -976,36 +1037,6 @@ static int gloam_vk_find_core(GloamVulkanContext *context, VkPhysicalDevice phys
     return (int)version_value;
 }
 
-/* Hash user-provided extension name arrays, search against kExtHashes, and
- * set the corresponding extArray bits. Uses |= so bits from a previous
- * call (e.g. instance extensions) are preserved when device extensions are
- * added.
- */
-static int gloam_vk_apply_extensions_vk(GloamVulkanContext *context, uint32_t num_exts, const char *const *ext_names)
-{
-    uint32_t i;
-    uint64_t *exts;
-
-    if (num_exts == 0)
-        return 1;
-
-    exts = (uint64_t *)calloc(num_exts, sizeof(uint64_t));
-    if (!exts)
-        return 0;
-
-    for (i = 0; i < num_exts; ++i)
-        exts[i] = gloam_hash_string(ext_names[i], strlen(ext_names[i]));
-    gloam_sort_hashes(exts, num_exts);
-
-    for (i = 0; i < GLOAM_ARRAYSIZE(kExtIdx_vk); ++i) {
-        const uint16_t extIdx = kExtIdx_vk[i];
-        context->extArray[extIdx] |= (unsigned char)gloam_hash_search(exts, num_exts, kExtHashes_Vulkan[extIdx]);
-    }
-
-    free(exts);
-    return 1;
-}
-
 /* gloamVulkanDiscoverContext — canonical Vulkan discovery loader.
  *
  * May be called multiple times on the same context as the application
@@ -1018,7 +1049,10 @@ static int gloam_vk_apply_extensions_vk(GloamVulkanContext *context, uint32_t nu
  *      commands get the fast vkGetDeviceProcAddr path.
  *
  * Each call is additive: context state from previous calls is preserved and
- * only new or better-scoped slots are updated.
+ * only new or better-scoped slots are updated. The exception is a change of
+ * physical device: passing a different physical_device than the previous
+ * call invalidates all device-derived state (device api version, device-
+ * scope extension flags), which is re-established against the new device.
  *
  * Requires context->GetInstanceProcAddr to be set before the first call.
  * context->GetDeviceProcAddr is resolved automatically when an instance is
@@ -1039,6 +1073,16 @@ static int gloamVulkanDiscoverContext(GloamVulkanContext *context, VkInstance in
         context->GetDeviceProcAddr =
             (PFN_vkGetDeviceProcAddr)context->GetInstanceProcAddr(
                 instance, "vkGetDeviceProcAddr");
+
+    /* A physical device other than the one whose state is cached invalidates
+     * all device-derived state; it is re-queried against the new device.
+     */
+    if (physical_device != NULL &&
+            context->vk_loaded_physical_device != physical_device) {
+        context->vk_device_version = 0;
+        context->vk_found_device_exts = 0;
+        context->vk_loaded_physical_device = physical_device;
+    }
 
     /* Bootstrap: EnumerateInstanceVersion is Global-scope — it can be loaded
      * before any instance exists — and must be available before find_core.
@@ -1142,8 +1186,10 @@ void gloamVulkanInitializeCustom(PFN_vkGetInstanceProcAddr getInstanceProcAddr)
  * vkGetInstanceProcAddr. Device-scope commands in instance extensions (e.g.
  * VK_EXT_debug_utils) are skipped here and picked up by LoadDevice.
  *
- * Sets featArray from api_version. Sets extArray for enabled instance
- * extensions. Runs alias resolution. Returns 1 on success.
+ * Sets featArray from api_version. Assigns the instance-scope extArray
+ * flags from the enabled list (exactly: instance extensions absent from the
+ * list are cleared; device-scope flags are untouched). Runs alias
+ * resolution. Returns 1 on success.
  */
 int gloamVulkanLoadInstanceContext(GloamVulkanContext *context, VkInstance instance, uint32_t api_version,
                                    uint32_t num_instance_extensions, const char *const *instance_extensions)
@@ -1155,7 +1201,8 @@ int gloamVulkanLoadInstanceContext(GloamVulkanContext *context, VkInstance insta
 
     gloam_vk_apply_version(context, api_version);
 
-    if (!gloam_vk_apply_extensions_vk(context,
+    if (!gloam_vk_apply_extensions(context, kExtIdxInstance_vk,
+            GLOAM_ARRAYSIZE(kExtIdxInstance_vk),
             num_instance_extensions, instance_extensions))
         return 0;
 
@@ -1250,8 +1297,10 @@ void gloamVulkanLoadPhysicalDeviceExtension(const char *device_extension)
  * each command to the correct proc-addr function based on scope: Instance-scope
  * via vkGetInstanceProcAddr, Device-scope via vkGetDeviceProcAddr.
  *
- * Updates featArray from the device's api_version. Sets extArray for enabled
- * device extensions. Runs alias resolution. Returns 1 on success.
+ * Updates featArray from the device's api_version. Assigns the device-scope
+ * extArray flags from the enabled list (exactly: device extensions absent
+ * from the list are cleared; instance-scope flags are untouched). Runs
+ * alias resolution. Returns 1 on success.
  */
 int gloamVulkanLoadDeviceContext(GloamVulkanContext *context, VkDevice device, VkPhysicalDevice physical_device,
                                  uint32_t num_device_extensions, const char *const *device_extensions)
@@ -1271,7 +1320,8 @@ int gloamVulkanLoadDeviceContext(GloamVulkanContext *context, VkDevice device, V
     context->GetPhysicalDeviceProperties(physical_device, &props);
     gloam_vk_apply_version(context, props.apiVersion);
 
-    if (!gloam_vk_apply_extensions_vk(context,
+    if (!gloam_vk_apply_extensions(context, kExtIdxDevice_vk,
+            GLOAM_ARRAYSIZE(kExtIdxDevice_vk),
             num_device_extensions, device_extensions))
         return 0;
 
@@ -1290,6 +1340,7 @@ int gloamVulkanLoadDeviceContext(GloamVulkanContext *context, VkDevice device, V
     }
 
     context->vk_loaded_device = device;
+    context->vk_loaded_physical_device = physical_device;
     GLOAM_UNUSED(num_device_extensions);
     GLOAM_UNUSED(device_extensions);
     return 1;
@@ -1353,6 +1404,185 @@ void gloamVulkanFinalizeContext(GloamVulkanContext *context)
 void gloamVulkanFinalize(void)
 {
     gloamVulkanFinalizeContext(&gloam_vk_context);
+}
+
+/* ==========================================================================
+ * Vulkan extension probe API
+ * ==========================================================================
+ * Presence snapshots decoupled from the context: a probe answers "which of
+ * the known extensions does this implementation advertise?" for one scope,
+ * without touching extArray or the discovery caches. One enumeration
+ * answers every known extension at once, which makes per-candidate probing
+ * during device selection cheap — query each candidate once, pick a winner,
+ * then hand the winner's snapshot to gloamVulkanLoadDeviceFromQuery with no
+ * further enumeration.
+ */
+
+/* gloamVulkanQueryInstanceExtensionsContext — snapshot the instance-scope
+ * extension presence flags. Requires the Global-scope PFNs (Initialize or a
+ * first Discover call). Returns 1 on success.
+ */
+int gloamVulkanQueryInstanceExtensionsContext(GloamVulkanContext *context, GloamVulkanExtensions *out_extensions)
+{
+    uint64_t *exts = NULL;
+    uint32_t  num_exts = 0;
+
+    memset(out_extensions, 0, sizeof(*out_extensions));
+    if (!gloam_vk_get_extensions(context, NULL, &exts, &num_exts))
+        return 0;
+    gloam_vk_assign_ext_slots(out_extensions->extArray, kExtIdxInstance_vk,
+        GLOAM_ARRAYSIZE(kExtIdxInstance_vk), exts, num_exts);
+    free(exts);
+    return 1;
+}
+
+int gloamVulkanQueryInstanceExtensions(GloamVulkanExtensions *out_extensions)
+{
+    return gloamVulkanQueryInstanceExtensionsContext(&gloam_vk_context, out_extensions);
+}
+
+/* gloamVulkanQueryDeviceExtensionsContext — snapshot one physical device's
+ * device-scope extension presence flags. Requires the Instance-scope PFNs
+ * (LoadInstance or a Discover call with a live instance). Returns 1 on
+ * success.
+ */
+int gloamVulkanQueryDeviceExtensionsContext(GloamVulkanContext *context, VkPhysicalDevice physical_device, GloamVulkanExtensions *out_extensions)
+{
+    uint64_t *exts = NULL;
+    uint32_t  num_exts = 0;
+
+    memset(out_extensions, 0, sizeof(*out_extensions));
+    if (physical_device == NULL)
+        return 0;
+    if (!gloam_vk_get_extensions(context, physical_device, &exts, &num_exts))
+        return 0;
+    gloam_vk_assign_ext_slots(out_extensions->extArray, kExtIdxDevice_vk,
+        GLOAM_ARRAYSIZE(kExtIdxDevice_vk), exts, num_exts);
+    free(exts);
+    return 1;
+}
+
+int gloamVulkanQueryDeviceExtensions(VkPhysicalDevice physical_device, GloamVulkanExtensions *out_extensions)
+{
+    return gloamVulkanQueryDeviceExtensionsContext(&gloam_vk_context, physical_device, out_extensions);
+}
+
+/* gloamVulkanHashExtensionProperties — build a snapshot from an extension
+ * property array the application already enumerated itself. Pure function:
+ * no context, no Vulkan calls. Both scopes' flags are assigned, so the
+ * snapshot reflects exactly the given list. Returns 1 on success (0 only on
+ * allocation failure).
+ */
+int gloamVulkanHashExtensionProperties(uint32_t num_properties, const VkExtensionProperties *properties, GloamVulkanExtensions *out_extensions)
+{
+    uint32_t i;
+    uint64_t *exts = NULL;
+
+    memset(out_extensions, 0, sizeof(*out_extensions));
+
+    if (num_properties != 0) {
+        exts = (uint64_t *)calloc(num_properties, sizeof(uint64_t));
+        if (!exts)
+            return 0;
+        for (i = 0; i < num_properties; ++i)
+            exts[i] = gloam_hash_string(properties[i].extensionName,
+                                        strlen(properties[i].extensionName));
+        gloam_sort_hashes(exts, num_properties);
+    }
+
+    gloam_vk_assign_ext_slots(out_extensions->extArray, kExtIdx_vk,
+        GLOAM_ARRAYSIZE(kExtIdx_vk), exts, num_properties);
+
+    free(exts);
+    return 1;
+}
+
+/* gloamVulkanLoadInstanceFromQueryContext — Phase 1 variant taking a probe
+ * snapshot instead of an enabled-name list. Copies the snapshot's instance-
+ * scope presence flags into extArray — on this context the GLOAM_VK_*
+ * macros then answer "present" rather than "enabled" — and loads PFNs
+ * exactly like gloamVulkanLoadInstance. No enumeration, no hashing.
+ */
+int gloamVulkanLoadInstanceFromQueryContext(GloamVulkanContext *context, VkInstance instance, uint32_t api_version, const GloamVulkanExtensions *extensions)
+{
+    uint32_t i;
+
+    if (!context->GetInstanceProcAddr)
+        return 0;
+
+    gloam_vk_apply_version(context, api_version);
+    gloam_vk_copy_ext_slots(context->extArray, extensions->extArray,
+        kExtIdxInstance_vk, GLOAM_ARRAYSIZE(kExtIdxInstance_vk));
+    /* Load PFNs for every enabled feature (instance + global scope). */
+    for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_Vulkan); ++i) {
+        const GloamPfnRange_t *r = &kFeatPfnRanges_Vulkan[i];
+        if (context->featArray[r->extension])
+            gloam_load_pfn_range_vk(context, instance, NULL, r->start, r->count);
+    }
+    /* Load PFNs for every present extension (instance + global scope). */
+    for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_vk); ++i) {
+        const GloamPfnRange_t *r = &kExtPfnRanges_vk[i];
+        if (context->extArray[r->extension])
+            gloam_load_pfn_range_vk(context, instance, NULL, r->start, r->count);
+    }
+    context->vk_loaded_instance = instance;
+    GLOAM_UNUSED(extensions);
+    return 1;
+}
+
+int gloamVulkanLoadInstanceFromQuery(VkInstance instance, uint32_t api_version, const GloamVulkanExtensions *extensions)
+{
+    return gloamVulkanLoadInstanceFromQueryContext(&gloam_vk_context,
+        instance, api_version, extensions);
+}
+
+/* gloamVulkanLoadDeviceFromQueryContext — Phase 2 variant taking a probe
+ * snapshot instead of an enabled-name list: the snapshot from probing the
+ * chosen physical device during selection is reused here, so device
+ * extensions are never enumerated twice. Copies the snapshot's device-scope
+ * presence flags into extArray and loads PFNs exactly like
+ * gloamVulkanLoadDevice.
+ */
+int gloamVulkanLoadDeviceFromQueryContext(GloamVulkanContext *context, VkDevice device, VkPhysicalDevice physical_device, const GloamVulkanExtensions *extensions)
+{
+    uint32_t i;
+    VkPhysicalDeviceProperties props;
+    VkInstance instance = context->vk_loaded_instance;
+
+    if (instance && !context->GetDeviceProcAddr)
+        context->GetDeviceProcAddr =
+            (PFN_vkGetDeviceProcAddr)context->GetInstanceProcAddr(
+                instance, "vkGetDeviceProcAddr");
+
+    if (!context->GetDeviceProcAddr || !device)
+        return 0;
+
+    context->GetPhysicalDeviceProperties(physical_device, &props);
+    gloam_vk_apply_version(context, props.apiVersion);
+    gloam_vk_copy_ext_slots(context->extArray, extensions->extArray,
+        kExtIdxDevice_vk, GLOAM_ARRAYSIZE(kExtIdxDevice_vk));
+    /* Reload PFNs for enabled features — Device-scope gets the fast path. */
+    for (i = 0; i < GLOAM_ARRAYSIZE(kFeatPfnRanges_Vulkan); ++i) {
+        const GloamPfnRange_t *r = &kFeatPfnRanges_Vulkan[i];
+        if (context->featArray[r->extension])
+            gloam_load_pfn_range_vk(context, instance, device, r->start, r->count);
+    }
+    /* Load PFNs for every present extension (all scopes). */
+    for (i = 0; i < GLOAM_ARRAYSIZE(kExtPfnRanges_vk); ++i) {
+        const GloamPfnRange_t *r = &kExtPfnRanges_vk[i];
+        if (context->extArray[r->extension])
+            gloam_load_pfn_range_vk(context, instance, device, r->start, r->count);
+    }
+    context->vk_loaded_device = device;
+    context->vk_loaded_physical_device = physical_device;
+    GLOAM_UNUSED(extensions);
+    return 1;
+}
+
+int gloamVulkanLoadDeviceFromQuery(VkDevice device, VkPhysicalDevice physical_device, const GloamVulkanExtensions *extensions)
+{
+    return gloamVulkanLoadDeviceFromQueryContext(&gloam_vk_context,
+        device, physical_device, extensions);
 }
 
 /* ==========================================================================

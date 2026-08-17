@@ -10841,6 +10841,11 @@ typedef struct GloamVulkanContext {
     VkInstance vk_loaded_instance;
     /* The last VkDevice this context loaded entry points from */
     VkDevice vk_loaded_device;
+    /* The VkPhysicalDevice whose device-derived state (device api version,
+     * device-scope extension flags) is cached on this context. A discovery
+     * call with a different physical device invalidates and re-queries it.
+     */
+    VkPhysicalDevice vk_loaded_physical_device;
     /* Vulkan discovery-path metadata — used by gloamLoaderLoadVulkanContext to make
      * repeated calls additive without re-enumerating already-cached scopes.
      */
@@ -10854,6 +10859,24 @@ typedef struct GloamVulkanContext {
  * its address is fixed and does not re-load it on every access.
  */
 extern GloamVulkanContext gloam_vk_context;
+
+/* ---- Extension probe snapshot --------------------------------------------
+ * A standalone presence snapshot, filled by the gloamVulkanQuery* functions
+ * and gloamVulkanHashExtensionProperties. Same named-union layout as the
+ * context's extArray, but independent of any context: flags here always
+ * mean "the implementation advertises this extension" — present, never
+ * "enabled". Cheap to stack-allocate, one per candidate device during
+ * device selection.
+ */
+typedef struct GloamVulkanExtensions {
+    union {
+        unsigned char extArray[2];
+        struct {
+        /*    0 */ unsigned char KHR_surface;
+        /*    1 */ unsigned char KHR_swapchain;
+        };
+    };
+} GloamVulkanExtensions;
 
 /* ---- Feature presence macros --------------------------------------------
  * Test whether a versioned feature was detected at load time.
@@ -11358,6 +11381,11 @@ typedef GloamAPIProc (*GloamLoadFunc)(const char *name);
  * featArray from the device's api_version. Set extArray for enabled device
  * extensions. Resolve aliases.
  *
+ * Extension flags are scope-exact: LoadInstance assigns every instance-scope
+ * extArray flag from its list (absent = cleared) and leaves device-scope
+ * flags alone; LoadDevice does the reverse. Stale flags cannot survive a
+ * reload of their owning scope.
+ *
  * Finalize: close library handle if gloam owns it, zero the context.
  */
 int  gloamVulkanInitializeContext(GloamVulkanContext *context, void *library_handle);
@@ -11380,6 +11408,34 @@ VkDevice gloamVulkanGetLoadedDeviceContext(GloamVulkanContext *context);
 VkDevice gloamVulkanGetLoadedDevice(void);
 void gloamVulkanFinalizeContext(GloamVulkanContext *context);
 void gloamVulkanFinalize(void);
+
+/* ---- Vulkan extension probe API --------------------------------------------
+ * Presence snapshots decoupled from the context (see GloamVulkanExtensions).
+ * QueryInstanceExtensions needs the Global-scope PFNs (after Initialize);
+ * QueryDeviceExtensions needs the Instance-scope PFNs (after LoadInstance,
+ * or a Discover call with a live instance). One enumeration per call
+ * answers every known extension at once, so probing each candidate during
+ * device selection costs a single vkEnumerateDeviceExtensionProperties
+ * call regardless of how many extensions are checked.
+ *
+ * HashExtensionProperties builds a snapshot from a VkExtensionProperties
+ * array the application already holds — pure function, no Vulkan calls.
+ *
+ * LoadInstanceFromQuery / LoadDeviceFromQuery are Phase 1 / Phase 2
+ * variants taking a snapshot instead of an enabled-name list: the copied
+ * flags then mean "present" rather than "enabled", and the snapshot taken
+ * from the chosen device during selection is reused without re-enumerating.
+ */
+int  gloamVulkanQueryInstanceExtensionsContext(GloamVulkanContext *context, GloamVulkanExtensions *out_extensions);
+int  gloamVulkanQueryInstanceExtensions(GloamVulkanExtensions *out_extensions);
+int  gloamVulkanQueryDeviceExtensionsContext(GloamVulkanContext *context, VkPhysicalDevice physical_device, GloamVulkanExtensions *out_extensions);
+int  gloamVulkanQueryDeviceExtensions(VkPhysicalDevice physical_device, GloamVulkanExtensions *out_extensions);
+int  gloamVulkanHashExtensionProperties(uint32_t num_properties, const VkExtensionProperties *properties, GloamVulkanExtensions *out_extensions);
+int  gloamVulkanLoadInstanceFromQueryContext(GloamVulkanContext *context, VkInstance instance, uint32_t api_version, const GloamVulkanExtensions *extensions);
+int  gloamVulkanLoadInstanceFromQuery(VkInstance instance, uint32_t api_version, const GloamVulkanExtensions *extensions);
+int  gloamVulkanLoadDeviceFromQueryContext(GloamVulkanContext *context, VkDevice device, VkPhysicalDevice physical_device, const GloamVulkanExtensions *extensions);
+int  gloamVulkanLoadDeviceFromQuery(VkDevice device, VkPhysicalDevice physical_device, const GloamVulkanExtensions *extensions);
+
 
 /* Built-in loader: opens the platform library if needed and calls the
  * appropriate load function for you. Non-Vulkan loaders call the detection-

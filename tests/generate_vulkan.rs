@@ -313,3 +313,126 @@ fn vulkan_with_extension_filter_generates() {
     );
     try_compile_c(dir.path());
 }
+
+// ---------------------------------------------------------------------------
+// Extension scope partitioning and the probe API
+// ---------------------------------------------------------------------------
+
+#[test]
+fn vulkan_partitions_extension_tables_by_scope() {
+    // VK_KHR_swapchain (device) pulls in VK_KHR_surface (instance), so both
+    // scope tables must be emitted, each holding its own extension.
+    let dir = generate(
+        &["--api", "vk=1.0", "--extensions", "VK_KHR_swapchain"],
+        &[],
+    );
+    let source = read_source(dir.path(), "vk");
+
+    let inst_table = source
+        .split("kExtIdxInstance_vk[] = {")
+        .nth(1)
+        .and_then(|s| s.split("};").next())
+        .expect("missing kExtIdxInstance_vk table");
+    let dev_table = source
+        .split("kExtIdxDevice_vk[] = {")
+        .nth(1)
+        .and_then(|s| s.split("};").next())
+        .expect("missing kExtIdxDevice_vk table");
+
+    assert!(
+        inst_table.contains("VK_KHR_surface") && !inst_table.contains("VK_KHR_swapchain"),
+        "instance table must hold exactly the instance-scope extensions"
+    );
+    assert!(
+        dev_table.contains("VK_KHR_swapchain") && !dev_table.contains("VK_KHR_surface"),
+        "device table must hold exactly the device-scope extensions"
+    );
+
+    // Detection is exact assignment per scope — the |= accumulation is gone.
+    assert!(
+        source.contains("gloam_vk_assign_ext_slots"),
+        "missing exact-assignment helper"
+    );
+    assert!(
+        !source.contains("extArray[extIdx] |="),
+        "extension flags must never be OR-merged"
+    );
+}
+
+#[test]
+fn vulkan_discover_invalidates_on_physical_device_change() {
+    let dir = generate(
+        &["--api", "vk=1.0", "--extensions", "VK_KHR_swapchain"],
+        &["--loader"],
+    );
+    let header = read_header(dir.path(), "vk");
+    let source = read_source(dir.path(), "vk");
+
+    assert!(
+        header.contains("VkPhysicalDevice vk_loaded_physical_device;"),
+        "context must cache the physical device its state came from"
+    );
+    assert!(
+        source.contains("context->vk_loaded_physical_device != physical_device"),
+        "discover must detect a physical-device change"
+    );
+    assert!(
+        source.contains("context->vk_found_device_exts = 0;"),
+        "a physical-device change must invalidate the device extension cache"
+    );
+}
+
+#[test]
+fn vulkan_probe_api_declared_and_implemented() {
+    let dir = generate(
+        &["--api", "vk=1.0", "--extensions", "VK_KHR_swapchain"],
+        &[],
+    );
+    let header = read_header(dir.path(), "vk");
+    let source = read_source(dir.path(), "vk");
+
+    assert!(
+        header.contains("typedef struct GloamVulkanExtensions"),
+        "missing GloamVulkanExtensions snapshot type"
+    );
+    for decl in [
+        "gloamVulkanQueryInstanceExtensionsContext(",
+        "gloamVulkanQueryInstanceExtensions(",
+        "gloamVulkanQueryDeviceExtensionsContext(",
+        "gloamVulkanQueryDeviceExtensions(",
+        "gloamVulkanHashExtensionProperties(",
+        "gloamVulkanLoadInstanceFromQueryContext(",
+        "gloamVulkanLoadInstanceFromQuery(",
+        "gloamVulkanLoadDeviceFromQueryContext(",
+        "gloamVulkanLoadDeviceFromQuery(",
+    ] {
+        assert!(header.contains(decl), "missing declaration: {decl}");
+        assert!(source.contains(decl), "missing implementation: {decl}");
+    }
+
+    // The snapshot type carries the same named flags as the context.
+    let probe = header
+        .split("typedef struct GloamVulkanExtensions")
+        .nth(1)
+        .and_then(|s| s.split("} GloamVulkanExtensions;").next())
+        .expect("malformed GloamVulkanExtensions");
+    assert!(
+        probe.contains("unsigned char KHR_swapchain;"),
+        "snapshot must expose named per-extension flags"
+    );
+
+    try_compile_c(dir.path());
+}
+
+#[test]
+fn vulkan_without_extensions_omits_probe_api() {
+    // With no extensions there is nothing to probe; the snapshot type would
+    // have a zero-length array, so the whole surface is omitted.
+    let dir = generate(&["--api", "vk=1.0", "--extensions", ""], &[]);
+    let header = read_header(dir.path(), "vk");
+    assert!(
+        !header.contains("GloamVulkanExtensions"),
+        "probe API should be omitted when no extensions are selected"
+    );
+    try_compile_c(dir.path());
+}

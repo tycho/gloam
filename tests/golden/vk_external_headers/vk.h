@@ -393,6 +393,11 @@ typedef struct GloamVulkanContext {
     VkInstance vk_loaded_instance;
     /* The last VkDevice this context loaded entry points from */
     VkDevice vk_loaded_device;
+    /* The VkPhysicalDevice whose device-derived state (device api version,
+     * device-scope extension flags) is cached on this context. A discovery
+     * call with a different physical device invalidates and re-queries it.
+     */
+    VkPhysicalDevice vk_loaded_physical_device;
     /* Vulkan discovery-path metadata — used by gloamLoaderLoadVulkanContext to make
      * repeated calls additive without re-enumerating already-cached scopes.
      */
@@ -1103,6 +1108,11 @@ typedef GloamAPIProc (*GloamLoadFunc)(const char *name);
  * featArray from the device's api_version. Set extArray for enabled device
  * extensions. Resolve aliases.
  *
+ * Extension flags are scope-exact: LoadInstance assigns every instance-scope
+ * extArray flag from its list (absent = cleared) and leaves device-scope
+ * flags alone; LoadDevice does the reverse. Stale flags cannot survive a
+ * reload of their owning scope.
+ *
  * Finalize: close library handle if gloam owns it, zero the context.
  */
 void gloamVulkanInitializeCustomContext(GloamVulkanContext *context, PFN_vkGetInstanceProcAddr getInstanceProcAddr);
@@ -1123,6 +1133,7 @@ VkDevice gloamVulkanGetLoadedDeviceContext(GloamVulkanContext *context);
 VkDevice gloamVulkanGetLoadedDevice(void);
 void gloamVulkanFinalizeContext(GloamVulkanContext *context);
 void gloamVulkanFinalize(void);
+
 
 
 #ifdef __cplusplus
