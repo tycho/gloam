@@ -9,6 +9,7 @@ use indexmap::IndexMap;
 use serde::Serialize;
 
 use crate::identity::Spec;
+use crate::ir::VkExtensionScope;
 use crate::parse::ctype::TypeRef;
 
 // ---------------------------------------------------------------------------
@@ -140,6 +141,11 @@ pub struct Extension {
     pub protect: Protect,
     /// Why this extension was included in the feature set.
     pub reason: SelectionReason,
+    /// Vulkan only: instance vs device scope (serialized as "instance" /
+    /// "device").  `None` for GL-family specs.  Generators partition
+    /// extension detection by this so enumerating one scope never disturbs
+    /// flags owned by the other.
+    pub scope: Option<VkExtensionScope>,
 }
 
 #[derive(Debug, Serialize)]

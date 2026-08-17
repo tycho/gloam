@@ -204,6 +204,7 @@ mod tests {
             }],
             protect: protect.iter().map(|s| s.to_string()).collect(),
             depends: vec![],
+            scope: None,
         }
     }
 

@@ -7,7 +7,7 @@ use super::SpecDocs;
 use super::xml::NodeExt;
 use crate::diag::Diag;
 use crate::identity::Spec;
-use crate::ir::{RawExtension, RawFeature, Remove, Require};
+use crate::ir::{RawExtension, RawFeature, Remove, Require, VkExtensionScope};
 
 // GLX extensions with unresolvable type dependencies (spec gotcha #8).
 const BROKEN_GLX_EXTENSIONS: &[&str] = &["GLX_SGIX_video_source", "GLX_SGIX_dmbuffer"];
@@ -210,12 +210,27 @@ fn parse_extensions(
             .map(parse_require)
             .collect::<Vec<_>>();
 
+        // Vulkan scope: every vk.xml extension carries type="instance" or
+        // type="device".  GL-family specs have no `type=` attribute (None).
+        let scope = match node.attribute("type") {
+            Some("instance") => Some(VkExtensionScope::Instance),
+            Some("device") => Some(VkExtensionScope::Device),
+            Some(other) => {
+                diag.warn(format!(
+                    "extension '{name}' has unknown type '{other}', ignoring"
+                ));
+                None
+            }
+            None => None,
+        };
+
         extensions.push(RawExtension {
             name,
             supported,
             requires,
             protect,
             depends,
+            scope,
         });
     }
 

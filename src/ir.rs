@@ -339,6 +339,20 @@ pub struct RawFeature {
     pub removes: Vec<Remove>,
 }
 
+/// Vulkan extension scope, from the `type=` attribute on `<extension>`.
+///
+/// Instance extensions are advertised by `vkEnumerateInstanceExtensionProperties`
+/// and enabled at instance creation; device extensions come from
+/// `vkEnumerateDeviceExtensionProperties` and are enabled per-device.  The
+/// generated loaders partition extension detection by this scope so that
+/// enumerating one scope never disturbs flags owned by the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VkExtensionScope {
+    Instance,
+    Device,
+}
+
 /// An `<extension>` element.
 #[derive(Debug, Clone)]
 pub struct RawExtension {
@@ -354,6 +368,9 @@ pub struct RawExtension {
     /// original attribute — if a name appears at all, it's a prerequisite the
     /// loader should include.
     pub depends: Vec<String>,
+    /// Vulkan only: instance vs device scope (`type=` attribute).  `None` for
+    /// the GL-family specs, which have no such distinction.
+    pub scope: Option<VkExtensionScope>,
 }
 
 // ---------------------------------------------------------------------------

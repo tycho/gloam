@@ -253,6 +253,7 @@ mod tests {
             hash: String::new(),
             protect: Protect::default(),
             reason,
+            scope: None,
         }
     }
 

@@ -322,5 +322,6 @@ fn build_extension(index: u16, e: &SelectedExt<'_>) -> Extension {
         hash,
         protect: Protect(e.raw.protect.clone()),
         reason: e.reason,
+        scope: e.raw.scope,
     }
 }

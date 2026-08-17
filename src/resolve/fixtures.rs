@@ -93,6 +93,7 @@ pub(super) fn extension(
         requires,
         protect: strs(protect),
         depends: vec![],
+        scope: None,
     }
 }
 
