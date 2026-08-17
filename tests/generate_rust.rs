@@ -101,3 +101,39 @@ fn rust_crate_passes_cargo_check() {
     try_cargo_check_rust(dir.path(), &[]);
     try_cargo_check_rust(dir.path(), &["no-error"]);
 }
+
+// ---------------------------------------------------------------------------
+// Vulkan probe API and scope-exact detection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_vulkan_emits_probe_api_and_scope_table() {
+    let dir = generate_rust(
+        &["--api", "vk=1.0", "--extensions", "VK_KHR_swapchain"],
+        &["--mx-global"],
+    );
+    let lib = read_rust_lib(dir.path());
+
+    // Scope table partitions detection; flags are assigned, never OR-merged.
+    assert!(lib.contains("static EXT_SCOPES: [u8; EXT_COUNT]"));
+    assert!(lib.contains("EXT_SCOPE_INSTANCE"));
+    assert!(lib.contains("EXT_SCOPE_DEVICE"));
+
+    // Probe snapshot type and its constructors/queries.
+    assert!(lib.contains("pub struct VkExtensions"));
+    assert!(lib.contains("pub fn from_properties(properties: &[VkExtensionProperties])"));
+    assert!(lib.contains("pub unsafe fn query_instance_extensions(&self)"));
+    assert!(lib.contains("pub unsafe fn query_device_extensions("));
+    assert!(lib.contains("pub unsafe fn load_instance_from_query("));
+    assert!(lib.contains("pub unsafe fn load_device_from_query("));
+
+    // --mx-global mirrors.
+    assert!(lib.contains("pub unsafe fn query_device_extensions_global("));
+    assert!(lib.contains("pub unsafe fn load_device_from_query_global("));
+
+    // Physical-device change invalidates cached device state in discover.
+    assert!(lib.contains("self.found_device_exts = false;"));
+
+    try_cargo_check_rust(dir.path(), &[]);
+    try_cargo_check_rust(dir.path(), &["alloc"]);
+}

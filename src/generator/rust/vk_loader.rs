@@ -20,6 +20,15 @@
 //! via `gipa(None, name)`, Instance via `gipa(instance, name)`, Device via
 //! `gdpa(device, name)`; a loaded slot is only overwritten by a non-null
 //! result, so repeated phases are additive.
+//!
+//! Extension flags are scope-exact, driven by an `EXT_SCOPES` table (the
+//! C backend's `kExtIdxInstance_*` / `kExtIdxDevice_*` partition):
+//! assigning one scope's flags never disturbs the other's, and stale flags
+//! cannot survive a reload of their owning scope.  The probe API
+//! (`VkExtensions`, `query_*_extensions`, `load_*_from_query`) mirrors the
+//! C backend's `GloamVulkanExtensions` surface: presence snapshots
+//! decoupled from the context, so device selection can probe each
+//! candidate once and reuse the winner's snapshot without re-enumerating.
 
 use std::fmt::Write as _;
 
@@ -30,6 +39,7 @@ use super::common::{
     emit_method, emit_missing_helpers,
 };
 use super::vk_types;
+use crate::ir::VkExtensionScope;
 use crate::parse::ctype::TypeRef;
 use crate::resolve::FeatureSet;
 
@@ -93,7 +103,9 @@ pub(super) fn emit_vk_module(
     emit_command_tables(fs, &mut s);
     emit_scope_table(fs, &mut s)?;
     emit_extension_tables(fs, &mut s)?;
+    emit_ext_scope_table(fs, &mut s);
     emit_missing_helpers(&mut s, "Vulkan");
+    emit_probe_struct(fs, &mut s);
     emit_context(fs, &mut s);
     if mx_global {
         emit_global(fs, &mut s);
@@ -123,8 +135,12 @@ fn emit_discover(fs: &FeatureSet, s: &mut String) {
          \x20   /// from the instance/device extension enumerations — so the flags\n\
          \x20   /// mean \"available\", unlike the phased path's \"enabled\".\n\
          \x20   /// Additive multi-call: pass handles as they come to exist;\n\
-         \x20   /// versions and enumerations are cached across calls.  Returns the\n\
-         \x20   /// packed `major << 8 | minor` version, or 0 when\n\
+         \x20   /// versions and enumerations are cached across calls.  The\n\
+         \x20   /// exception is a change of physical device: passing a different\n\
+         \x20   /// `physical_device` than the previous call invalidates all\n\
+         \x20   /// device-derived state (device version, device-scope extension\n\
+         \x20   /// flags), which is re-established against the new device.\n\
+         \x20   /// Returns the packed `major << 8 | minor` version, or 0 when\n\
          \x20   /// [`Vk::initialize`] has not run or the instance extension scope\n\
          \x20   /// cannot be enumerated.\n\
          \x20   ///\n\
@@ -148,6 +164,14 @@ fn emit_discover(fs: &FeatureSet, s: &mut String) {
          \x20           self.gdpa = unsafe {\n\
          \x20               core::mem::transmute::<PFN_vkVoidFunction, Option<PFN_vkGetDeviceProcAddr>>(pfn)\n\
          \x20           };\n\
+         \x20       }\n\
+         \x20       // A physical device other than the one whose state is cached\n\
+         \x20       // invalidates all device-derived state; it is re-queried\n\
+         \x20       // against the new device.\n\
+         \x20       if !physical_device.0.is_null() && self.physical_device.0 != physical_device.0 {\n\
+         \x20           self.device_version = 0;\n\
+         \x20           self.found_device_exts = false;\n\
+         \x20           self.physical_device = physical_device;\n\
          \x20       }\n",
     );
     if let Some(eiv) = idx_eiv {
@@ -190,24 +214,15 @@ fn emit_discover(fs: &FeatureSet, s: &mut String) {
          \x20       if !unsafe { self.discover_extensions(physical_device) } {\n\
          \x20           return 0;\n\
          \x20       }\n\
-         \x20       for &(fi, start, count) in FEATURE_RANGES.iter() {\n\
-         \x20           if self.feat[fi as usize] {\n\
-         \x20               unsafe { self.load_range(instance, device, start, count) };\n\
-         \x20           }\n\
-         \x20       }\n\
-         \x20       for &(ei, start, count) in EXT_RANGES_vk.iter() {\n\
-         \x20           if self.ext[ei as usize] {\n\
-         \x20               unsafe { self.load_range(instance, device, start, count) };\n\
-         \x20           }\n\
-         \x20       }\n\
+         \x20       unsafe { self.load_flagged_ranges(instance, device) };\n\
          \x20       self.resolve_aliases();\n\
          \x20       self.version\n\
          \x20   }\n\n\
          \x20   /// Enumerate available instance extensions (once) and — once a\n\
-         \x20   /// physical device exists — its device extensions (once), setting\n\
-         \x20   /// each recognized name's flag.  Flags accumulate, mirroring the C\n\
-         \x20   /// loader's `|=`; a missing instance enumeration entry point while\n\
-         \x20   /// that scope is unqueried fails discovery, as in C.\n\
+         \x20   /// physical device exists — its device extensions (once), assigning\n\
+         \x20   /// each scope's flags exactly from its own enumeration (see\n\
+         \x20   /// [`Vk::apply_extensions`]).  A missing instance enumeration entry\n\
+         \x20   /// point while that scope is unqueried fails discovery, as in C.\n\
          \x20   #[cfg(feature = \"alloc\")]\n\
          \x20   unsafe fn discover_extensions(&mut self, physical_device: VkPhysicalDevice) -> bool {\n",
     );
@@ -236,11 +251,19 @@ fn emit_discover(fs: &FeatureSet, s: &mut String) {
              \x20                   props.as_mut_ptr(),\n\
              \x20               )\n\
              \x20           }};\n\
+             \x20           for i in 0..EXT_COUNT {{\n\
+             \x20               if EXT_SCOPES[i] == EXT_SCOPE_INSTANCE {{\n\
+             \x20                   self.ext[i] = false;\n\
+             \x20               }}\n\
+             \x20           }}\n\
              \x20           for p in &props[..n as usize] {{\n\
              \x20               let name = unsafe {{ CStr::from_ptr(p.extensionName.as_ptr()) }};\n\
              \x20               let h = xxhash_rust::xxh3::xxh3_64(name.to_bytes());\n\
              \x20               if let Ok(pos) = EXT_HASH_KEYS.binary_search(&h) {{\n\
-             \x20                   self.ext[EXT_HASH_IDX[pos] as usize] = true;\n\
+             \x20                   let idx = EXT_HASH_IDX[pos] as usize;\n\
+             \x20                   if EXT_SCOPES[idx] == EXT_SCOPE_INSTANCE {{\n\
+             \x20                       self.ext[idx] = true;\n\
+             \x20                   }}\n\
              \x20               }}\n\
              \x20           }}\n\
              \x20           self.found_instance_exts = true;\n\
@@ -280,11 +303,19 @@ fn emit_discover(fs: &FeatureSet, s: &mut String) {
              \x20                   props.as_mut_ptr(),\n\
              \x20               )\n\
              \x20           }};\n\
+             \x20           for i in 0..EXT_COUNT {{\n\
+             \x20               if EXT_SCOPES[i] == EXT_SCOPE_DEVICE {{\n\
+             \x20                   self.ext[i] = false;\n\
+             \x20               }}\n\
+             \x20           }}\n\
              \x20           for p in &props[..n as usize] {{\n\
              \x20               let name = unsafe {{ CStr::from_ptr(p.extensionName.as_ptr()) }};\n\
              \x20               let h = xxhash_rust::xxh3::xxh3_64(name.to_bytes());\n\
              \x20               if let Ok(pos) = EXT_HASH_KEYS.binary_search(&h) {{\n\
-             \x20                   self.ext[EXT_HASH_IDX[pos] as usize] = true;\n\
+             \x20                   let idx = EXT_HASH_IDX[pos] as usize;\n\
+             \x20                   if EXT_SCOPES[idx] == EXT_SCOPE_DEVICE {{\n\
+             \x20                       self.ext[idx] = true;\n\
+             \x20                   }}\n\
              \x20               }}\n\
              \x20           }}\n\
              \x20           self.found_device_exts = true;\n\
@@ -292,6 +323,97 @@ fn emit_discover(fs: &FeatureSet, s: &mut String) {
         );
     }
     s.push_str("        true\n    }\n");
+
+    if let Some(eiep) = idx_eiep {
+        let _ = write!(
+            s,
+            "\n    /// Probe which of the known instance extensions the\n\
+             \x20   /// implementation advertises, without touching this context's\n\
+             \x20   /// flags or caches.  One enumeration answers every known\n\
+             \x20   /// extension at once.  `None` when the enumeration entry point\n\
+             \x20   /// is unloaded (run [`Vk::initialize`] first).\n\
+             \x20   ///\n\
+             \x20   /// # Safety\n\
+             \x20   /// [`Vk::initialize`]'s contract.\n\
+             \x20   #[cfg(feature = \"alloc\")]\n\
+             \x20   pub unsafe fn query_instance_extensions(&self) -> Option<VkExtensions> {{\n\
+             \x20       if self.pfns[{eiep}].is_null() {{\n\
+             \x20           return None;\n\
+             \x20       }}\n\
+             \x20       let mut n: u32 = 0;\n\
+             \x20       unsafe {{\n\
+             \x20           self.EnumerateInstanceExtensionProperties(\n\
+             \x20               core::ptr::null(),\n\
+             \x20               &mut n,\n\
+             \x20               core::ptr::null_mut(),\n\
+             \x20           )\n\
+             \x20       }};\n\
+             \x20       let mut props: alloc::vec::Vec<VkExtensionProperties> =\n\
+             \x20           alloc::vec::Vec::new();\n\
+             \x20       props.resize(n as usize, unsafe {{ core::mem::zeroed() }});\n\
+             \x20       unsafe {{\n\
+             \x20           self.EnumerateInstanceExtensionProperties(\n\
+             \x20               core::ptr::null(),\n\
+             \x20               &mut n,\n\
+             \x20               props.as_mut_ptr(),\n\
+             \x20           )\n\
+             \x20       }};\n\
+             \x20       let mut out = VkExtensions::new();\n\
+             \x20       out.set_from_properties(&props[..n as usize], Some(EXT_SCOPE_INSTANCE));\n\
+             \x20       Some(out)\n\
+             \x20   }}\n"
+        );
+    }
+    if let Some(edep) = idx_edep {
+        let _ = write!(
+            s,
+            "\n    /// Probe which of the known device extensions `physical_device`\n\
+             \x20   /// advertises, without touching this context's flags or caches.\n\
+             \x20   /// One enumeration per candidate answers every known extension\n\
+             \x20   /// at once, making per-candidate probing during device selection\n\
+             \x20   /// cheap; hand the winner's snapshot to\n\
+             \x20   /// [`Vk::load_device_from_query`] to avoid re-enumerating.\n\
+             \x20   /// `None` when the enumeration entry point is unloaded (run\n\
+             \x20   /// [`Vk::load_instance`] or [`Vk::discover`] with a live\n\
+             \x20   /// instance first) or `physical_device` is null.\n\
+             \x20   ///\n\
+             \x20   /// # Safety\n\
+             \x20   /// [`Vk::initialize`]'s contract; `physical_device` must be a\n\
+             \x20   /// live physical device of the loaded instance.\n\
+             \x20   #[cfg(feature = \"alloc\")]\n\
+             \x20   pub unsafe fn query_device_extensions(\n\
+             \x20       &self,\n\
+             \x20       physical_device: VkPhysicalDevice,\n\
+             \x20   ) -> Option<VkExtensions> {{\n\
+             \x20       if physical_device.0.is_null() || self.pfns[{edep}].is_null() {{\n\
+             \x20           return None;\n\
+             \x20       }}\n\
+             \x20       let mut n: u32 = 0;\n\
+             \x20       unsafe {{\n\
+             \x20           self.EnumerateDeviceExtensionProperties(\n\
+             \x20               physical_device,\n\
+             \x20               core::ptr::null(),\n\
+             \x20               &mut n,\n\
+             \x20               core::ptr::null_mut(),\n\
+             \x20           )\n\
+             \x20       }};\n\
+             \x20       let mut props: alloc::vec::Vec<VkExtensionProperties> =\n\
+             \x20           alloc::vec::Vec::new();\n\
+             \x20       props.resize(n as usize, unsafe {{ core::mem::zeroed() }});\n\
+             \x20       unsafe {{\n\
+             \x20           self.EnumerateDeviceExtensionProperties(\n\
+             \x20               physical_device,\n\
+             \x20               core::ptr::null(),\n\
+             \x20               &mut n,\n\
+             \x20               props.as_mut_ptr(),\n\
+             \x20           )\n\
+             \x20       }};\n\
+             \x20       let mut out = VkExtensions::new();\n\
+             \x20       out.set_from_properties(&props[..n as usize], Some(EXT_SCOPE_DEVICE));\n\
+             \x20       Some(out)\n\
+             \x20   }}\n"
+        );
+    }
 }
 
 /// Emit the `--mx-global` layer: a process-global context in an `UnsafeCell`
@@ -369,6 +491,52 @@ fn emit_global(fs: &FeatureSet, s: &mut String) {
          \x20   enabled_extensions: &[&CStr],\n\
          ) -> bool {\n\
          \x20   unsafe { (*GLOBAL.0.get()).load_device(device, physical_device, enabled_extensions) }\n\
+         }\n\n\
+         /// Phase 1 from a probe snapshot against the global context; see\n\
+         /// [`Vk::load_instance_from_query`].\n\
+         ///\n\
+         /// # Safety\n\
+         /// [`Vk::load_instance_from_query`]'s contract plus\n\
+         /// [`initialize_global`]'s exclusivity rule.\n\
+         pub unsafe fn load_instance_from_query_global(\n\
+         \x20   instance: VkInstance,\n\
+         \x20   api_version: u32,\n\
+         \x20   extensions: &VkExtensions,\n\
+         ) -> bool {\n\
+         \x20   unsafe { (*GLOBAL.0.get()).load_instance_from_query(instance, api_version, extensions) }\n\
+         }\n\n\
+         /// Phase 2 from a probe snapshot against the global context; see\n\
+         /// [`Vk::load_device_from_query`].\n\
+         ///\n\
+         /// # Safety\n\
+         /// [`Vk::load_device_from_query`]'s contract plus\n\
+         /// [`initialize_global`]'s exclusivity rule.\n\
+         pub unsafe fn load_device_from_query_global(\n\
+         \x20   device: VkDevice,\n\
+         \x20   physical_device: VkPhysicalDevice,\n\
+         \x20   extensions: &VkExtensions,\n\
+         ) -> bool {\n\
+         \x20   unsafe { (*GLOBAL.0.get()).load_device_from_query(device, physical_device, extensions) }\n\
+         }\n\n\
+         /// Instance-extension probe against the global context; see\n\
+         /// [`Vk::query_instance_extensions`].\n\
+         ///\n\
+         /// # Safety\n\
+         /// [`Vk::query_instance_extensions`]'s contract.\n\
+         #[cfg(feature = \"alloc\")]\n\
+         pub unsafe fn query_instance_extensions_global() -> Option<VkExtensions> {\n\
+         \x20   unsafe { global().query_instance_extensions() }\n\
+         }\n\n\
+         /// Device-extension probe against the global context; see\n\
+         /// [`Vk::query_device_extensions`].\n\
+         ///\n\
+         /// # Safety\n\
+         /// [`Vk::query_device_extensions`]'s contract.\n\
+         #[cfg(feature = \"alloc\")]\n\
+         pub unsafe fn query_device_extensions_global(\n\
+         \x20   physical_device: VkPhysicalDevice,\n\
+         ) -> Option<VkExtensions> {\n\
+         \x20   unsafe { global().query_device_extensions(physical_device) }\n\
          }\n\n\
          /// Discovery loading against the global context; see [`Vk::discover`].\n\
          ///\n\
@@ -457,6 +625,104 @@ fn emit_prelude(fs: &FeatureSet, s: &mut String) {
     s.push('\n');
 }
 
+/// The per-extension scope table driving scope-exact flag assignment — the
+/// Rust spelling of the C backend's `kExtIdxInstance_*` / `kExtIdxDevice_*`
+/// partition (a parallel byte array fits the Rust loader's driver-name →
+/// `EXT_HASH_IDX` search direction better than index subsets).
+fn emit_ext_scope_table(fs: &FeatureSet, s: &mut String) {
+    s.push_str(
+        "// Scope of each extension (instance vs device), in flag-index order.\n\
+         // Detection assigns exactly one scope's flags at a time, so\n\
+         // establishing one scope never disturbs flags owned by the other.\n\
+         const EXT_SCOPE_INSTANCE: u8 = 0;\n\
+         const EXT_SCOPE_DEVICE: u8 = 1;\n\
+         #[rustfmt::skip]\n",
+    );
+    let _ = writeln!(s, "static EXT_SCOPES: [u8; EXT_COUNT] = [");
+    for chunk in fs.extensions.chunks(20) {
+        let line: Vec<&str> = chunk
+            .iter()
+            .map(|e| match e.scope {
+                Some(VkExtensionScope::Device) => "1",
+                _ => "0",
+            })
+            .collect();
+        let _ = writeln!(s, "    {},", line.join(", "));
+    }
+    s.push_str("];\n\n");
+}
+
+/// Emit the `VkExtensions` probe snapshot: a standalone presence struct with
+/// one query method per extension, filled by `Vk::query_*_extensions` or
+/// from an application-enumerated `VkExtensionProperties` array.
+fn emit_probe_struct(fs: &FeatureSet, s: &mut String) {
+    s.push_str(
+        "// ── Extension probe snapshot ────────────────────────────────\n\
+         /// A standalone extension-presence snapshot, filled by\n\
+         /// [`Vk::query_instance_extensions`], [`Vk::query_device_extensions`],\n\
+         /// or [`VkExtensions::from_properties`].  Independent of any context:\n\
+         /// flags here always mean \"the implementation advertises this\n\
+         /// extension\" — present, never \"enabled\".  Cheap to stack-allocate,\n\
+         /// one per candidate device during device selection.\n\
+         pub struct VkExtensions {\n\
+         \x20   ext: [bool; EXT_COUNT],\n\
+         }\n\n\
+         impl VkExtensions {\n\
+         \x20   /// An empty snapshot: every flag false.\n\
+         \x20   pub const fn new() -> VkExtensions {\n\
+         \x20       VkExtensions { ext: [false; EXT_COUNT] }\n\
+         \x20   }\n\n\
+         \x20   /// Build a snapshot from a `VkExtensionProperties` array the\n\
+         \x20   /// application already enumerated itself.  Pure function: no\n\
+         \x20   /// context, no Vulkan calls.  Both scopes' flags are assigned, so\n\
+         \x20   /// the snapshot reflects exactly the given list.\n\
+         \x20   pub fn from_properties(properties: &[VkExtensionProperties]) -> VkExtensions {\n\
+         \x20       let mut out = VkExtensions::new();\n\
+         \x20       out.set_from_properties(properties, None);\n\
+         \x20       out\n\
+         \x20   }\n\n\
+         \x20   /// Set the flag of every recognized name in `properties` — all of\n\
+         \x20   /// them when `scope` is `None`, else only that scope's.  Names\n\
+         \x20   /// without a terminating NUL are skipped.\n\
+         \x20   fn set_from_properties(&mut self, properties: &[VkExtensionProperties], scope: Option<u8>) {\n\
+         \x20       for p in properties {\n\
+         \x20           // SAFETY: reinterpreting the c_char name array as bytes;\n\
+         \x20           // same size and alignment.\n\
+         \x20           let bytes: &[u8] = unsafe {\n\
+         \x20               core::slice::from_raw_parts(p.extensionName.as_ptr().cast::<u8>(), p.extensionName.len())\n\
+         \x20           };\n\
+         \x20           let Ok(name) = CStr::from_bytes_until_nul(bytes) else {\n\
+         \x20               continue;\n\
+         \x20           };\n\
+         \x20           let h = xxhash_rust::xxh3::xxh3_64(name.to_bytes());\n\
+         \x20           if let Ok(pos) = EXT_HASH_KEYS.binary_search(&h) {\n\
+         \x20               let idx = EXT_HASH_IDX[pos] as usize;\n\
+         \x20               if scope.is_none_or(|sc| EXT_SCOPES[idx] == sc) {\n\
+         \x20                   self.ext[idx] = true;\n\
+         \x20               }\n\
+         \x20           }\n\
+         \x20       }\n\
+         \x20   }\n",
+    );
+
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for e in &fs.extensions {
+        let name = super::common::method_name(&e.short_name);
+        if used.insert(name.clone()) {
+            super::common::emit_flag_query(s, &name, &e.name, "ext", e.index, "advertises");
+        }
+    }
+
+    s.push_str("}\n\n");
+    s.push_str(
+        "impl Default for VkExtensions {\n\
+         \x20   fn default() -> Self {\n\
+         \x20       VkExtensions::new()\n\
+         \x20   }\n\
+         }\n\n",
+    );
+}
+
 /// The per-command scope table driving scope-aware loading.
 fn emit_scope_table(fs: &FeatureSet, s: &mut String) -> Result<()> {
     s.push_str(
@@ -519,6 +785,11 @@ fn emit_context(fs: &FeatureSet, s: &mut String) {
          \x20   gdpa: Option<PFN_vkGetDeviceProcAddr>,\n\
          \x20   instance: VkInstance,\n\
          \x20   version: u32,\n\
+         \x20   // The physical device whose device-derived state (device version,\n\
+         \x20   // device-scope extension flags) is cached on this context.  A\n\
+         \x20   // discovery call with a different physical device invalidates and\n\
+         \x20   // re-queries it.\n\
+         \x20   physical_device: VkPhysicalDevice,\n\
          \x20   // Discovery caches ([`Vk::discover`]): enumerated versions\n\
          \x20   // (variant-masked) and whether each extension scope has been\n\
          \x20   // enumerated, mirroring the C context's vk_* cache fields.\n\
@@ -539,6 +810,7 @@ fn emit_context(fs: &FeatureSet, s: &mut String) {
          \x20           gdpa: None,\n\
          \x20           instance: VkInstance(core::ptr::null_mut()),\n\
          \x20           version: 0,\n\
+         \x20           physical_device: VkPhysicalDevice(core::ptr::null_mut()),\n\
          \x20           instance_version: 0,\n\
          \x20           device_version: 0,\n\
          \x20           found_instance_exts: false,\n\
@@ -598,14 +870,46 @@ fn emit_context(fs: &FeatureSet, s: &mut String) {
     }
     s.push_str(
         "    }\n\n\
-         \x20   /// Set extension flags for every recognized name in `names`\n\
-         \x20   /// (the application's enabled-extension lists).  Flags accumulate\n\
-         \x20   /// across calls, mirroring the C loader's `|=`.\n\
-         \x20   fn apply_extensions(&mut self, names: &[&CStr]) {\n\
+         \x20   /// Assign one scope's extension flags from an enabled-name list.\n\
+         \x20   /// Exact: every flag of the scope is (re)initialized, so names\n\
+         \x20   /// absent from the list clear their flag, and the other scope's\n\
+         \x20   /// flags are untouched.  Stale flags cannot survive a reload of\n\
+         \x20   /// their owning scope.\n\
+         \x20   fn apply_extensions(&mut self, names: &[&CStr], scope: u8) {\n\
+         \x20       for i in 0..EXT_COUNT {\n\
+         \x20           if EXT_SCOPES[i] == scope {\n\
+         \x20               self.ext[i] = false;\n\
+         \x20           }\n\
+         \x20       }\n\
          \x20       for name in names {\n\
          \x20           let h = xxhash_rust::xxh3::xxh3_64(name.to_bytes());\n\
          \x20           if let Ok(pos) = EXT_HASH_KEYS.binary_search(&h) {\n\
-         \x20               self.ext[EXT_HASH_IDX[pos] as usize] = true;\n\
+         \x20               let idx = EXT_HASH_IDX[pos] as usize;\n\
+         \x20               if EXT_SCOPES[idx] == scope {\n\
+         \x20                   self.ext[idx] = true;\n\
+         \x20               }\n\
+         \x20           }\n\
+         \x20       }\n\
+         \x20   }\n\n\
+         \x20   /// Copy one scope's flags from a probe snapshot (exact assignment,\n\
+         \x20   /// like [`Vk::apply_extensions`]).\n\
+         \x20   fn copy_scope_flags(&mut self, from: &VkExtensions, scope: u8) {\n\
+         \x20       for i in 0..EXT_COUNT {\n\
+         \x20           if EXT_SCOPES[i] == scope {\n\
+         \x20               self.ext[i] = from.ext[i];\n\
+         \x20           }\n\
+         \x20       }\n\
+         \x20   }\n\n\
+         \x20   /// Load the PFN ranges of every set feature and extension flag.\n\
+         \x20   unsafe fn load_flagged_ranges(&mut self, instance: VkInstance, device: VkDevice) {\n\
+         \x20       for &(fi, start, count) in FEATURE_RANGES.iter() {\n\
+         \x20           if self.feat[fi as usize] {\n\
+         \x20               unsafe { self.load_range(instance, device, start, count) };\n\
+         \x20           }\n\
+         \x20       }\n\
+         \x20       for &(ei, start, count) in EXT_RANGES_vk.iter() {\n\
+         \x20           if self.ext[ei as usize] {\n\
+         \x20               unsafe { self.load_range(instance, device, start, count) };\n\
          \x20           }\n\
          \x20       }\n\
          \x20   }\n\n\
@@ -627,18 +931,32 @@ fn emit_context(fs: &FeatureSet, s: &mut String) {
          \x20           return false;\n\
          \x20       }\n\
          \x20       self.apply_version(api_version);\n\
-         \x20       self.apply_extensions(enabled_extensions);\n\
-         \x20       let null_dev = VkDevice(core::ptr::null_mut());\n\
-         \x20       for &(fi, start, count) in FEATURE_RANGES.iter() {\n\
-         \x20           if self.feat[fi as usize] {\n\
-         \x20               unsafe { self.load_range(instance, null_dev, start, count) };\n\
-         \x20           }\n\
+         \x20       self.apply_extensions(enabled_extensions, EXT_SCOPE_INSTANCE);\n\
+         \x20       unsafe { self.load_flagged_ranges(instance, VkDevice(core::ptr::null_mut())) };\n\
+         \x20       self.resolve_aliases();\n\
+         \x20       self.instance = instance;\n\
+         \x20       true\n\
+         \x20   }\n\n\
+         \x20   /// Phase 1 variant taking a probe snapshot instead of an\n\
+         \x20   /// enabled-name list: instance-scope flags are copied from the\n\
+         \x20   /// snapshot — on this context they then mean \"present\" rather\n\
+         \x20   /// than \"enabled\" — and loading proceeds exactly like\n\
+         \x20   /// [`Vk::load_instance`].  No enumeration, no hashing.\n\
+         \x20   ///\n\
+         \x20   /// # Safety\n\
+         \x20   /// [`Vk::load_instance`]'s contract.\n\
+         \x20   pub unsafe fn load_instance_from_query(\n\
+         \x20       &mut self,\n\
+         \x20       instance: VkInstance,\n\
+         \x20       api_version: u32,\n\
+         \x20       extensions: &VkExtensions,\n\
+         \x20   ) -> bool {\n\
+         \x20       if self.gipa.is_none() || instance.0.is_null() {\n\
+         \x20           return false;\n\
          \x20       }\n\
-         \x20       for &(ei, start, count) in EXT_RANGES_vk.iter() {\n\
-         \x20           if self.ext[ei as usize] {\n\
-         \x20               unsafe { self.load_range(instance, null_dev, start, count) };\n\
-         \x20           }\n\
-         \x20       }\n\
+         \x20       self.apply_version(api_version);\n\
+         \x20       self.copy_scope_flags(extensions, EXT_SCOPE_INSTANCE);\n\
+         \x20       unsafe { self.load_flagged_ranges(instance, VkDevice(core::ptr::null_mut())) };\n\
          \x20       self.resolve_aliases();\n\
          \x20       self.instance = instance;\n\
          \x20       true\n\
@@ -700,18 +1018,45 @@ fn emit_context(fs: &FeatureSet, s: &mut String) {
          \x20       unsafe { self.GetPhysicalDeviceProperties(physical_device, &mut props) };\n\
          \x20       // Mask the variant bits so Vulkan SC compares like plain Vulkan.\n\
          \x20       self.apply_version(props.apiVersion & !(0x7u32 << 29));\n\
-         \x20       self.apply_extensions(enabled_extensions);\n\
-         \x20       for &(fi, start, count) in FEATURE_RANGES.iter() {\n\
-         \x20           if self.feat[fi as usize] {\n\
-         \x20               unsafe { self.load_range(instance, device, start, count) };\n\
-         \x20           }\n\
-         \x20       }\n\
-         \x20       for &(ei, start, count) in EXT_RANGES_vk.iter() {\n\
-         \x20           if self.ext[ei as usize] {\n\
-         \x20               unsafe { self.load_range(instance, device, start, count) };\n\
-         \x20           }\n\
-         \x20       }\n\
+         \x20       self.apply_extensions(enabled_extensions, EXT_SCOPE_DEVICE);\n\
+         \x20       unsafe { self.load_flagged_ranges(instance, device) };\n\
          \x20       self.resolve_aliases();\n\
+         \x20       self.physical_device = physical_device;\n\
+         \x20       true\n\
+         \x20   }\n\n\
+         \x20   /// Phase 2 variant taking a probe snapshot instead of an\n\
+         \x20   /// enabled-name list: the snapshot from probing the chosen\n\
+         \x20   /// physical device during selection is reused here, so device\n\
+         \x20   /// extensions are never enumerated twice.  Device-scope flags are\n\
+         \x20   /// copied from the snapshot; loading proceeds exactly like\n\
+         \x20   /// [`Vk::load_device`].\n\
+         \x20   ///\n\
+         \x20   /// # Safety\n\
+         \x20   /// [`Vk::load_device`]'s contract.\n\
+         \x20   pub unsafe fn load_device_from_query(\n\
+         \x20       &mut self,\n\
+         \x20       device: VkDevice,\n\
+         \x20       physical_device: VkPhysicalDevice,\n\
+         \x20       extensions: &VkExtensions,\n\
+         \x20   ) -> bool {\n\
+         \x20       let instance = self.instance;\n\
+         \x20       if self.gdpa.is_none() && !instance.0.is_null() {\n\
+         \x20           if let Some(gipa) = self.gipa {\n\
+         \x20               let pfn = unsafe { gipa(instance, c\"vkGetDeviceProcAddr\".as_ptr()) };\n\
+         \x20               self.gdpa = unsafe { core::mem::transmute::<PFN_vkVoidFunction, Option<PFN_vkGetDeviceProcAddr>>(pfn) };\n\
+         \x20           }\n\
+         \x20       }\n\
+         \x20       if self.gdpa.is_none() || device.0.is_null() {\n\
+         \x20           return false;\n\
+         \x20       }\n\
+         \x20       let mut props: VkPhysicalDeviceProperties = unsafe { core::mem::zeroed() };\n\
+         \x20       unsafe { self.GetPhysicalDeviceProperties(physical_device, &mut props) };\n\
+         \x20       // Mask the variant bits so Vulkan SC compares like plain Vulkan.\n\
+         \x20       self.apply_version(props.apiVersion & !(0x7u32 << 29));\n\
+         \x20       self.copy_scope_flags(extensions, EXT_SCOPE_DEVICE);\n\
+         \x20       unsafe { self.load_flagged_ranges(instance, device) };\n\
+         \x20       self.resolve_aliases();\n\
+         \x20       self.physical_device = physical_device;\n\
          \x20       true\n\
          \x20   }\n",
     );
