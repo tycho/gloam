@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/tycho/gloam/compare/0.6.0...0.7.0) - 2026-08-17
+
+### Added
+
+- *(examples)* adopt the Vulkan probe API for extension checks and device selection
+- [**breaking**] mirror scope-exact detection and the probe API in the Rust loader
+- [**breaking**] scope-exact Vulkan extension detection and a probe API (C)
+- capture Vulkan extension scope in the resolver
+- *(examples)* implement GL 3.3 -> GLES 3.0 fallback
+
+### Other
+
+- document the Vulkan extension probe API and scope-exact flags
+- update bundled specs, headers, and provenance
+- *(cargo)* update dependencies
+- update bundled specs, headers, and provenance
+- update bundled specs, headers, and provenance
+- *(doc)* fix some incorrect README statements
+
 ## [0.6.0](https://github.com/tycho/gloam/compare/0.5.2...0.6.0) - 2026-07-29
 
 ### Added
