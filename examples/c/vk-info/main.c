@@ -1,16 +1,22 @@
 /* vk-info — headless Vulkan device info via a gloam-generated loader.
  *
  * Demonstrates the phased Vulkan loading flow (Volk-like: the application
- * owns extension discovery and tells gloam what it enabled):
+ * owns extension discovery and tells gloam what it enabled), with presence
+ * questions answered by gloam's probe API instead of manual strcmp walks:
  *
- *   gloamVulkanInitialize   open the platform Vulkan library (--loader)
- *   vkCreateInstance        created with the known extensions the driver has
- *   gloamVulkanLoadInstance load instance-scope PFNs, set extension flags
- *   vkCreateDevice          same dance for device extensions
- *   gloamVulkanLoadDevice   load device-scope PFNs, set extension flags
+ *   gloamVulkanInitialize              open the platform library (--loader)
+ *   gloamVulkanQueryInstanceExtensions one call answers every known
+ *                                      instance extension's presence
+ *   vkCreateInstance                   created with the known extensions
+ *                                      the probe found
+ *   gloamVulkanLoadInstance            load instance-scope PFNs, set flags
+ *   gloamVulkanQueryDeviceExtensions   same one-call presence answer at
+ *                                      device scope
+ *   vkCreateDevice / gloamVulkanLoadDevice   same dance for the device
  *
- * As it goes it cross-checks gloam's per-extension context flags against the
- * ground truth it enabled, and prints the comparison table.
+ * As it goes it cross-checks the probe snapshots and gloam's per-extension
+ * context flags against independently enumerated ground truth, and prints
+ * the comparison table.
  *
  * Exit codes: 0 = pass, 1 = failure, 77 = skipped (no Vulkan runtime/device).
  */
@@ -23,20 +29,32 @@
 
 #define EXIT_SKIP 77
 
+/* Probe snapshots: presence of every known extension, one enumeration per
+ * scope (see gloamVulkanQuery*Extensions below). File-static so the known-
+ * extension table can point into them. */
+static GloamVulkanExtensions g_inst_avail, g_dev_avail;
+
 /* The extensions this loader was generated with (see gloam/.gloam/manifest.json). */
 typedef struct {
     const char *name;
-    const unsigned char *flag; /* gloam context member for this extension */
-    int device_scope;          /* 0 = instance extension, 1 = device extension */
+    const unsigned char *flag;  /* gloam context member for this extension  */
+    const unsigned char *avail; /* probe snapshot member (presence)         */
+    int device_scope;           /* 0 = instance extension, 1 = device ext.  */
 } KnownExt;
 
 static const KnownExt kKnownExts[] = {
-    { "VK_KHR_get_physical_device_properties2", &GLOAM_VK_KHR_get_physical_device_properties2, 0 },
-    { "VK_EXT_debug_utils",                     &GLOAM_VK_EXT_debug_utils,                     0 },
-    { "VK_KHR_portability_enumeration",         &GLOAM_VK_KHR_portability_enumeration,         0 },
-    { "VK_KHR_swapchain",                       &GLOAM_VK_KHR_swapchain,                       1 },
-    { "VK_KHR_timeline_semaphore",              &GLOAM_VK_KHR_timeline_semaphore,              1 },
-    { "VK_KHR_synchronization2",                &GLOAM_VK_KHR_synchronization2,                1 },
+    { "VK_KHR_get_physical_device_properties2", &GLOAM_VK_KHR_get_physical_device_properties2,
+      &g_inst_avail.KHR_get_physical_device_properties2, 0 },
+    { "VK_EXT_debug_utils",                     &GLOAM_VK_EXT_debug_utils,
+      &g_inst_avail.EXT_debug_utils,                     0 },
+    { "VK_KHR_portability_enumeration",         &GLOAM_VK_KHR_portability_enumeration,
+      &g_inst_avail.KHR_portability_enumeration,         0 },
+    { "VK_KHR_swapchain",                       &GLOAM_VK_KHR_swapchain,
+      &g_dev_avail.KHR_swapchain,                        1 },
+    { "VK_KHR_timeline_semaphore",              &GLOAM_VK_KHR_timeline_semaphore,
+      &g_dev_avail.KHR_timeline_semaphore,               1 },
+    { "VK_KHR_synchronization2",                &GLOAM_VK_KHR_synchronization2,
+      &g_dev_avail.KHR_synchronization2,                 1 },
 };
 #define NUM_KNOWN (sizeof(kKnownExts) / sizeof(kKnownExts[0]))
 
@@ -49,7 +67,10 @@ static int list_contains(const VkExtensionProperties *props, uint32_t n, const c
     return 0;
 }
 
-/* Compare gloam's flags against what we enabled; print the table. */
+/* Compare the probe snapshot and gloam's context flags against ground truth
+ * (an independent strcmp walk over the driver's list); print the table.
+ * The probe must agree with the driver; the context flag must agree with
+ * what was enabled. */
 static int check_flags(const VkExtensionProperties *avail, uint32_t num_avail,
                        const char *const *enabled, uint32_t num_enabled,
                        int device_scope, const char *scope_name)
@@ -57,26 +78,30 @@ static int check_flags(const VkExtensionProperties *avail, uint32_t num_avail,
     int mismatches = 0;
     uint32_t i, j;
 
-    printf("\n%-42s %-7s %-8s %s\n", scope_name, "driver", "enabled", "gloam");
+    printf("\n%-42s %-7s %-6s %-8s %s\n", scope_name, "driver", "probe", "enabled", "gloam");
     for (i = 0; i < NUM_KNOWN; ++i) {
         const KnownExt *e = &kKnownExts[i];
-        int in_driver, want, got;
+        int in_driver, probed, want, got;
 
         if (e->device_scope != device_scope)
             continue;
 
         in_driver = list_contains(avail, num_avail, e->name);
+        probed = *e->avail != 0;
         want = 0;
         for (j = 0; j < num_enabled; ++j)
             if (strcmp(enabled[j], e->name) == 0)
                 want = 1;
         got = *e->flag != 0;
 
-        printf("%-42s %-7s %-8s %-5s %s\n", e->name,
+        printf("%-42s %-7s %-6s %-8s %-5s %s\n", e->name,
                in_driver ? "yes" : "no",
+               probed ? "yes" : "no",
                want ? "yes" : "no",
                got ? "yes" : "no",
-               want == got ? "OK" : "MISMATCH");
+               probed == in_driver && want == got ? "OK" : "MISMATCH");
+        if (probed != in_driver)
+            ++mismatches;
         if (want != got)
             ++mismatches;
     }
@@ -112,14 +137,22 @@ int main(void)
            VK_API_VERSION_MINOR(instance_version),
            VK_API_VERSION_PATCH(instance_version));
 
-    /* Ground truth: what the driver actually offers at instance scope. */
+    /* Ground truth: what the driver actually offers at instance scope,
+     * enumerated independently of gloam for the comparison table. */
     vkEnumerateInstanceExtensionProperties(NULL, &num_inst_props, NULL);
     inst_props = (VkExtensionProperties *)calloc(num_inst_props ? num_inst_props : 1, sizeof(*inst_props));
     vkEnumerateInstanceExtensionProperties(NULL, &num_inst_props, inst_props);
 
-    /* Enable the known instance extensions the driver has. */
+    /* Probe: one call answers presence for every known instance extension. */
+    if (!gloamVulkanQueryInstanceExtensions(&g_inst_avail)) {
+        fprintf(stderr, "vk-info: gloamVulkanQueryInstanceExtensions failed\n");
+        free(inst_props);
+        return 1;
+    }
+
+    /* Enable the known instance extensions the probe found. */
     for (i = 0; i < NUM_KNOWN; ++i)
-        if (!kKnownExts[i].device_scope && list_contains(inst_props, num_inst_props, kKnownExts[i].name))
+        if (!kKnownExts[i].device_scope && *kKnownExts[i].avail)
             enabled_inst[num_enabled_inst++] = kKnownExts[i].name;
 
     /* Don't request an API version newer than this loader was generated for. */
@@ -135,9 +168,8 @@ int main(void)
         ci.ppEnabledExtensionNames = enabled_inst;
         /* When the loader offers portability enumeration (MoltenVK via the
          * Khronos loader), opt in so portability-subset devices are visible. */
-        for (i = 0; i < num_enabled_inst; ++i)
-            if (strcmp(enabled_inst[i], VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0)
-                ci.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+        if (g_inst_avail.KHR_portability_enumeration)
+            ci.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
         res = vkCreateInstance(&ci, NULL, &instance);
     }
     if (res == VK_ERROR_INCOMPATIBLE_DRIVER) {
@@ -179,14 +211,22 @@ int main(void)
            VK_API_VERSION_PATCH(props.apiVersion));
     printf("  Driver version: 0x%08x\n", props.driverVersion);
 
-    /* Ground truth at device scope. */
+    /* Ground truth at device scope, again independent of gloam. */
     vkEnumerateDeviceExtensionProperties(physical_device, NULL, &num_dev_props, NULL);
     dev_props = (VkExtensionProperties *)calloc(num_dev_props ? num_dev_props : 1, sizeof(*dev_props));
     vkEnumerateDeviceExtensionProperties(physical_device, NULL, &num_dev_props, dev_props);
     printf("  Device extensions reported by driver: %u\n", num_dev_props);
 
+    /* Probe: the device-scope counterpart — during real device selection
+     * this is the call to make once per candidate. */
+    if (!gloamVulkanQueryDeviceExtensions(physical_device, &g_dev_avail)) {
+        fprintf(stderr, "vk-info: gloamVulkanQueryDeviceExtensions failed\n");
+        return 1;
+    }
+
+    /* Enable the known device extensions the probe found. */
     for (i = 0; i < NUM_KNOWN; ++i)
-        if (kKnownExts[i].device_scope && list_contains(dev_props, num_dev_props, kKnownExts[i].name))
+        if (kKnownExts[i].device_scope && *kKnownExts[i].avail)
             enabled_dev[num_enabled_dev++] = kKnownExts[i].name;
 
     {

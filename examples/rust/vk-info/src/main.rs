@@ -3,7 +3,10 @@
 //! Mirrors examples/c/vk-info: phased loading against the `--mx-global`
 //! process-global context (initialize_global → load_instance_global →
 //! load_device_global) with free-function dispatch, then a summary of what
-//! the loader detected.  (The owned `Vk` context API is always generated
+//! the loader detected.  Extension presence is answered by the probe API
+//! (`query_instance_extensions_global` / `query_device_extensions_global`):
+//! one enumeration per scope answers every known extension, replacing the
+//! manual property walks.  (The owned `Vk` context API is always generated
 //! too; this example exercises the global layer, like the C example's
 //! `gloam_vk_context`.)  Headless — no
 //! window or surface is created; VK_KHR_surface/VK_KHR_swapchain are enabled
@@ -46,12 +49,6 @@ fn version_string(v: u32) -> String {
     )
 }
 
-fn contains(names: &[vk::VkExtensionProperties], wanted: &CStr) -> bool {
-    names
-        .iter()
-        .any(|p| unsafe { CStr::from_ptr(p.extensionName.as_ptr()) } == wanted)
-}
-
 fn flag(label: &str, value: bool) {
     println!("  {label:<28} {}", if value { "yes" } else { "no" });
 }
@@ -81,12 +78,14 @@ fn main() -> ExitCode {
 
     let mut n: u32 = 0;
     unsafe { vk::EnumerateInstanceExtensionProperties(ptr::null(), &mut n, ptr::null_mut()) };
-    let mut inst_exts: Vec<vk::VkExtensionProperties> =
-        vec![unsafe { std::mem::zeroed() }; n as usize];
-    unsafe {
-        vk::EnumerateInstanceExtensionProperties(ptr::null(), &mut n, inst_exts.as_mut_ptr())
-    };
     println!("instance extensions advertised: {n}");
+
+    // One probe call answers presence for every extension this loader
+    // knows — no manual property walk.
+    let Some(inst_avail) = (unsafe { vk::query_instance_extensions_global() }) else {
+        eprintln!("vk-info-rs: instance extension probe failed");
+        return ExitCode::from(1);
+    };
 
     // ---- Create an instance ------------------------------------------------
     let mut app_info: vk::VkApplicationInfo = unsafe { std::mem::zeroed() };
@@ -95,16 +94,16 @@ fn main() -> ExitCode {
     app_info.apiVersion = vk::VK_API_VERSION_1_3;
 
     let mut enabled_instance_exts: Vec<&CStr> = Vec::new();
-    if contains(&inst_exts, c"VK_KHR_surface") {
+    if inst_avail.KHR_surface() {
         enabled_instance_exts.push(c"VK_KHR_surface");
     }
-    if contains(&inst_exts, c"VK_EXT_debug_utils") {
+    if inst_avail.EXT_debug_utils() {
         enabled_instance_exts.push(c"VK_EXT_debug_utils");
     }
     // When the loader offers portability enumeration (MoltenVK via the
     // Khronos loader), opt in so portability-subset devices are visible.
     let mut instance_flags: vk::VkInstanceCreateFlags = 0;
-    if contains(&inst_exts, vk::VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) {
+    if inst_avail.KHR_portability_enumeration() {
         enabled_instance_exts.push(vk::VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
         instance_flags |= vk::VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
     }
@@ -152,17 +151,14 @@ fn main() -> ExitCode {
     unsafe {
         vk::EnumerateDeviceExtensionProperties(pd, ptr::null(), &mut dev_ext_count, ptr::null_mut())
     };
-    let mut dev_exts: Vec<vk::VkExtensionProperties> =
-        vec![unsafe { std::mem::zeroed() }; dev_ext_count as usize];
-    unsafe {
-        vk::EnumerateDeviceExtensionProperties(
-            pd,
-            ptr::null(),
-            &mut dev_ext_count,
-            dev_exts.as_mut_ptr(),
-        )
-    };
     println!("device extensions advertised:   {dev_ext_count}");
+
+    // Device-scope probe: during real device selection this is the call to
+    // make once per candidate.
+    let Some(dev_avail) = (unsafe { vk::query_device_extensions_global(pd) }) else {
+        eprintln!("vk-info-rs: device extension probe failed");
+        return ExitCode::from(1);
+    };
 
     // ---- Create a device ----------------------------------------------------
     let mut qf_count: u32 = 0;
@@ -173,14 +169,13 @@ fn main() -> ExitCode {
     }
 
     let mut enabled_device_exts: Vec<&CStr> = Vec::new();
-    if enabled_instance_exts.contains(&c"VK_KHR_surface") && contains(&dev_exts, c"VK_KHR_swapchain")
-    {
+    if enabled_instance_exts.contains(&c"VK_KHR_surface") && dev_avail.KHR_swapchain() {
         enabled_device_exts.push(c"VK_KHR_swapchain");
     }
-    if contains(&dev_exts, c"VK_KHR_timeline_semaphore") {
+    if dev_avail.KHR_timeline_semaphore() {
         enabled_device_exts.push(c"VK_KHR_timeline_semaphore");
     }
-    if contains(&dev_exts, c"VK_KHR_synchronization2") {
+    if dev_avail.KHR_synchronization2() {
         enabled_device_exts.push(c"VK_KHR_synchronization2");
     }
     let dev_ext_ptrs: Vec<*const std::ffi::c_char> =
@@ -235,6 +230,16 @@ fn main() -> ExitCode {
     flag("VK_VERSION_1_1", vk::VERSION_1_1());
     flag("VK_VERSION_1_2", vk::VERSION_1_2());
     flag("VK_VERSION_1_3", vk::VERSION_1_3());
+    println!("extensions advertised (probe snapshots):");
+    flag("VK_KHR_surface", inst_avail.KHR_surface());
+    flag("VK_EXT_debug_utils", inst_avail.EXT_debug_utils());
+    flag(
+        "VK_KHR_portability_enumeration",
+        inst_avail.KHR_portability_enumeration(),
+    );
+    flag("VK_KHR_swapchain", dev_avail.KHR_swapchain());
+    flag("VK_KHR_timeline_semaphore", dev_avail.KHR_timeline_semaphore());
+    flag("VK_KHR_synchronization2", dev_avail.KHR_synchronization2());
     println!("extensions enabled by this run:");
     flag("VK_KHR_surface", vk::KHR_surface());
     flag("VK_KHR_swapchain", vk::KHR_swapchain());

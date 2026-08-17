@@ -48,7 +48,7 @@ glslc -O shaders/cube.frag -o shaders/cube.frag.spv
 The checked-in `gloam/` crate was generated with:
 
 ```sh
-gloam --api vk=1.3 --extensions VK_KHR_surface,VK_KHR_swapchain,VK_KHR_win32_surface,VK_KHR_xlib_surface,VK_KHR_wayland_surface,VK_KHR_get_physical_device_properties2,VK_KHR_portability_enumeration --out-path examples/rust/vk-cube/gloam rust --alias
+gloam --api vk=1.3 --extensions VK_KHR_surface,VK_KHR_swapchain,VK_KHR_win32_surface,VK_KHR_xlib_surface,VK_KHR_wayland_surface,VK_KHR_get_physical_device_properties2,VK_KHR_portability_enumeration,VK_KHR_portability_subset --out-path examples/rust/vk-cube/gloam rust --alias
 ```
 
 and can be refreshed in place with `cargo xtask regen examples`.

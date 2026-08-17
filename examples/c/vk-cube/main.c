@@ -7,12 +7,20 @@
  * in-flight fences), and push-constant transforms.
  *
  * Loading is the phased flow (gloamVulkanInitialize → vkCreateInstance →
- * gloamVulkanLoadInstance → vkCreateDevice → gloamVulkanLoadDevice), with
- * the built-in --loader opening the platform Vulkan library. SDL3 provides
- * the window and the surface (SDL_Vulkan_CreateSurface), so this loader
- * needs no platform surface extensions — the counterpart Rust example
+ * gloamVulkanLoadInstance → vkCreateDevice → gloamVulkanLoadDeviceFromQuery),
+ * with the built-in --loader opening the platform Vulkan library. SDL3
+ * provides the window and the surface (SDL_Vulkan_CreateSurface), so this
+ * loader needs no platform surface extensions — the counterpart Rust example
  * (examples/rust/vk-cube) goes the other way and creates the surface
  * through the loader's own vkCreate*SurfaceKHR commands.
+ *
+ * Extension presence is answered by gloam's probe API: one
+ * gloamVulkanQueryInstanceExtensions call replaces the manual instance
+ * enumeration, and device selection probes each candidate once with
+ * gloamVulkanQueryDeviceExtensions — a single enumeration answers every
+ * known extension (swapchain to qualify, portability subset to enable), and
+ * the winner's snapshot feeds gloamVulkanLoadDeviceFromQuery so device
+ * extensions are never enumerated twice.
  *
  * The instance opts into portability enumeration when the loader offers it,
  * and the device enables VK_KHR_portability_subset when advertised
@@ -150,6 +158,9 @@ static SDL_Window *g_window;
 static VkInstance g_instance;
 static VkSurfaceKHR g_surface;
 static VkPhysicalDevice g_pd;
+/* Extension snapshot of the chosen device, taken during selection and
+ * reused for device creation and gloamVulkanLoadDeviceFromQuery. */
+static GloamVulkanExtensions g_dev_exts;
 static VkDevice g_device;
 static VkQueue g_queue;
 static VkSurfaceFormatKHR g_surface_format;
@@ -801,11 +812,13 @@ int main(int argc, char **argv)
     }
 
     /* Instance: SDL names the surface extensions it needs for this window
-     * system; add portability enumeration when the loader offers it. */
+     * system; add portability enumeration when the loader offers it. One
+     * probe call answers presence for every extension this loader knows —
+     * no manual vkEnumerateInstanceExtensionProperties walk. */
     {
-        uint32_t num_sdl_exts = 0, num_inst_props = 0;
+        uint32_t num_sdl_exts = 0;
         char const *const *sdl_exts = SDL_Vulkan_GetInstanceExtensions(&num_sdl_exts);
-        VkExtensionProperties *inst_props;
+        GloamVulkanExtensions inst_exts;
         VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO };
         VkInstanceCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
         uint32_t j;
@@ -814,18 +827,11 @@ int main(int argc, char **argv)
         for (j = 0; j < num_sdl_exts && num_enabled_inst < 7; ++j)
             enabled_inst[num_enabled_inst++] = sdl_exts[j];
 
-        vkEnumerateInstanceExtensionProperties(NULL, &num_inst_props, NULL);
-        inst_props = (VkExtensionProperties *)calloc(num_inst_props ? num_inst_props : 1,
-                                                     sizeof(*inst_props));
-        vkEnumerateInstanceExtensionProperties(NULL, &num_inst_props, inst_props);
-        for (j = 0; j < num_inst_props; ++j)
-            if (strcmp(inst_props[j].extensionName,
-                       VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0) {
-                enabled_inst[num_enabled_inst++] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
-                ci.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-                break;
-            }
-        free(inst_props);
+        if (gloamVulkanQueryInstanceExtensions(&inst_exts) &&
+            inst_exts.KHR_portability_enumeration) {
+            enabled_inst[num_enabled_inst++] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+            ci.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+        }
 
         app.pApplicationName = "gloam vk-cube";
         app.apiVersion = VK_API_VERSION_1_3;
@@ -855,10 +861,16 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* Physical device: first one with a graphics queue that can present. */
+    /* Physical device: first one with a graphics queue that can present and
+     * a swapchain. Each candidate is probed exactly once — a single
+     * vkEnumerateDeviceExtensionProperties call inside the probe answers
+     * every extension this loader knows, however many the selection ends up
+     * caring about — and the winner's snapshot is kept for device creation
+     * and loading below. */
     {
         uint32_t num_devices = 0, j, k;
         VkPhysicalDevice *devices;
+        GloamVulkanExtensions candidate_exts;
         int found = 0;
 
         vkEnumeratePhysicalDevices(g_instance, &num_devices, NULL);
@@ -872,6 +884,9 @@ int main(int argc, char **argv)
         for (j = 0; j < num_devices && !found; ++j) {
             uint32_t num_families = 0;
             VkQueueFamilyProperties *families;
+            if (!gloamVulkanQueryDeviceExtensions(devices[j], &candidate_exts) ||
+                !candidate_exts.KHR_swapchain)
+                continue;
             vkGetPhysicalDeviceQueueFamilyProperties(devices[j], &num_families, NULL);
             families = (VkQueueFamilyProperties *)calloc(num_families, sizeof(*families));
             vkGetPhysicalDeviceQueueFamilyProperties(devices[j], &num_families, families);
@@ -880,6 +895,7 @@ int main(int argc, char **argv)
                 vkGetPhysicalDeviceSurfaceSupportKHR(devices[j], k, g_surface, &present);
                 if ((families[k].queueFlags & VK_QUEUE_GRAPHICS_BIT) && present) {
                     g_pd = devices[j];
+                    g_dev_exts = candidate_exts;
                     queue_family = k;
                     found = 1;
                     break;
@@ -889,7 +905,7 @@ int main(int argc, char **argv)
         }
         free(devices);
         if (!found) {
-            fprintf(stderr, "vk-cube: no graphics+present queue, skipping\n");
+            fprintf(stderr, "vk-cube: no swapchain-capable graphics+present device, skipping\n");
             return EXIT_SKIP;
         }
     }
@@ -902,11 +918,9 @@ int main(int argc, char **argv)
     vkGetPhysicalDeviceMemoryProperties(g_pd, &g_memory_props);
 
     /* Device: dynamic rendering, plus VK_KHR_portability_subset when the
-     * implementation advertises it (spec requirement — the name is passed
-     * through; the loader needs no types from it). */
+     * implementation advertises it (spec requirement). The selection probe
+     * already answered both questions — no re-enumeration. */
     {
-        uint32_t num_dev_props = 0, j;
-        VkExtensionProperties *dev_props;
         float priority = 1.0f;
         VkDeviceQueueCreateInfo qci = { .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
         VkPhysicalDeviceDynamicRenderingFeatures dyn_rendering =
@@ -915,16 +929,11 @@ int main(int argc, char **argv)
         VkResult res;
 
         enabled_dev[num_enabled_dev++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-        vkEnumerateDeviceExtensionProperties(g_pd, NULL, &num_dev_props, NULL);
-        dev_props = (VkExtensionProperties *)calloc(num_dev_props ? num_dev_props : 1,
-                                                    sizeof(*dev_props));
-        vkEnumerateDeviceExtensionProperties(g_pd, NULL, &num_dev_props, dev_props);
-        for (j = 0; j < num_dev_props; ++j)
-            if (strcmp(dev_props[j].extensionName, "VK_KHR_portability_subset") == 0) {
-                enabled_dev[num_enabled_dev++] = "VK_KHR_portability_subset";
-                break;
-            }
-        free(dev_props);
+        /* The probe flag is unconditional, but the extension's own macros
+         * sit behind VK_ENABLE_BETA_EXTENSIONS (provisional) — the name is
+         * just passed through, so use the literal. */
+        if (g_dev_exts.KHR_portability_subset)
+            enabled_dev[num_enabled_dev++] = "VK_KHR_portability_subset";
 
         qci.queueFamilyIndex = queue_family;
         qci.queueCount = 1;
@@ -942,9 +951,11 @@ int main(int argc, char **argv)
         }
     }
 
-    /* Phase 2: device-scope PFNs + extension flags. */
-    if (!gloamVulkanLoadDevice(g_device, g_pd, num_enabled_dev, enabled_dev)) {
-        fprintf(stderr, "vk-cube: gloamVulkanLoadDevice failed\n");
+    /* Phase 2: device-scope PFNs + extension flags, straight from the
+     * selection probe — the flags then mean "present" on this device, which
+     * matches what was enabled above. */
+    if (!gloamVulkanLoadDeviceFromQuery(g_device, g_pd, &g_dev_exts)) {
+        fprintf(stderr, "vk-cube: gloamVulkanLoadDeviceFromQuery failed\n");
         return 1;
     }
     vkGetDeviceQueue(g_device, queue_family, 0, &g_queue);

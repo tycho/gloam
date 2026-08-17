@@ -10,10 +10,16 @@
 //! from the winit window handle).
 //!
 //! Loading follows the phased contract on an owned context (`Vk::initialize`
-//! → `load_instance` → `load_device`); the instance opts into portability
-//! enumeration when the loader offers it, and the device enables
-//! `VK_KHR_portability_subset` when advertised (spec-required), so MoltenVK
-//! works out of the box.
+//! → `load_instance` → `load_device_from_query`).  Extension presence is
+//! answered by the probe API: one `query_instance_extensions` call replaces
+//! the manual instance enumeration, and device selection probes each
+//! candidate once with `query_device_extensions` — a single enumeration
+//! answers every known extension (swapchain to qualify, portability subset
+//! to enable), and the winner's snapshot feeds `load_device_from_query` so
+//! device extensions are never enumerated twice.  The instance opts into
+//! portability enumeration when the loader offers it, and the device
+//! enables `VK_KHR_portability_subset` when advertised (spec-required), so
+//! MoltenVK works out of the box.
 //!
 //! Run with `--ci` to render one frame offscreen-style (hidden window), copy
 //! it back through a staging buffer, verify the center pixel, and exit.
@@ -162,12 +168,6 @@ const LIB_NAMES: &[&str] = &[
     #[cfg(all(unix, not(target_os = "macos")))]
     "libvulkan.so",
 ];
-
-fn contains(props: &[vk::VkExtensionProperties], wanted: &CStr) -> bool {
-    props
-        .iter()
-        .any(|p| unsafe { CStr::from_ptr(p.extensionName.as_ptr()) } == wanted)
-}
 
 /// Everything that lives for the whole app.
 struct Ctx {
@@ -863,35 +863,30 @@ unsafe fn setup(window: Window, ci: bool) -> Result<Ctx, i32> {
     unsafe { vkc.initialize(gipa) };
 
     // ---- Instance -----------------------------------------------------
-    let mut n = 0u32;
-    unsafe { vkc.EnumerateInstanceExtensionProperties(ptr::null(), &mut n, ptr::null_mut()) };
-    let mut inst_props: Vec<vk::VkExtensionProperties> =
-        vec![unsafe { std::mem::zeroed() }; n as usize];
-    unsafe {
-        vkc.EnumerateInstanceExtensionProperties(ptr::null(), &mut n, inst_props.as_mut_ptr())
+    // One probe call answers presence for every extension this loader
+    // knows — no manual vkEnumerateInstanceExtensionProperties walk.
+    let Some(inst_avail) = (unsafe { vkc.query_instance_extensions() }) else {
+        eprintln!("vk-cube-rs: instance extension probe failed (skip)");
+        return Err(77);
     };
 
-    let platform_surface_ext: &CStr = match window.display_handle().map(|h| h.as_raw()) {
-        Ok(RawDisplayHandle::Windows(_)) => c"VK_KHR_win32_surface",
-        Ok(RawDisplayHandle::Xlib(_)) => c"VK_KHR_xlib_surface",
-        Ok(RawDisplayHandle::Wayland(_)) => c"VK_KHR_wayland_surface",
-        other => {
-            eprintln!("vk-cube-rs: unsupported display system {other:?} (skip)");
-            return Err(77);
-        }
-    };
-    let mut enabled_instance: Vec<&CStr> = vec![c"VK_KHR_surface", platform_surface_ext];
-    for e in &enabled_instance {
-        if !contains(&inst_props, e) {
-            eprintln!("vk-cube-rs: required instance extension {e:?} unavailable (skip)");
-            return Err(77);
-        }
+    let (platform_surface_ext, platform_surface_present): (&CStr, bool) =
+        match window.display_handle().map(|h| h.as_raw()) {
+            Ok(RawDisplayHandle::Windows(_)) => (c"VK_KHR_win32_surface", inst_avail.KHR_win32_surface()),
+            Ok(RawDisplayHandle::Xlib(_)) => (c"VK_KHR_xlib_surface", inst_avail.KHR_xlib_surface()),
+            Ok(RawDisplayHandle::Wayland(_)) => (c"VK_KHR_wayland_surface", inst_avail.KHR_wayland_surface()),
+            other => {
+                eprintln!("vk-cube-rs: unsupported display system {other:?} (skip)");
+                return Err(77);
+            }
+        };
+    if !inst_avail.KHR_surface() || !platform_surface_present {
+        eprintln!("vk-cube-rs: required surface extensions unavailable (skip)");
+        return Err(77);
     }
+    let mut enabled_instance: Vec<&CStr> = vec![c"VK_KHR_surface", platform_surface_ext];
     let mut instance_flags: vk::VkInstanceCreateFlags = 0;
-    if contains(
-        &inst_props,
-        vk::VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
-    ) {
+    if inst_avail.KHR_portability_enumeration() {
         enabled_instance.push(vk::VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
         instance_flags |= vk::VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
     }
@@ -923,7 +918,11 @@ unsafe fn setup(window: Window, ci: bool) -> Result<Ctx, i32> {
     // ---- Surface (through the loader's own platform commands) ----------
     let surface = unsafe { create_surface(&vkc, instance, &window) };
 
-    // ---- Physical device: graphics queue family + present support ------
+    // ---- Physical device: swapchain + graphics queue + present ---------
+    // Each candidate is probed exactly once: a single enumeration inside
+    // `query_device_extensions` answers every extension this loader knows,
+    // however many the selection ends up caring about.  The winner's
+    // snapshot is kept for device creation and loading below.
     let mut count = 0u32;
     unsafe { vkc.EnumeratePhysicalDevices(instance, &mut count, ptr::null_mut()) };
     if count == 0 {
@@ -933,8 +932,14 @@ unsafe fn setup(window: Window, ci: bool) -> Result<Ctx, i32> {
     let mut devices = vec![vk::VkPhysicalDevice(ptr::null_mut()); count as usize];
     unsafe { vkc.EnumeratePhysicalDevices(instance, &mut count, devices.as_mut_ptr()) };
 
-    let mut chosen: Option<(vk::VkPhysicalDevice, u32)> = None;
+    let mut chosen: Option<(vk::VkPhysicalDevice, u32, vk::VkExtensions)> = None;
     'outer: for &pd in &devices {
+        let Some(dev_avail) = (unsafe { vkc.query_device_extensions(pd) }) else {
+            continue;
+        };
+        if !dev_avail.KHR_swapchain() {
+            continue;
+        }
         let mut qf_count = 0u32;
         unsafe {
             vkc.GetPhysicalDeviceQueueFamilyProperties(pd, &mut qf_count, ptr::null_mut());
@@ -955,13 +960,13 @@ unsafe fn setup(window: Window, ci: bool) -> Result<Ctx, i32> {
                 );
             }
             if f.queueFlags & vk::VK_QUEUE_GRAPHICS_BIT != 0 && supports_present != 0 {
-                chosen = Some((pd, i as u32));
+                chosen = Some((pd, i as u32, dev_avail));
                 break 'outer;
             }
         }
     }
-    let Some((pd, queue_family)) = chosen else {
-        eprintln!("vk-cube-rs: no graphics+present queue (skip)");
+    let Some((pd, queue_family, dev_avail)) = chosen else {
+        eprintln!("vk-cube-rs: no swapchain-capable graphics+present device (skip)");
         return Err(77);
     };
 
@@ -976,25 +981,13 @@ unsafe fn setup(window: Window, ci: bool) -> Result<Ctx, i32> {
     unsafe { vkc.GetPhysicalDeviceMemoryProperties(pd, &mut memory_props) };
 
     // ---- Device (dynamic rendering + portability subset when advertised) --
-    let mut de_count = 0u32;
-    unsafe {
-        vkc.EnumerateDeviceExtensionProperties(pd, ptr::null(), &mut de_count, ptr::null_mut());
-    }
-    let mut dev_props: Vec<vk::VkExtensionProperties> =
-        vec![unsafe { std::mem::zeroed() }; de_count as usize];
-    unsafe {
-        vkc.EnumerateDeviceExtensionProperties(
-            pd,
-            ptr::null(),
-            &mut de_count,
-            dev_props.as_mut_ptr(),
-        );
-    }
+    // The selection probe already answered both questions — no
+    // re-enumeration.
     let mut enabled_device: Vec<&CStr> = vec![c"VK_KHR_swapchain"];
     // Spec requirement: a portability-subset device must have the extension
     // enabled.  (The name is passed through; the loader needs no types from
     // it.)
-    if contains(&dev_props, c"VK_KHR_portability_subset") {
+    if dev_avail.KHR_portability_subset() {
         enabled_device.push(c"VK_KHR_portability_subset");
     }
     let dev_ptrs: Vec<*const c_char> = enabled_device.iter().map(|e| e.as_ptr()).collect();
@@ -1022,8 +1015,11 @@ unsafe fn setup(window: Window, ci: bool) -> Result<Ctx, i32> {
     let r = unsafe { vkc.CreateDevice(pd, &dci, ptr::null(), &mut device) };
     assert!(r == vk::VK_SUCCESS, "vkCreateDevice failed ({})", r.0);
 
-    if !unsafe { vkc.load_device(device, pd, &enabled_device) } {
-        eprintln!("vk-cube-rs: load_device failed");
+    // Device-scope PFNs + extension flags, straight from the selection
+    // probe — the flags then mean "present" on this device, which matches
+    // what was enabled above.
+    if !unsafe { vkc.load_device_from_query(device, pd, &dev_avail) } {
+        eprintln!("vk-cube-rs: load_device_from_query failed");
         return Err(1);
     }
 
