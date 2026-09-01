@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/tycho/gloam/compare/0.7.0...0.7.1) - 2026-09-01
+
+### Other
+
+- *(cargo)* update dependencies
+- update bundled specs, headers, and provenance
+
 ## [0.7.0](https://github.com/tycho/gloam/compare/0.6.0...0.7.0) - 2026-08-17
 
 ### Added
