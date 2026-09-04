@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.6.0",
-    "describe": "0.6.0+c0a8de2.dirty",
-    "commit": "c0a8de236a67a27846ea21b7d4ca44c4bb887d22",
+    "version": "0.7.0",
+    "describe": "0.7.0-1-g2978b33-dirty",
+    "commit": "2978b33a1606028e1e39375d4699de7855f1efaa",
     "command_line": "gloam --api egl --out-path examples/rust/egl-info/gloam rust --alias"
   },
   "provenance": {
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/egl.rs",
-      "blob": "cfc8b03432bd097a22be91f05883b57f18dd9934",
+      "blob": "a637220f5e52ee37fa28650922fdb477c7c09306",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",

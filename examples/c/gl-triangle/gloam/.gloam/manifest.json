@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.6.0",
-    "describe": "0.6.0+c0a8de2.dirty",
-    "commit": "c0a8de236a67a27846ea21b7d4ca44c4bb887d22",
+    "version": "0.7.0",
+    "describe": "0.7.0-1-g2978b33-dirty",
+    "commit": "2978b33a1606028e1e39375d4699de7855f1efaa",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0,egl=1.5 --merge --extensions GL_KHR_debug,GL_EXT_texture_filter_anisotropic,EGL_ANGLE_platform_angle,EGL_ANGLE_platform_angle_d3d,EGL_ANGLE_platform_angle_metal,EGL_ANGLE_platform_angle_opengl,EGL_ANGLE_platform_angle_vulkan --out-path gl-triangle/gloam c --alias"
   },
   "provenance": {
@@ -39,8 +39,8 @@
       "repo": "KhronosGroup/OpenGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/OpenGL-Registry",
       "path_in_repo": "xml/gl.xml",
-      "commit": "e8f7cd0e35ac8d6f5667a021ff83d04b1fec41ef",
-      "blob": "7492d15565b79cf3844e3402858582f649677fec"
+      "commit": "1cdd228e34966dd6b95bd203e9f84faba0f371a1",
+      "blob": "ff263739c9100a4636f45e3c1bbb5940444c1d70"
     },
     "gl_angle_ext.xml": {
       "repo": "angle/angle",
@@ -83,7 +83,7 @@
     },
     {
       "path": "include/gloam/egl.h",
-      "blob": "5162cd4f554a4e96f6ee675d5d2ca8794278a72d",
+      "blob": "4c72e2ffc8752f2732838a819f58600abe9d8c0b",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
@@ -94,7 +94,7 @@
     },
     {
       "path": "include/gloam/gl.h",
-      "blob": "4a1e4754803c08cb2203a75e16a5a7a244712fd3",
+      "blob": "9e0c7be4e38fa7e53328287344acc835536bcc0a",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
@@ -113,7 +113,7 @@
     },
     {
       "path": "src/egl.c",
-      "blob": "e17c32860f2d4a2699105469a59a95354d10f466",
+      "blob": "222b9aa231bd56a3e9b0edbb43db0fc58ba1d89b",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
@@ -124,7 +124,7 @@
     },
     {
       "path": "src/gl.c",
-      "blob": "4a39da97e9ad09140c1212c5d114ae4d322c17b4",
+      "blob": "45483dd0841d31cf5e312e0f008d263e358c4af1",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",

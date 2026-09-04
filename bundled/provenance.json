@@ -33,8 +33,8 @@
       "repo": "KhronosGroup/OpenGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/OpenGL-Registry",
       "path_in_repo": "xml/gl.xml",
-      "commit": "e8f7cd0e35ac8d6f5667a021ff83d04b1fec41ef",
-      "blob": "7492d15565b79cf3844e3402858582f649677fec"
+      "commit": "1cdd228e34966dd6b95bd203e9f84faba0f371a1",
+      "blob": "ff263739c9100a4636f45e3c1bbb5940444c1d70"
     },
     "gl_angle_ext.xml": {
       "repo": "angle/angle",
@@ -54,15 +54,15 @@
       "repo": "KhronosGroup/OpenGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/OpenGL-Registry",
       "path_in_repo": "xml/glx.xml",
-      "commit": "e8f7cd0e35ac8d6f5667a021ff83d04b1fec41ef",
+      "commit": "1cdd228e34966dd6b95bd203e9f84faba0f371a1",
       "blob": "80bce12bf53a81f58fd585846495cf1937b35b44"
     },
     "vk.xml": {
       "repo": "KhronosGroup/Vulkan-Docs",
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Docs",
       "path_in_repo": "xml/vk.xml",
-      "commit": "090f1b190d60ced4a1d198fd3747d071cc271b1c",
-      "blob": "e046fba88de9f82a00833fd95ca6dd6de2d515fb"
+      "commit": "f84d432d5b8912362f96f581f29bbc4f3c8c7843",
+      "blob": "0161e0261ccd6beb72944317898a30d83fc61c73"
     },
     "vk_video/vulkan_video_codec_av1std.h": {
       "repo": "KhronosGroup/Vulkan-Headers",
@@ -159,7 +159,7 @@
       "repo": "KhronosGroup/OpenGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/OpenGL-Registry",
       "path_in_repo": "xml/wgl.xml",
-      "commit": "e8f7cd0e35ac8d6f5667a021ff83d04b1fec41ef",
+      "commit": "1cdd228e34966dd6b95bd203e9f84faba0f371a1",
       "blob": "1ef34b838104167593158efa3d631bf851a0d4bc"
     },
     "xxhash.h": {
