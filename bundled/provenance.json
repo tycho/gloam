@@ -61,8 +61,8 @@
       "repo": "KhronosGroup/Vulkan-Docs",
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Docs",
       "path_in_repo": "xml/vk.xml",
-      "commit": "20a9e5892e2aab7b9776b16a238b10fc8133090a",
-      "blob": "caddc54434096430537344ce98f8595a1056198a"
+      "commit": "f84d432d5b8912362f96f581f29bbc4f3c8c7843",
+      "blob": "0161e0261ccd6beb72944317898a30d83fc61c73"
     },
     "vk_video/vulkan_video_codec_av1std.h": {
       "repo": "KhronosGroup/Vulkan-Headers",
