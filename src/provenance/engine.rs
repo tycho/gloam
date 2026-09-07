@@ -544,30 +544,14 @@ mod tests {
         assert_eq!(r.pin.commit, "c0ffee00");
     }
 
-    #[test]
-    fn corrupted_cached_blob_is_not_served() {
-        // Seed the cache with content that does NOT hash to the pin's blob
-        // SHA (simulating cache corruption).  Resolution must treat it as a
-        // miss and attempt a refetch — which fails here because the client
-        // points at an unroutable address — rather than silently serving the
-        // corrupt bytes.
-        let cache = Cache::from_connection(Connection::open_in_memory().unwrap()).unwrap();
-        let gh = Github::with_base_urls("http://127.0.0.1:1", "http://127.0.0.1:1").unwrap();
-        let engine = Engine::from_parts(gh, cache);
-
-        let bundle = sample_bundle();
-        engine
-            .seed_from_bundle(&bundle, |key| {
-                (key == "xxhash.h").then(|| b"CORRUPTED".to_vec())
-            })
-            .unwrap();
-
-        let err = engine.resolve_pinned(&bundle.provenance, &["xxhash.h"]);
-        assert!(
-            err.is_err(),
-            "corrupted cache content must not be served as verified"
-        );
-    }
+    // The corrupt-cache case (a cached row that no longer hashes to its blob
+    // SHA must be refetched, never served) lives in `fetch_tests`: it needs a
+    // peer to refetch from, and a mock server is the only peer a test may
+    // rely on.  It used to live here pointed at 127.0.0.1:1, assuming the
+    // connect would be refused instantly — but nothing guarantees that.  A
+    // loopback SYN can be pended indefinitely by a Windows Filtering Platform
+    // callout (observed with a VPN split-tunnel driver loaded), and a
+    // connect that is never refused never returns.
 
     #[test]
     fn resolve_pinned_rejects_missing_pin() {

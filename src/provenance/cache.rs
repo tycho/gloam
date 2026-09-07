@@ -225,12 +225,16 @@ impl Cache {
 
     // -- blobs ---------------------------------------------------------------
 
-    /// Store blob content (content-addressed; idempotent).
+    /// Store blob content (content-addressed).  An existing row is
+    /// overwritten, not merely touched: the engine only writes a blob after
+    /// verifying it hashes to `blob_sha`, so a write is also how a corrupt
+    /// row (content that no longer matches its key) gets repaired.
     pub fn put_blob(&self, blob_sha: &str, content: &[u8], now: i64) -> Result<()> {
         self.conn.execute(
             "INSERT INTO blobs(blob_sha, content, last_used)
              VALUES (?1, ?2, ?3)
-             ON CONFLICT(blob_sha) DO UPDATE SET last_used = excluded.last_used",
+             ON CONFLICT(blob_sha) DO UPDATE
+                 SET content = excluded.content, last_used = excluded.last_used",
             params![blob_sha, content, now],
         )?;
         Ok(())
