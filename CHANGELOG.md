@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2](https://github.com/tycho/gloam/compare/0.7.1...0.7.2) - 2026-09-07
+
+### Fixed
+
+- *(provenance)* bound request phases, repair corrupt cache rows, hermetic corrupt-cache test
+
 ## [0.7.1](https://github.com/tycho/gloam/compare/0.7.0...0.7.1) - 2026-09-04
 
 ### Other
