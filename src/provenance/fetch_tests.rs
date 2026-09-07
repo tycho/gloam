@@ -717,6 +717,61 @@ fn corrupt_raw_content_is_rejected() {
 }
 
 #[test]
+fn corrupted_cached_blob_is_refetched_not_served() {
+    // The cache holds a row for the pinned blob SHA whose bytes no longer
+    // hash to it (cache corruption).  Resolution must treat the row as a
+    // miss — refetching from the raw host and overwriting the bad row — and
+    // never hand the corrupt bytes out as verified content.
+    let fix = fixture(&["xxhash.h"]);
+    let server = MockGitHub::start(fix.clone());
+
+    let (cluster, file) = find("xxhash.h").unwrap();
+    let rd = &fix[cluster.repo];
+    let (blob, _content) = &rd.files[file.path_in_repo];
+
+    let cache = Cache::open_in_memory().unwrap();
+    cache.put_blob(blob, b"CORRUPTED", cache::now()).unwrap();
+    let engine = engine_for(&server, cache);
+
+    let mut pins = IndexMap::new();
+    pins.insert(
+        "xxhash.h".to_string(),
+        ProvenancePin {
+            repo: cluster.repo.to_string(),
+            repo_url: cluster.repo_url.to_string(),
+            path_in_repo: file.path_in_repo.to_string(),
+            commit: rd.head.clone(),
+            blob: blob.clone(),
+        },
+    );
+
+    let out = engine.resolve_pinned(&pins, &["xxhash.h"]).unwrap();
+    assert_eq!(
+        out["xxhash.h"].content,
+        fixture_content(&fix, "xxhash.h"),
+        "the corrupt cached bytes must not be served"
+    );
+    let reqs = server.requests();
+    assert!(
+        reqs.iter()
+            .any(|p| p.contains("/raw/") && p.contains("[200]")),
+        "a corrupt cached row is a miss — the content is refetched: {reqs:?}"
+    );
+
+    // The refetched bytes replaced the corrupt row: a second resolve is a
+    // clean cache hit with no further requests.
+    let n = reqs.len();
+    let again = engine.resolve_pinned(&pins, &["xxhash.h"]).unwrap();
+    assert_eq!(again["xxhash.h"].content, fixture_content(&fix, "xxhash.h"));
+    assert_eq!(
+        server.requests().len(),
+        n,
+        "the good bytes must overwrite the corrupt row: {:?}",
+        server.requests()
+    );
+}
+
+#[test]
 fn tracked_file_missing_from_listing_is_an_error() {
     // The fixture repo has gl.xml but no glx.xml, so the xml/ listing lacks a
     // tracked file — a hard error naming the file and commit.
