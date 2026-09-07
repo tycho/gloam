@@ -32,6 +32,7 @@
 //! above any tracked directory.
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine;
@@ -183,9 +184,21 @@ impl Github {
         // conditional ref requests — so ureq must hand back every response
         // rather than turning non-2xx into an error; `ensure_ok` is our single
         // `error_for_status()` equivalent.
+        //
+        // Every phase of a request gets a deadline.  ureq's defaults are all
+        // `None`, which leaves a plain blocking `connect()` underneath — and a
+        // SYN that is silently dropped (a black-holed host, or a packet filter
+        // that pends the connect and never releases it) then blocks forever
+        // with no error to report.  The connect budget is the one that
+        // matters most; the response and body budgets bound a peer that
+        // accepts and then stalls.  The body budget is generous because it is
+        // a total, not per-read: vk.xml is several MB and slow links exist.
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .user_agent(concat!("gloam/", env!("CARGO_PKG_VERSION")))
             .http_status_as_error(false)
+            .timeout_connect(Some(Duration::from_secs(15)))
+            .timeout_recv_response(Some(Duration::from_secs(30)))
+            .timeout_recv_body(Some(Duration::from_secs(300)))
             .build()
             .into();
         Ok(Self {
