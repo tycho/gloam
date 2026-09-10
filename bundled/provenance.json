@@ -26,8 +26,8 @@
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/egl_angle_ext.xml",
-      "commit": "880d825611b31a19f253c3e1531c07c829f64d57",
-      "blob": "f1bbc3a88789860a0e2c3e0348fa6c659eb41925"
+      "commit": "dc092ca3d40dd00a6562bdd6f80306d7d7e06c26",
+      "blob": "e1d9b360f39a8069e3015f432899f9f23d70e802"
     },
     "gl.xml": {
       "repo": "KhronosGroup/OpenGL-Registry",
@@ -40,7 +40,7 @@
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/gl_angle_ext.xml",
-      "commit": "880d825611b31a19f253c3e1531c07c829f64d57",
+      "commit": "dc092ca3d40dd00a6562bdd6f80306d7d7e06c26",
       "blob": "59533582902a5666c699e16b8c6f72615791502c"
     },
     "glsl_exts.xml": {
