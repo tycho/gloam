@@ -760,8 +760,6 @@ pub const EGL_PLATFORM_ANGLE_NATIVE_PLATFORM_TYPE_ANGLE: EGLenum = 0x348F;
 pub const EGL_EXTERNAL_SURFACE_ANGLE: EGLenum = 0x348F;
 pub const EGL_PLATFORM_ANGLE_D3D_LUID_HIGH_ANGLE: EGLenum = 0x34A0;
 pub const EGL_PLATFORM_ANGLE_D3D_LUID_LOW_ANGLE: EGLenum = 0x34A1;
-pub const EGL_PLATFORM_ANGLE_DEVICE_CONTEXT_VOLATILE_EAGL_ANGLE: EGLenum = 0x34A2;
-pub const EGL_PLATFORM_ANGLE_DEVICE_CONTEXT_VOLATILE_CGL_ANGLE: EGLenum = 0x34A3;
 pub const EGL_PLATFORM_VULKAN_DISPLAY_MODE_SIMPLE_ANGLE: EGLenum = 0x34A4;
 pub const EGL_PLATFORM_VULKAN_DISPLAY_MODE_HEADLESS_ANGLE: EGLenum = 0x34A5;
 pub const EGL_METAL_DEVICE_ANGLE: EGLenum = 0x34A6;
@@ -1196,76 +1194,76 @@ static EXT_RANGES_egl: [(u16, u16, u16); 72] = [
     (   8,   47,    1), // EGL_ANDROID_native_fence_sync
     (   9,   48,    1), // EGL_ANDROID_presentation_time
     (   5,   49,    5), // EGL_ANDROID_get_frame_timestamps
-    (  62,   54,    1), // EGL_ANGLE_query_surface_pointer
-    (  67,   55,    1), // EGL_ANGLE_sync_control_rate
-    (  80,   56,    1), // EGL_EXT_client_sync
-    (  84,   57,    4), // EGL_EXT_device_base
-    (  87,   57,    1), // EGL_EXT_device_enumeration
-    (  90,   58,    3), // EGL_EXT_device_query
-    ( 104,   61,    2), // EGL_EXT_image_dma_buf_import_modifiers
-    ( 108,   63,    8), // EGL_EXT_output_base
-    ( 112,   71,    3), // EGL_EXT_platform_base
-    ( 121,   74,    1), // EGL_EXT_stream_consumer_egloutput
-    ( 125,   75,    1), // EGL_EXT_swap_buffers_with_damage
-    ( 126,   76,    1), // EGL_EXT_sync_reuse
-    ( 128,   77,    1), // EGL_HI_clientpixmap
-    ( 133,   78,    1), // EGL_KHR_cl_event2
-    ( 139,   79,    3), // EGL_KHR_debug
-    ( 140,   82,    1), // EGL_KHR_display_reference
-    ( 141,   83,    4), // EGL_KHR_fence_sync
-    ( 148,   87,    2), // EGL_KHR_image
-    ( 149,   87,    2), // EGL_KHR_image_base
-    ( 151,   89,    2), // EGL_KHR_lock_surface
-    ( 153,   89,    3), // EGL_KHR_lock_surface3
-    ( 156,   92,    1), // EGL_KHR_partial_update
-    ( 161,   83,    4), // EGL_KHR_reusable_sync
-    ( 161,   93,    1), // EGL_KHR_reusable_sync
-    ( 162,   94,    5), // EGL_KHR_stream
-    ( 163,   99,    5), // EGL_KHR_stream_attrib
-    ( 164,  104,    3), // EGL_KHR_stream_consumer_gltexture
-    ( 165,  107,    2), // EGL_KHR_stream_cross_process_fd
-    ( 166,  109,    1), // EGL_KHR_stream_fifo
-    ( 168,  110,    1), // EGL_KHR_stream_producer_eglsurface
-    ( 170,  111,    1), // EGL_KHR_swap_buffers_with_damage
-    ( 172,  112,    1), // EGL_KHR_wait_sync
-    ( 173,  113,    2), // EGL_MESA_drm_image
-    ( 174,  115,    2), // EGL_MESA_image_dma_buf_export
-    ( 177,  117,    2), // EGL_MESA_query_driver
-    ( 178,  119,    1), // EGL_NOK_swap_region
-    ( 179,  120,    1), // EGL_NOK_swap_region2
-    ( 188,  121,    3), // EGL_NV_native_query
-    ( 190,  124,    1), // EGL_NV_post_sub_buffer
-    ( 195,  125,    1), // EGL_NV_stream_consumer_gltexture_yuv
-    ( 193,  126,    4), // EGL_NV_stream_consumer_eglimage
-    ( 204,  130,    1), // EGL_NV_stream_flush
-    ( 206,  131,    3), // EGL_NV_stream_metadata
-    ( 209,  134,    1), // EGL_NV_stream_reset
-    ( 213,  135,    1), // EGL_NV_stream_sync
-    ( 214,  136,    6), // EGL_NV_sync
-    ( 215,  142,    2), // EGL_NV_system_time
-    (  81,  144,    7), // EGL_EXT_compositor
-    ( 124,  151,    1), // EGL_EXT_surface_compression
-    ( 221,  152,    3), // EGL_WL_bind_wayland_display
-    ( 222,  155,    1), // EGL_WL_create_wayland_buffer_from_image
-    (  89,  156,    1), // EGL_EXT_device_persistent_id
-    (  93,  157,    1), // EGL_EXT_display_alloc
+    (  60,   54,    1), // EGL_ANGLE_query_surface_pointer
+    (  65,   55,    1), // EGL_ANGLE_sync_control_rate
+    (  78,   56,    1), // EGL_EXT_client_sync
+    (  82,   57,    4), // EGL_EXT_device_base
+    (  85,   57,    1), // EGL_EXT_device_enumeration
+    (  88,   58,    3), // EGL_EXT_device_query
+    ( 102,   61,    2), // EGL_EXT_image_dma_buf_import_modifiers
+    ( 106,   63,    8), // EGL_EXT_output_base
+    ( 110,   71,    3), // EGL_EXT_platform_base
+    ( 119,   74,    1), // EGL_EXT_stream_consumer_egloutput
+    ( 123,   75,    1), // EGL_EXT_swap_buffers_with_damage
+    ( 124,   76,    1), // EGL_EXT_sync_reuse
+    ( 126,   77,    1), // EGL_HI_clientpixmap
+    ( 131,   78,    1), // EGL_KHR_cl_event2
+    ( 137,   79,    3), // EGL_KHR_debug
+    ( 138,   82,    1), // EGL_KHR_display_reference
+    ( 139,   83,    4), // EGL_KHR_fence_sync
+    ( 146,   87,    2), // EGL_KHR_image
+    ( 147,   87,    2), // EGL_KHR_image_base
+    ( 149,   89,    2), // EGL_KHR_lock_surface
+    ( 151,   89,    3), // EGL_KHR_lock_surface3
+    ( 154,   92,    1), // EGL_KHR_partial_update
+    ( 159,   83,    4), // EGL_KHR_reusable_sync
+    ( 159,   93,    1), // EGL_KHR_reusable_sync
+    ( 160,   94,    5), // EGL_KHR_stream
+    ( 161,   99,    5), // EGL_KHR_stream_attrib
+    ( 162,  104,    3), // EGL_KHR_stream_consumer_gltexture
+    ( 163,  107,    2), // EGL_KHR_stream_cross_process_fd
+    ( 164,  109,    1), // EGL_KHR_stream_fifo
+    ( 166,  110,    1), // EGL_KHR_stream_producer_eglsurface
+    ( 168,  111,    1), // EGL_KHR_swap_buffers_with_damage
+    ( 170,  112,    1), // EGL_KHR_wait_sync
+    ( 171,  113,    2), // EGL_MESA_drm_image
+    ( 172,  115,    2), // EGL_MESA_image_dma_buf_export
+    ( 175,  117,    2), // EGL_MESA_query_driver
+    ( 176,  119,    1), // EGL_NOK_swap_region
+    ( 177,  120,    1), // EGL_NOK_swap_region2
+    ( 186,  121,    3), // EGL_NV_native_query
+    ( 188,  124,    1), // EGL_NV_post_sub_buffer
+    ( 193,  125,    1), // EGL_NV_stream_consumer_gltexture_yuv
+    ( 191,  126,    4), // EGL_NV_stream_consumer_eglimage
+    ( 202,  130,    1), // EGL_NV_stream_flush
+    ( 204,  131,    3), // EGL_NV_stream_metadata
+    ( 207,  134,    1), // EGL_NV_stream_reset
+    ( 211,  135,    1), // EGL_NV_stream_sync
+    ( 212,  136,    6), // EGL_NV_sync
+    ( 213,  142,    2), // EGL_NV_system_time
+    (  79,  144,    7), // EGL_EXT_compositor
+    ( 122,  151,    1), // EGL_EXT_surface_compression
+    ( 219,  152,    3), // EGL_WL_bind_wayland_display
+    ( 220,  155,    1), // EGL_WL_create_wayland_buffer_from_image
+    (  87,  156,    1), // EGL_EXT_device_persistent_id
+    (  91,  157,    1), // EGL_EXT_display_alloc
     (  22,  158,    2), // EGL_ANGLE_device_creation
     (  34,  160,    2), // EGL_ANGLE_feature_control
     (  33,  162,    2), // EGL_ANGLE_external_context_and_surface
-    (  64,  164,    2), // EGL_ANGLE_stream_producer_d3d_texture
-    (  76,  166,    1), // EGL_CHROMIUM_sync_control
-    (  61,  167,    4), // EGL_ANGLE_program_cache_control
-    (  70,  171,    1), // EGL_ANGLE_wait_until_work_scheduled
-    (  60,  172,    1), // EGL_ANGLE_prepare_swap_buffers
-    (  59,  173,    4), // EGL_ANGLE_power_preference
-    (  69,  177,    1), // EGL_ANGLE_vulkan_image
+    (  62,  164,    2), // EGL_ANGLE_stream_producer_d3d_texture
+    (  74,  166,    1), // EGL_CHROMIUM_sync_control
+    (  59,  167,    4), // EGL_ANGLE_program_cache_control
+    (  68,  171,    1), // EGL_ANGLE_wait_until_work_scheduled
+    (  58,  172,    1), // EGL_ANGLE_prepare_swap_buffers
+    (  57,  173,    4), // EGL_ANGLE_power_preference
+    (  67,  177,    1), // EGL_ANGLE_vulkan_image
     (  27,  178,    2), // EGL_ANGLE_device_vulkan
     (  41,  180,    1), // EGL_ANGLE_metal_shared_event_sync
     (  43,  181,    1), // EGL_ANGLE_no_error
 ];
 
 // ── Extensions ──────────────────────────────────────────────
-pub const EXT_COUNT: usize = 223;
+pub const EXT_COUNT: usize = 221;
 
 // XXH3-64 of each extension name, sorted for binary search.
 #[rustfmt::skip]
@@ -1348,7 +1346,6 @@ static EXT_HASH_KEYS: [u64; EXT_COUNT] = [
     0x55bf7befb5997e09, // EGL_NV_stream_socket_unix
     0x5654a8bc12eeebab, // EGL_EXT_surface_CTA861_3_metadata
     0x584d724a2585416b, // EGL_ANGLE_window_fixed_size
-    0x5b49c1a91e2bcce3, // EGL_ANGLE_platform_angle_device_context_volatile_cgl
     0x5b61d2012f7861b3, // EGL_KHR_debug
     0x5dd63931ba6563fb, // EGL_NV_stream_fifo_synchronous
     0x5e7a56764d6c44b1, // EGL_EXT_present_opaque
@@ -1480,7 +1477,6 @@ static EXT_HASH_KEYS: [u64; EXT_COUNT] = [
     0xefb059a6e6841776, // EGL_EXT_pixel_format_float
     0xf136655b938cfef7, // EGL_ANGLE_feature_control
     0xf2594fbcdfa3f545, // EGL_ANGLE_create_context_client_arrays
-    0xf27d356bb04d147d, // EGL_ANGLE_platform_angle_device_context_volatile_eagl
     0xf2c65c6b58412a19, // EGL_KHR_mutable_render_buffer
     0xf2ec54e65029ed17, // EGL_NV_triple_buffer
     0xf2fdf97c1361d5d7, // EGL_KHR_gl_renderbuffer_image
@@ -1497,18 +1493,18 @@ static EXT_HASH_KEYS: [u64; EXT_COUNT] = [
 // extArray index for the correspondingly-ranked EXT_HASH_KEYS entry.
 #[rustfmt::skip]
 static EXT_HASH_IDX: [u16; EXT_COUNT] = [
-    143, 20, 29, 26, 101, 80, 109, 129, 130, 132, 103, 205, 44, 91, 33, 180, 61, 162, 5, 145,
-    35, 94, 157, 39, 6, 50, 37, 177, 0, 25, 99, 89, 85, 135, 114, 199, 123, 183, 78, 195,
-    31, 58, 193, 84, 166, 70, 204, 38, 197, 95, 191, 146, 69, 10, 18, 161, 141, 60, 126, 202,
-    127, 65, 100, 124, 105, 90, 167, 137, 17, 186, 40, 96, 110, 181, 214, 212, 122, 71, 48, 139,
-    203, 117, 14, 16, 152, 19, 62, 46, 43, 54, 209, 116, 150, 220, 41, 165, 27, 131, 133, 83,
-    219, 47, 192, 168, 172, 57, 188, 73, 82, 81, 201, 138, 211, 8, 72, 208, 36, 170, 119, 86,
-    148, 182, 2, 173, 147, 113, 218, 118, 158, 200, 169, 53, 68, 77, 163, 102, 64, 107, 104, 149,
-    222, 79, 66, 23, 106, 176, 112, 159, 190, 198, 75, 217, 59, 155, 189, 56, 1, 187, 45, 55,
-    210, 160, 21, 185, 88, 51, 63, 156, 184, 87, 32, 153, 178, 171, 221, 28, 179, 207, 67, 175,
-    142, 194, 151, 7, 108, 12, 98, 24, 11, 4, 206, 164, 136, 128, 93, 213, 215, 13, 9, 22,
-    115, 74, 3, 52, 42, 30, 134, 111, 34, 15, 49, 154, 216, 144, 92, 140, 121, 196, 97, 120,
-    174, 125, 76,
+    141, 20, 29, 26, 99, 78, 107, 127, 128, 130, 101, 203, 44, 89, 33, 178, 59, 160, 5, 143,
+    35, 92, 155, 39, 6, 48, 37, 175, 0, 25, 97, 87, 83, 133, 112, 197, 121, 181, 76, 193,
+    31, 56, 191, 82, 164, 68, 202, 38, 195, 93, 189, 144, 67, 10, 18, 159, 139, 58, 124, 200,
+    125, 63, 98, 122, 103, 88, 165, 135, 17, 184, 40, 94, 108, 179, 212, 210, 120, 69, 137, 201,
+    115, 14, 16, 150, 19, 60, 46, 43, 52, 207, 114, 148, 218, 41, 163, 27, 129, 131, 81, 217,
+    47, 190, 166, 170, 55, 186, 71, 80, 79, 199, 136, 209, 8, 70, 206, 36, 168, 117, 84, 146,
+    180, 2, 171, 145, 111, 216, 116, 156, 198, 167, 51, 66, 75, 161, 100, 62, 105, 102, 147, 220,
+    77, 64, 23, 104, 174, 110, 157, 188, 196, 73, 215, 57, 153, 187, 54, 1, 185, 45, 53, 208,
+    158, 21, 183, 86, 49, 61, 154, 182, 85, 32, 151, 176, 169, 219, 28, 177, 205, 65, 173, 140,
+    192, 149, 7, 106, 12, 96, 24, 11, 4, 204, 162, 134, 126, 91, 211, 213, 13, 9, 22, 113,
+    72, 3, 50, 42, 30, 132, 109, 34, 15, 152, 214, 142, 90, 138, 119, 194, 95, 118, 172, 123,
+    74,
 ];
 
 // ── Unloaded-call handling ──────────────────────────────────
@@ -4372,1054 +4368,1042 @@ impl Egl {
         self.ext[47]
     }
 
-    /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_context_volatile_cgl`.
-    #[inline]
-    pub fn ANGLE_platform_angle_device_context_volatile_cgl(&self) -> bool {
-        self.ext[48]
-    }
-
-    /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_context_volatile_eagl`.
-    #[inline]
-    pub fn ANGLE_platform_angle_device_context_volatile_eagl(&self) -> bool {
-        self.ext[49]
-    }
-
     /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_id`.
     #[inline]
     pub fn ANGLE_platform_angle_device_id(&self) -> bool {
-        self.ext[50]
+        self.ext[48]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_type_egl`.
     #[inline]
     pub fn ANGLE_platform_angle_device_type_egl(&self) -> bool {
-        self.ext[51]
+        self.ext[49]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_platform_angle_device_type_swiftshader`.
     #[inline]
     pub fn ANGLE_platform_angle_device_type_swiftshader(&self) -> bool {
-        self.ext[52]
+        self.ext[50]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_platform_angle_metal`.
     #[inline]
     pub fn ANGLE_platform_angle_metal(&self) -> bool {
-        self.ext[53]
+        self.ext[51]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_platform_angle_null`.
     #[inline]
     pub fn ANGLE_platform_angle_null(&self) -> bool {
-        self.ext[54]
+        self.ext[52]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_platform_angle_opengl`.
     #[inline]
     pub fn ANGLE_platform_angle_opengl(&self) -> bool {
-        self.ext[55]
+        self.ext[53]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_platform_angle_vulkan`.
     #[inline]
     pub fn ANGLE_platform_angle_vulkan(&self) -> bool {
-        self.ext[56]
+        self.ext[54]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_platform_angle_vulkan_device_uuid`.
     #[inline]
     pub fn ANGLE_platform_angle_vulkan_device_uuid(&self) -> bool {
-        self.ext[57]
+        self.ext[55]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_platform_angle_webgpu`.
     #[inline]
     pub fn ANGLE_platform_angle_webgpu(&self) -> bool {
-        self.ext[58]
+        self.ext[56]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_power_preference`.
     #[inline]
     pub fn ANGLE_power_preference(&self) -> bool {
-        self.ext[59]
+        self.ext[57]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_prepare_swap_buffers`.
     #[inline]
     pub fn ANGLE_prepare_swap_buffers(&self) -> bool {
-        self.ext[60]
+        self.ext[58]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_program_cache_control`.
     #[inline]
     pub fn ANGLE_program_cache_control(&self) -> bool {
-        self.ext[61]
+        self.ext[59]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_query_surface_pointer`.
     #[inline]
     pub fn ANGLE_query_surface_pointer(&self) -> bool {
-        self.ext[62]
+        self.ext[60]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_robust_resource_initialization`.
     #[inline]
     pub fn ANGLE_robust_resource_initialization(&self) -> bool {
-        self.ext[63]
+        self.ext[61]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_stream_producer_d3d_texture`.
     #[inline]
     pub fn ANGLE_stream_producer_d3d_texture(&self) -> bool {
-        self.ext[64]
+        self.ext[62]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_surface_d3d_texture_2d_share_handle`.
     #[inline]
     pub fn ANGLE_surface_d3d_texture_2d_share_handle(&self) -> bool {
-        self.ext[65]
+        self.ext[63]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_surface_orientation`.
     #[inline]
     pub fn ANGLE_surface_orientation(&self) -> bool {
-        self.ext[66]
+        self.ext[64]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_sync_control_rate`.
     #[inline]
     pub fn ANGLE_sync_control_rate(&self) -> bool {
-        self.ext[67]
+        self.ext[65]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_vulkan_display`.
     #[inline]
     pub fn ANGLE_vulkan_display(&self) -> bool {
-        self.ext[68]
+        self.ext[66]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_vulkan_image`.
     #[inline]
     pub fn ANGLE_vulkan_image(&self) -> bool {
-        self.ext[69]
+        self.ext[67]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_wait_until_work_scheduled`.
     #[inline]
     pub fn ANGLE_wait_until_work_scheduled(&self) -> bool {
-        self.ext[70]
+        self.ext[68]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_window_fixed_size`.
     #[inline]
     pub fn ANGLE_window_fixed_size(&self) -> bool {
-        self.ext[71]
+        self.ext[69]
     }
 
     /// Whether the driver advertises `EGL_ANGLE_x11_visual`.
     #[inline]
     pub fn ANGLE_x11_visual(&self) -> bool {
-        self.ext[72]
+        self.ext[70]
     }
 
     /// Whether the driver advertises `EGL_ARM_image_format`.
     #[inline]
     pub fn ARM_image_format(&self) -> bool {
-        self.ext[73]
+        self.ext[71]
     }
 
     /// Whether the driver advertises `EGL_ARM_implicit_external_sync`.
     #[inline]
     pub fn ARM_implicit_external_sync(&self) -> bool {
-        self.ext[74]
+        self.ext[72]
     }
 
     /// Whether the driver advertises `EGL_ARM_pixmap_multisample_discard`.
     #[inline]
     pub fn ARM_pixmap_multisample_discard(&self) -> bool {
-        self.ext[75]
+        self.ext[73]
     }
 
     /// Whether the driver advertises `EGL_CHROMIUM_sync_control`.
     #[inline]
     pub fn CHROMIUM_sync_control(&self) -> bool {
-        self.ext[76]
+        self.ext[74]
     }
 
     /// Whether the driver advertises `EGL_EXT_bind_to_front`.
     #[inline]
     pub fn EXT_bind_to_front(&self) -> bool {
-        self.ext[77]
+        self.ext[75]
     }
 
     /// Whether the driver advertises `EGL_EXT_buffer_age`.
     #[inline]
     pub fn EXT_buffer_age(&self) -> bool {
-        self.ext[78]
+        self.ext[76]
     }
 
     /// Whether the driver advertises `EGL_EXT_client_extensions`.
     #[inline]
     pub fn EXT_client_extensions(&self) -> bool {
-        self.ext[79]
+        self.ext[77]
     }
 
     /// Whether the driver advertises `EGL_EXT_client_sync`.
     #[inline]
     pub fn EXT_client_sync(&self) -> bool {
-        self.ext[80]
+        self.ext[78]
     }
 
     /// Whether the driver advertises `EGL_EXT_compositor`.
     #[inline]
     pub fn EXT_compositor(&self) -> bool {
-        self.ext[81]
+        self.ext[79]
     }
 
     /// Whether the driver advertises `EGL_EXT_config_select_group`.
     #[inline]
     pub fn EXT_config_select_group(&self) -> bool {
-        self.ext[82]
+        self.ext[80]
     }
 
     /// Whether the driver advertises `EGL_EXT_create_context_robustness`.
     #[inline]
     pub fn EXT_create_context_robustness(&self) -> bool {
-        self.ext[83]
+        self.ext[81]
     }
 
     /// Whether the driver advertises `EGL_EXT_device_base`.
     #[inline]
     pub fn EXT_device_base(&self) -> bool {
-        self.ext[84]
+        self.ext[82]
     }
 
     /// Whether the driver advertises `EGL_EXT_device_drm`.
     #[inline]
     pub fn EXT_device_drm(&self) -> bool {
-        self.ext[85]
+        self.ext[83]
     }
 
     /// Whether the driver advertises `EGL_EXT_device_drm_render_node`.
     #[inline]
     pub fn EXT_device_drm_render_node(&self) -> bool {
-        self.ext[86]
+        self.ext[84]
     }
 
     /// Whether the driver advertises `EGL_EXT_device_enumeration`.
     #[inline]
     pub fn EXT_device_enumeration(&self) -> bool {
-        self.ext[87]
+        self.ext[85]
     }
 
     /// Whether the driver advertises `EGL_EXT_device_openwf`.
     #[inline]
     pub fn EXT_device_openwf(&self) -> bool {
-        self.ext[88]
+        self.ext[86]
     }
 
     /// Whether the driver advertises `EGL_EXT_device_persistent_id`.
     #[inline]
     pub fn EXT_device_persistent_id(&self) -> bool {
-        self.ext[89]
+        self.ext[87]
     }
 
     /// Whether the driver advertises `EGL_EXT_device_query`.
     #[inline]
     pub fn EXT_device_query(&self) -> bool {
-        self.ext[90]
+        self.ext[88]
     }
 
     /// Whether the driver advertises `EGL_EXT_device_query_name`.
     #[inline]
     pub fn EXT_device_query_name(&self) -> bool {
-        self.ext[91]
+        self.ext[89]
     }
 
     /// Whether the driver advertises `EGL_EXT_device_type`.
     #[inline]
     pub fn EXT_device_type(&self) -> bool {
-        self.ext[92]
+        self.ext[90]
     }
 
     /// Whether the driver advertises `EGL_EXT_display_alloc`.
     #[inline]
     pub fn EXT_display_alloc(&self) -> bool {
-        self.ext[93]
+        self.ext[91]
     }
 
     /// Whether the driver advertises `EGL_EXT_explicit_device`.
     #[inline]
     pub fn EXT_explicit_device(&self) -> bool {
-        self.ext[94]
+        self.ext[92]
     }
 
     /// Whether the driver advertises `EGL_EXT_gl_colorspace_bt2020_hlg`.
     #[inline]
     pub fn EXT_gl_colorspace_bt2020_hlg(&self) -> bool {
-        self.ext[95]
+        self.ext[93]
     }
 
     /// Whether the driver advertises `EGL_EXT_gl_colorspace_bt2020_linear`.
     #[inline]
     pub fn EXT_gl_colorspace_bt2020_linear(&self) -> bool {
-        self.ext[96]
+        self.ext[94]
     }
 
     /// Whether the driver advertises `EGL_EXT_gl_colorspace_bt2020_pq`.
     #[inline]
     pub fn EXT_gl_colorspace_bt2020_pq(&self) -> bool {
-        self.ext[97]
+        self.ext[95]
     }
 
     /// Whether the driver advertises `EGL_EXT_gl_colorspace_display_p3`.
     #[inline]
     pub fn EXT_gl_colorspace_display_p3(&self) -> bool {
-        self.ext[98]
+        self.ext[96]
     }
 
     /// Whether the driver advertises `EGL_EXT_gl_colorspace_display_p3_linear`.
     #[inline]
     pub fn EXT_gl_colorspace_display_p3_linear(&self) -> bool {
-        self.ext[99]
+        self.ext[97]
     }
 
     /// Whether the driver advertises `EGL_EXT_gl_colorspace_display_p3_passthrough`.
     #[inline]
     pub fn EXT_gl_colorspace_display_p3_passthrough(&self) -> bool {
-        self.ext[100]
+        self.ext[98]
     }
 
     /// Whether the driver advertises `EGL_EXT_gl_colorspace_scrgb`.
     #[inline]
     pub fn EXT_gl_colorspace_scrgb(&self) -> bool {
-        self.ext[101]
+        self.ext[99]
     }
 
     /// Whether the driver advertises `EGL_EXT_gl_colorspace_scrgb_linear`.
     #[inline]
     pub fn EXT_gl_colorspace_scrgb_linear(&self) -> bool {
-        self.ext[102]
+        self.ext[100]
     }
 
     /// Whether the driver advertises `EGL_EXT_image_dma_buf_import`.
     #[inline]
     pub fn EXT_image_dma_buf_import(&self) -> bool {
-        self.ext[103]
+        self.ext[101]
     }
 
     /// Whether the driver advertises `EGL_EXT_image_dma_buf_import_modifiers`.
     #[inline]
     pub fn EXT_image_dma_buf_import_modifiers(&self) -> bool {
-        self.ext[104]
+        self.ext[102]
     }
 
     /// Whether the driver advertises `EGL_EXT_image_gl_colorspace`.
     #[inline]
     pub fn EXT_image_gl_colorspace(&self) -> bool {
-        self.ext[105]
+        self.ext[103]
     }
 
     /// Whether the driver advertises `EGL_EXT_image_implicit_sync_control`.
     #[inline]
     pub fn EXT_image_implicit_sync_control(&self) -> bool {
-        self.ext[106]
+        self.ext[104]
     }
 
     /// Whether the driver advertises `EGL_EXT_multiview_window`.
     #[inline]
     pub fn EXT_multiview_window(&self) -> bool {
-        self.ext[107]
+        self.ext[105]
     }
 
     /// Whether the driver advertises `EGL_EXT_output_base`.
     #[inline]
     pub fn EXT_output_base(&self) -> bool {
-        self.ext[108]
+        self.ext[106]
     }
 
     /// Whether the driver advertises `EGL_EXT_output_drm`.
     #[inline]
     pub fn EXT_output_drm(&self) -> bool {
-        self.ext[109]
+        self.ext[107]
     }
 
     /// Whether the driver advertises `EGL_EXT_output_openwf`.
     #[inline]
     pub fn EXT_output_openwf(&self) -> bool {
-        self.ext[110]
+        self.ext[108]
     }
 
     /// Whether the driver advertises `EGL_EXT_pixel_format_float`.
     #[inline]
     pub fn EXT_pixel_format_float(&self) -> bool {
-        self.ext[111]
+        self.ext[109]
     }
 
     /// Whether the driver advertises `EGL_EXT_platform_base`.
     #[inline]
     pub fn EXT_platform_base(&self) -> bool {
-        self.ext[112]
+        self.ext[110]
     }
 
     /// Whether the driver advertises `EGL_EXT_platform_device`.
     #[inline]
     pub fn EXT_platform_device(&self) -> bool {
-        self.ext[113]
+        self.ext[111]
     }
 
     /// Whether the driver advertises `EGL_EXT_platform_wayland`.
     #[inline]
     pub fn EXT_platform_wayland(&self) -> bool {
-        self.ext[114]
+        self.ext[112]
     }
 
     /// Whether the driver advertises `EGL_EXT_platform_x11`.
     #[inline]
     pub fn EXT_platform_x11(&self) -> bool {
-        self.ext[115]
+        self.ext[113]
     }
 
     /// Whether the driver advertises `EGL_EXT_platform_xcb`.
     #[inline]
     pub fn EXT_platform_xcb(&self) -> bool {
-        self.ext[116]
+        self.ext[114]
     }
 
     /// Whether the driver advertises `EGL_EXT_present_opaque`.
     #[inline]
     pub fn EXT_present_opaque(&self) -> bool {
-        self.ext[117]
+        self.ext[115]
     }
 
     /// Whether the driver advertises `EGL_EXT_protected_content`.
     #[inline]
     pub fn EXT_protected_content(&self) -> bool {
-        self.ext[118]
+        self.ext[116]
     }
 
     /// Whether the driver advertises `EGL_EXT_protected_surface`.
     #[inline]
     pub fn EXT_protected_surface(&self) -> bool {
-        self.ext[119]
+        self.ext[117]
     }
 
     /// Whether the driver advertises `EGL_EXT_query_reset_notification_strategy`.
     #[inline]
     pub fn EXT_query_reset_notification_strategy(&self) -> bool {
-        self.ext[120]
+        self.ext[118]
     }
 
     /// Whether the driver advertises `EGL_EXT_stream_consumer_egloutput`.
     #[inline]
     pub fn EXT_stream_consumer_egloutput(&self) -> bool {
-        self.ext[121]
+        self.ext[119]
     }
 
     /// Whether the driver advertises `EGL_EXT_surface_CTA861_3_metadata`.
     #[inline]
     pub fn EXT_surface_CTA861_3_metadata(&self) -> bool {
-        self.ext[122]
+        self.ext[120]
     }
 
     /// Whether the driver advertises `EGL_EXT_surface_SMPTE2086_metadata`.
     #[inline]
     pub fn EXT_surface_SMPTE2086_metadata(&self) -> bool {
-        self.ext[123]
+        self.ext[121]
     }
 
     /// Whether the driver advertises `EGL_EXT_surface_compression`.
     #[inline]
     pub fn EXT_surface_compression(&self) -> bool {
-        self.ext[124]
+        self.ext[122]
     }
 
     /// Whether the driver advertises `EGL_EXT_swap_buffers_with_damage`.
     #[inline]
     pub fn EXT_swap_buffers_with_damage(&self) -> bool {
-        self.ext[125]
+        self.ext[123]
     }
 
     /// Whether the driver advertises `EGL_EXT_sync_reuse`.
     #[inline]
     pub fn EXT_sync_reuse(&self) -> bool {
-        self.ext[126]
+        self.ext[124]
     }
 
     /// Whether the driver advertises `EGL_EXT_yuv_surface`.
     #[inline]
     pub fn EXT_yuv_surface(&self) -> bool {
-        self.ext[127]
+        self.ext[125]
     }
 
     /// Whether the driver advertises `EGL_HI_clientpixmap`.
     #[inline]
     pub fn HI_clientpixmap(&self) -> bool {
-        self.ext[128]
+        self.ext[126]
     }
 
     /// Whether the driver advertises `EGL_HI_colorformats`.
     #[inline]
     pub fn HI_colorformats(&self) -> bool {
-        self.ext[129]
+        self.ext[127]
     }
 
     /// Whether the driver advertises `EGL_IMG_context_priority`.
     #[inline]
     pub fn IMG_context_priority(&self) -> bool {
-        self.ext[130]
+        self.ext[128]
     }
 
     /// Whether the driver advertises `EGL_IMG_image_plane_attribs`.
     #[inline]
     pub fn IMG_image_plane_attribs(&self) -> bool {
-        self.ext[131]
+        self.ext[129]
     }
 
     /// Whether the driver advertises `EGL_KHR_cl_event`.
     #[inline]
     pub fn KHR_cl_event(&self) -> bool {
-        self.ext[132]
+        self.ext[130]
     }
 
     /// Whether the driver advertises `EGL_KHR_cl_event2`.
     #[inline]
     pub fn KHR_cl_event2(&self) -> bool {
-        self.ext[133]
+        self.ext[131]
     }
 
     /// Whether the driver advertises `EGL_KHR_client_get_all_proc_addresses`.
     #[inline]
     pub fn KHR_client_get_all_proc_addresses(&self) -> bool {
-        self.ext[134]
+        self.ext[132]
     }
 
     /// Whether the driver advertises `EGL_KHR_config_attribs`.
     #[inline]
     pub fn KHR_config_attribs(&self) -> bool {
-        self.ext[135]
+        self.ext[133]
     }
 
     /// Whether the driver advertises `EGL_KHR_context_flush_control`.
     #[inline]
     pub fn KHR_context_flush_control(&self) -> bool {
-        self.ext[136]
+        self.ext[134]
     }
 
     /// Whether the driver advertises `EGL_KHR_create_context`.
     #[inline]
     pub fn KHR_create_context(&self) -> bool {
-        self.ext[137]
+        self.ext[135]
     }
 
     /// Whether the driver advertises `EGL_KHR_create_context_no_error`.
     #[inline]
     pub fn KHR_create_context_no_error(&self) -> bool {
-        self.ext[138]
+        self.ext[136]
     }
 
     /// Whether the driver advertises `EGL_KHR_debug`.
     #[inline]
     pub fn KHR_debug(&self) -> bool {
-        self.ext[139]
+        self.ext[137]
     }
 
     /// Whether the driver advertises `EGL_KHR_display_reference`.
     #[inline]
     pub fn KHR_display_reference(&self) -> bool {
-        self.ext[140]
+        self.ext[138]
     }
 
     /// Whether the driver advertises `EGL_KHR_fence_sync`.
     #[inline]
     pub fn KHR_fence_sync(&self) -> bool {
-        self.ext[141]
+        self.ext[139]
     }
 
     /// Whether the driver advertises `EGL_KHR_get_all_proc_addresses`.
     #[inline]
     pub fn KHR_get_all_proc_addresses(&self) -> bool {
-        self.ext[142]
+        self.ext[140]
     }
 
     /// Whether the driver advertises `EGL_KHR_gl_colorspace`.
     #[inline]
     pub fn KHR_gl_colorspace(&self) -> bool {
-        self.ext[143]
+        self.ext[141]
     }
 
     /// Whether the driver advertises `EGL_KHR_gl_renderbuffer_image`.
     #[inline]
     pub fn KHR_gl_renderbuffer_image(&self) -> bool {
-        self.ext[144]
+        self.ext[142]
     }
 
     /// Whether the driver advertises `EGL_KHR_gl_texture_2D_image`.
     #[inline]
     pub fn KHR_gl_texture_2D_image(&self) -> bool {
-        self.ext[145]
+        self.ext[143]
     }
 
     /// Whether the driver advertises `EGL_KHR_gl_texture_3D_image`.
     #[inline]
     pub fn KHR_gl_texture_3D_image(&self) -> bool {
-        self.ext[146]
+        self.ext[144]
     }
 
     /// Whether the driver advertises `EGL_KHR_gl_texture_cubemap_image`.
     #[inline]
     pub fn KHR_gl_texture_cubemap_image(&self) -> bool {
-        self.ext[147]
+        self.ext[145]
     }
 
     /// Whether the driver advertises `EGL_KHR_image`.
     #[inline]
     pub fn KHR_image(&self) -> bool {
-        self.ext[148]
+        self.ext[146]
     }
 
     /// Whether the driver advertises `EGL_KHR_image_base`.
     #[inline]
     pub fn KHR_image_base(&self) -> bool {
-        self.ext[149]
+        self.ext[147]
     }
 
     /// Whether the driver advertises `EGL_KHR_image_pixmap`.
     #[inline]
     pub fn KHR_image_pixmap(&self) -> bool {
-        self.ext[150]
+        self.ext[148]
     }
 
     /// Whether the driver advertises `EGL_KHR_lock_surface`.
     #[inline]
     pub fn KHR_lock_surface(&self) -> bool {
-        self.ext[151]
+        self.ext[149]
     }
 
     /// Whether the driver advertises `EGL_KHR_lock_surface2`.
     #[inline]
     pub fn KHR_lock_surface2(&self) -> bool {
-        self.ext[152]
+        self.ext[150]
     }
 
     /// Whether the driver advertises `EGL_KHR_lock_surface3`.
     #[inline]
     pub fn KHR_lock_surface3(&self) -> bool {
-        self.ext[153]
+        self.ext[151]
     }
 
     /// Whether the driver advertises `EGL_KHR_mutable_render_buffer`.
     #[inline]
     pub fn KHR_mutable_render_buffer(&self) -> bool {
-        self.ext[154]
+        self.ext[152]
     }
 
     /// Whether the driver advertises `EGL_KHR_no_config_context`.
     #[inline]
     pub fn KHR_no_config_context(&self) -> bool {
-        self.ext[155]
+        self.ext[153]
     }
 
     /// Whether the driver advertises `EGL_KHR_partial_update`.
     #[inline]
     pub fn KHR_partial_update(&self) -> bool {
-        self.ext[156]
+        self.ext[154]
     }
 
     /// Whether the driver advertises `EGL_KHR_platform_android`.
     #[inline]
     pub fn KHR_platform_android(&self) -> bool {
-        self.ext[157]
+        self.ext[155]
     }
 
     /// Whether the driver advertises `EGL_KHR_platform_gbm`.
     #[inline]
     pub fn KHR_platform_gbm(&self) -> bool {
-        self.ext[158]
+        self.ext[156]
     }
 
     /// Whether the driver advertises `EGL_KHR_platform_wayland`.
     #[inline]
     pub fn KHR_platform_wayland(&self) -> bool {
-        self.ext[159]
+        self.ext[157]
     }
 
     /// Whether the driver advertises `EGL_KHR_platform_x11`.
     #[inline]
     pub fn KHR_platform_x11(&self) -> bool {
-        self.ext[160]
+        self.ext[158]
     }
 
     /// Whether the driver advertises `EGL_KHR_reusable_sync`.
     #[inline]
     pub fn KHR_reusable_sync(&self) -> bool {
-        self.ext[161]
+        self.ext[159]
     }
 
     /// Whether the driver advertises `EGL_KHR_stream`.
     #[inline]
     pub fn KHR_stream(&self) -> bool {
-        self.ext[162]
+        self.ext[160]
     }
 
     /// Whether the driver advertises `EGL_KHR_stream_attrib`.
     #[inline]
     pub fn KHR_stream_attrib(&self) -> bool {
-        self.ext[163]
+        self.ext[161]
     }
 
     /// Whether the driver advertises `EGL_KHR_stream_consumer_gltexture`.
     #[inline]
     pub fn KHR_stream_consumer_gltexture(&self) -> bool {
-        self.ext[164]
+        self.ext[162]
     }
 
     /// Whether the driver advertises `EGL_KHR_stream_cross_process_fd`.
     #[inline]
     pub fn KHR_stream_cross_process_fd(&self) -> bool {
-        self.ext[165]
+        self.ext[163]
     }
 
     /// Whether the driver advertises `EGL_KHR_stream_fifo`.
     #[inline]
     pub fn KHR_stream_fifo(&self) -> bool {
-        self.ext[166]
+        self.ext[164]
     }
 
     /// Whether the driver advertises `EGL_KHR_stream_producer_aldatalocator`.
     #[inline]
     pub fn KHR_stream_producer_aldatalocator(&self) -> bool {
-        self.ext[167]
+        self.ext[165]
     }
 
     /// Whether the driver advertises `EGL_KHR_stream_producer_eglsurface`.
     #[inline]
     pub fn KHR_stream_producer_eglsurface(&self) -> bool {
-        self.ext[168]
+        self.ext[166]
     }
 
     /// Whether the driver advertises `EGL_KHR_surfaceless_context`.
     #[inline]
     pub fn KHR_surfaceless_context(&self) -> bool {
-        self.ext[169]
+        self.ext[167]
     }
 
     /// Whether the driver advertises `EGL_KHR_swap_buffers_with_damage`.
     #[inline]
     pub fn KHR_swap_buffers_with_damage(&self) -> bool {
-        self.ext[170]
+        self.ext[168]
     }
 
     /// Whether the driver advertises `EGL_KHR_vg_parent_image`.
     #[inline]
     pub fn KHR_vg_parent_image(&self) -> bool {
-        self.ext[171]
+        self.ext[169]
     }
 
     /// Whether the driver advertises `EGL_KHR_wait_sync`.
     #[inline]
     pub fn KHR_wait_sync(&self) -> bool {
-        self.ext[172]
+        self.ext[170]
     }
 
     /// Whether the driver advertises `EGL_MESA_drm_image`.
     #[inline]
     pub fn MESA_drm_image(&self) -> bool {
-        self.ext[173]
+        self.ext[171]
     }
 
     /// Whether the driver advertises `EGL_MESA_image_dma_buf_export`.
     #[inline]
     pub fn MESA_image_dma_buf_export(&self) -> bool {
-        self.ext[174]
+        self.ext[172]
     }
 
     /// Whether the driver advertises `EGL_MESA_platform_gbm`.
     #[inline]
     pub fn MESA_platform_gbm(&self) -> bool {
-        self.ext[175]
+        self.ext[173]
     }
 
     /// Whether the driver advertises `EGL_MESA_platform_surfaceless`.
     #[inline]
     pub fn MESA_platform_surfaceless(&self) -> bool {
-        self.ext[176]
+        self.ext[174]
     }
 
     /// Whether the driver advertises `EGL_MESA_query_driver`.
     #[inline]
     pub fn MESA_query_driver(&self) -> bool {
-        self.ext[177]
+        self.ext[175]
     }
 
     /// Whether the driver advertises `EGL_NOK_swap_region`.
     #[inline]
     pub fn NOK_swap_region(&self) -> bool {
-        self.ext[178]
+        self.ext[176]
     }
 
     /// Whether the driver advertises `EGL_NOK_swap_region2`.
     #[inline]
     pub fn NOK_swap_region2(&self) -> bool {
-        self.ext[179]
+        self.ext[177]
     }
 
     /// Whether the driver advertises `EGL_NOK_texture_from_pixmap`.
     #[inline]
     pub fn NOK_texture_from_pixmap(&self) -> bool {
-        self.ext[180]
+        self.ext[178]
     }
 
     /// Whether the driver advertises `EGL_NV_3dvision_surface`.
     #[inline]
     pub fn NV_3dvision_surface(&self) -> bool {
-        self.ext[181]
+        self.ext[179]
     }
 
     /// Whether the driver advertises `EGL_NV_context_priority_realtime`.
     #[inline]
     pub fn NV_context_priority_realtime(&self) -> bool {
-        self.ext[182]
+        self.ext[180]
     }
 
     /// Whether the driver advertises `EGL_NV_coverage_sample`.
     #[inline]
     pub fn NV_coverage_sample(&self) -> bool {
-        self.ext[183]
+        self.ext[181]
     }
 
     /// Whether the driver advertises `EGL_NV_coverage_sample_resolve`.
     #[inline]
     pub fn NV_coverage_sample_resolve(&self) -> bool {
-        self.ext[184]
+        self.ext[182]
     }
 
     /// Whether the driver advertises `EGL_NV_cuda_event`.
     #[inline]
     pub fn NV_cuda_event(&self) -> bool {
-        self.ext[185]
+        self.ext[183]
     }
 
     /// Whether the driver advertises `EGL_NV_depth_nonlinear`.
     #[inline]
     pub fn NV_depth_nonlinear(&self) -> bool {
-        self.ext[186]
+        self.ext[184]
     }
 
     /// Whether the driver advertises `EGL_NV_device_cuda`.
     #[inline]
     pub fn NV_device_cuda(&self) -> bool {
-        self.ext[187]
+        self.ext[185]
     }
 
     /// Whether the driver advertises `EGL_NV_native_query`.
     #[inline]
     pub fn NV_native_query(&self) -> bool {
-        self.ext[188]
+        self.ext[186]
     }
 
     /// Whether the driver advertises `EGL_NV_post_convert_rounding`.
     #[inline]
     pub fn NV_post_convert_rounding(&self) -> bool {
-        self.ext[189]
+        self.ext[187]
     }
 
     /// Whether the driver advertises `EGL_NV_post_sub_buffer`.
     #[inline]
     pub fn NV_post_sub_buffer(&self) -> bool {
-        self.ext[190]
+        self.ext[188]
     }
 
     /// Whether the driver advertises `EGL_NV_quadruple_buffer`.
     #[inline]
     pub fn NV_quadruple_buffer(&self) -> bool {
-        self.ext[191]
+        self.ext[189]
     }
 
     /// Whether the driver advertises `EGL_NV_robustness_video_memory_purge`.
     #[inline]
     pub fn NV_robustness_video_memory_purge(&self) -> bool {
-        self.ext[192]
+        self.ext[190]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_consumer_eglimage`.
     #[inline]
     pub fn NV_stream_consumer_eglimage(&self) -> bool {
-        self.ext[193]
+        self.ext[191]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_consumer_eglimage_use_scanout_attrib`.
     #[inline]
     pub fn NV_stream_consumer_eglimage_use_scanout_attrib(&self) -> bool {
-        self.ext[194]
+        self.ext[192]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_consumer_gltexture_yuv`.
     #[inline]
     pub fn NV_stream_consumer_gltexture_yuv(&self) -> bool {
-        self.ext[195]
+        self.ext[193]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_cross_display`.
     #[inline]
     pub fn NV_stream_cross_display(&self) -> bool {
-        self.ext[196]
+        self.ext[194]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_cross_object`.
     #[inline]
     pub fn NV_stream_cross_object(&self) -> bool {
-        self.ext[197]
+        self.ext[195]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_cross_partition`.
     #[inline]
     pub fn NV_stream_cross_partition(&self) -> bool {
-        self.ext[198]
+        self.ext[196]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_cross_process`.
     #[inline]
     pub fn NV_stream_cross_process(&self) -> bool {
-        self.ext[199]
+        self.ext[197]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_cross_system`.
     #[inline]
     pub fn NV_stream_cross_system(&self) -> bool {
-        self.ext[200]
+        self.ext[198]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_dma`.
     #[inline]
     pub fn NV_stream_dma(&self) -> bool {
-        self.ext[201]
+        self.ext[199]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_fifo_next`.
     #[inline]
     pub fn NV_stream_fifo_next(&self) -> bool {
-        self.ext[202]
+        self.ext[200]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_fifo_synchronous`.
     #[inline]
     pub fn NV_stream_fifo_synchronous(&self) -> bool {
-        self.ext[203]
+        self.ext[201]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_flush`.
     #[inline]
     pub fn NV_stream_flush(&self) -> bool {
-        self.ext[204]
+        self.ext[202]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_frame_limits`.
     #[inline]
     pub fn NV_stream_frame_limits(&self) -> bool {
-        self.ext[205]
+        self.ext[203]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_metadata`.
     #[inline]
     pub fn NV_stream_metadata(&self) -> bool {
-        self.ext[206]
+        self.ext[204]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_origin`.
     #[inline]
     pub fn NV_stream_origin(&self) -> bool {
-        self.ext[207]
+        self.ext[205]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_remote`.
     #[inline]
     pub fn NV_stream_remote(&self) -> bool {
-        self.ext[208]
+        self.ext[206]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_reset`.
     #[inline]
     pub fn NV_stream_reset(&self) -> bool {
-        self.ext[209]
+        self.ext[207]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_socket`.
     #[inline]
     pub fn NV_stream_socket(&self) -> bool {
-        self.ext[210]
+        self.ext[208]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_socket_inet`.
     #[inline]
     pub fn NV_stream_socket_inet(&self) -> bool {
-        self.ext[211]
+        self.ext[209]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_socket_unix`.
     #[inline]
     pub fn NV_stream_socket_unix(&self) -> bool {
-        self.ext[212]
+        self.ext[210]
     }
 
     /// Whether the driver advertises `EGL_NV_stream_sync`.
     #[inline]
     pub fn NV_stream_sync(&self) -> bool {
-        self.ext[213]
+        self.ext[211]
     }
 
     /// Whether the driver advertises `EGL_NV_sync`.
     #[inline]
     pub fn NV_sync(&self) -> bool {
-        self.ext[214]
+        self.ext[212]
     }
 
     /// Whether the driver advertises `EGL_NV_system_time`.
     #[inline]
     pub fn NV_system_time(&self) -> bool {
-        self.ext[215]
+        self.ext[213]
     }
 
     /// Whether the driver advertises `EGL_NV_triple_buffer`.
     #[inline]
     pub fn NV_triple_buffer(&self) -> bool {
-        self.ext[216]
+        self.ext[214]
     }
 
     /// Whether the driver advertises `EGL_QNX_image_native_buffer`.
     #[inline]
     pub fn QNX_image_native_buffer(&self) -> bool {
-        self.ext[217]
+        self.ext[215]
     }
 
     /// Whether the driver advertises `EGL_QNX_platform_screen`.
     #[inline]
     pub fn QNX_platform_screen(&self) -> bool {
-        self.ext[218]
+        self.ext[216]
     }
 
     /// Whether the driver advertises `EGL_TIZEN_image_native_buffer`.
     #[inline]
     pub fn TIZEN_image_native_buffer(&self) -> bool {
-        self.ext[219]
+        self.ext[217]
     }
 
     /// Whether the driver advertises `EGL_TIZEN_image_native_surface`.
     #[inline]
     pub fn TIZEN_image_native_surface(&self) -> bool {
-        self.ext[220]
+        self.ext[218]
     }
 
     /// Whether the driver advertises `EGL_WL_bind_wayland_display`.
     #[inline]
     pub fn WL_bind_wayland_display(&self) -> bool {
-        self.ext[221]
+        self.ext[219]
     }
 
     /// Whether the driver advertises `EGL_WL_create_wayland_buffer_from_image`.
     #[inline]
     pub fn WL_create_wayland_buffer_from_image(&self) -> bool {
-        self.ext[222]
+        self.ext[220]
     }
 
     /// Whether the driver supports `EGL_VERSION_1_0`.
