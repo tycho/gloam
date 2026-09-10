@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.0",
-    "describe": "0.7.0-1-g2978b33-dirty",
-    "commit": "2978b33a1606028e1e39375d4699de7855f1efaa",
+    "version": "0.7.1",
+    "describe": "0.7.1+beccfc4.dirty",
+    "commit": "beccfc4549e72a577766e1be685bb2d0c829f814",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0 --merge --out-path examples/rust/gl-triangle/gloam rust --alias --mx-global"
   },
   "provenance": {
@@ -25,7 +25,7 @@
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/gl_angle_ext.xml",
-      "commit": "880d825611b31a19f253c3e1531c07c829f64d57",
+      "commit": "dc092ca3d40dd00a6562bdd6f80306d7d7e06c26",
       "blob": "59533582902a5666c699e16b8c6f72615791502c"
     },
     "glsl_exts.xml": {
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/gl.rs",
-      "blob": "5452e52cc1744abdfb5ac95978766b0559f5cba0",
+      "blob": "aedffc181858ac326cdb8a3a09a29ca6c074c2a7",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
