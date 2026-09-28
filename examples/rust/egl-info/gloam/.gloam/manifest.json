@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.1",
-    "describe": "0.7.1+beccfc4.dirty",
-    "commit": "beccfc4549e72a577766e1be685bb2d0c829f814",
+    "version": "0.7.2",
+    "describe": "0.7.2+a3c1cd7.dirty",
+    "commit": "a3c1cd75cffd982bebfe2860e1ee9d21412a8f2d",
     "command_line": "gloam --api egl --out-path examples/rust/egl-info/gloam rust --alias"
   },
   "provenance": {
@@ -11,36 +11,36 @@
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/EGL/eglplatform.h",
-      "commit": "3d7796b3721d93976b6bfe536aa97bbc4bce8667",
+      "commit": "db3425b8246136faccb5e2782b5694960bd6edf1",
       "blob": "6786afd90b685895efa25b302afba68fc8296941"
     },
     "KHR/khrplatform.h": {
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/KHR/khrplatform.h",
-      "commit": "3d7796b3721d93976b6bfe536aa97bbc4bce8667",
+      "commit": "db3425b8246136faccb5e2782b5694960bd6edf1",
       "blob": "01646449caedc958effc3b450360aefd260671ab"
     },
     "egl.xml": {
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/egl.xml",
-      "commit": "3d7796b3721d93976b6bfe536aa97bbc4bce8667",
-      "blob": "ec184e75dfdb5d5244febe18a8f380cdea60bd03"
+      "commit": "db3425b8246136faccb5e2782b5694960bd6edf1",
+      "blob": "e937823199839abcc7b0844ee7cd519242ef8396"
     },
     "egl_angle_ext.xml": {
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/egl_angle_ext.xml",
-      "commit": "dc092ca3d40dd00a6562bdd6f80306d7d7e06c26",
+      "commit": "58a7a03ad0c04997d594bf1bbc8ef615975e9d47",
       "blob": "e1d9b360f39a8069e3015f432899f9f23d70e802"
     },
     "xxhash.h": {
       "repo": "Cyan4973/xxHash",
       "repo_url": "https://github.com/Cyan4973/xxHash",
       "path_in_repo": "xxhash.h",
-      "commit": "e573d4d2aaeaba0f3e5a0a9a54144a1f2b4b56e7",
-      "blob": "dceb9216aa5ac144172ddab595f98c5b0f80e653"
+      "commit": "680bf463fa1ca0461b9a7c2dab7556e1f54cf4cf",
+      "blob": "951a187f1c272f4cbe0fee52dc10fb9482aac11b"
     }
   },
   "output": [
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/egl.rs",
-      "blob": "198e7c4715b62742c84b888486d45750d8f068a1",
+      "blob": "4ec7ebfa05d779278128dbdace9ade9999b62497",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
