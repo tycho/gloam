@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4](https://github.com/tycho/gloam/compare/0.7.3...0.7.4) - 2026-10-25
+
+### Other
+
+- *(cargo)* upgrade minijinja to v3
+- update bundled specs, headers, and provenance
+- *(cargo)* update dependencies
+
 ## [0.7.3](https://github.com/tycho/gloam/compare/0.7.2...0.7.3) - 2026-10-07
 
 ### Other
