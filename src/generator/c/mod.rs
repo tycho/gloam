@@ -11,6 +11,8 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
+use minijinja::syntax::SyntaxConfig;
+use minijinja::value::Serde;
 use minijinja::{Environment, Value, context};
 
 use crate::cli::CArgs;
@@ -57,8 +59,8 @@ pub fn generate(
     std::fs::create_dir_all(&src_dir)?;
 
     let ctx = context! {
-        fs                    => fs,
-        m                     => &model,
+        fs                    => Serde(fs),
+        m                     => Serde(&model),
         stem                  => &stem,
         guard                 => format!("{}_H", stem.to_uppercase()),
         alias                 => args.alias,
@@ -257,7 +259,11 @@ fn output_stem(fs: &FeatureSet) -> String {
 fn build_env() -> Result<Environment<'static>> {
     let mut env = Environment::new();
 
-    env.set_keep_trailing_newline(true);
+    env.set_syntax(
+        SyntaxConfig::builder()
+            .keep_trailing_newline(true)
+            .build()?,
+    );
 
     env.add_template("utils.j2", include_str!("templates/utils.j2"))?;
     env.add_template("impl_util.j2", include_str!("templates/impl_util.j2"))?;

@@ -30,7 +30,7 @@ directories    = { version = "6", optional = true }
 # miniz_oxide.
 flate2         = { version = "1", default-features = false, features = ["zlib-rs"] }
 indexmap       = { version = "2", features = ["serde"] }
-minijinja      = "2"
+minijinja      = { version = "3", features = ["serde"] }
 roxmltree      = "0.21"
 rusqlite       = { version = "0.40", features = ["bundled"], optional = true }
 serde          = { version = "1", features = ["derive"] }
