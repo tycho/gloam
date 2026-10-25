@@ -123,6 +123,9 @@ static void *gloam_open_library(const char * const *names, int count)
 static const char * const gloam_vk_lib_names[] = {
 #if defined(__APPLE__)
     "libvulkan.dylib", "libvulkan.1.dylib", "libMoltenVK.dylib",
+    /* dyld no longer falls back to /usr/local/lib for bare names, but the
+       LunarG SDK installs there (Homebrew uses /opt/homebrew/lib). */
+    "/usr/local/lib/libvulkan.1.dylib", "/opt/homebrew/lib/libvulkan.1.dylib",
 #elif defined(GLOAM_PLATFORM_WINDOWS)
     "vulkan-1.dll",
 #else

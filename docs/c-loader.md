@@ -153,7 +153,9 @@ The version and extension lists are the same values you passed to
 phase returns nonzero on success. Details:
 
 - `gloamVulkanInitialize(NULL)` finds and opens the platform Vulkan
-  library (`vulkan-1.dll`, `libvulkan.so.1`, `libvulkan.dylib`); pass
+  library (`vulkan-1.dll`, `libvulkan.so.1`, `libvulkan.dylib`; on macOS
+  it also tries `/usr/local/lib` and `/opt/homebrew/lib` by path, since
+  dyld no longer searches them for bare names); pass
   your own library handle instead to control the open. If you already
   have a `vkGetInstanceProcAddr`, skip the library entirely with
   `gloamVulkanInitializeCustom(getInstanceProcAddr)`.
