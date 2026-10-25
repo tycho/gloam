@@ -61,8 +61,8 @@
       "repo": "KhronosGroup/Vulkan-Docs",
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Docs",
       "path_in_repo": "xml/vk.xml",
-      "commit": "e4e53e4b31e13eeaee1ad99fb940aa72b2ec1b14",
-      "blob": "8ecfeb8c1331ee57aecf85a1a71a0246ddf9a9de"
+      "commit": "a8b088a3fae12c8575407ea90c7c09bd653db923",
+      "blob": "6c9275955cd1e21565588b12e386453f48e22621"
     },
     "vk_video/vulkan_video_codec_av1std.h": {
       "repo": "KhronosGroup/Vulkan-Headers",
@@ -166,8 +166,8 @@
       "repo": "Cyan4973/xxHash",
       "repo_url": "https://github.com/Cyan4973/xxHash",
       "path_in_repo": "xxhash.h",
-      "commit": "680bf463fa1ca0461b9a7c2dab7556e1f54cf4cf",
-      "blob": "951a187f1c272f4cbe0fee52dc10fb9482aac11b"
+      "commit": "215108c62f84a9a94d1e821800b29963f544a602",
+      "blob": "081eca2fb63c7b719a284c3b0cc447343b4d7c51"
     }
   }
 }

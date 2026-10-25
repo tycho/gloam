@@ -2787,6 +2787,12 @@ static int XXH_isLittleEndian(void)
 #  define XXH_ASSUME(c) if (!(c)) { XXH_UNREACHABLE(); }
 #endif
 
+#if defined(_MSC_VER)
+   /* declares the intrinsics _rotl(), _rotl64(), _byteswap_ulong() and _byteswap_uint64(),
+    * also needed with XXH_NO_STREAM or XXH_NO_STDLIB */
+#  include <stdlib.h>
+#endif
+
 /*!
  * @internal
  * @def XXH_rotl32(x,r)
@@ -2935,6 +2941,19 @@ XXH_PUBLIC_API unsigned XXH_versionNumber (void) { return XXH_VERSION_NUMBER; }
 
 /*!
  * @internal
+ * @brief Whether XXH32 code uses compiler fences against autovectorization.
+ *
+ * Autovectorization is detrimental to XXH32 on these targets,
+ * see XXH32_round() and XXH32_mergeAccs().
+ */
+#if (defined(__SSE2__) || defined(__aarch64__) || defined(__wasm_simd128__)) && !defined(XXH_ENABLE_AUTOVECTORIZE)
+#  define XXH32_PREVENT_AUTOVEC 1
+#else
+#  define XXH32_PREVENT_AUTOVEC 0
+#endif
+
+/*!
+ * @internal
  * @brief Normal stripe processing routine.
  *
  * This shuffles the bits so that any bit from @p input impacts several bits in
@@ -2949,7 +2968,7 @@ static xxh_u32 XXH32_round(xxh_u32 acc, xxh_u32 input)
     acc += input * XXH_PRIME32_2;
     acc  = XXH_rotl32(acc, 13);
     acc *= XXH_PRIME32_1;
-#if (defined(__SSE4_1__) || defined(__aarch64__) || defined(__wasm_simd128__)) && !defined(XXH_ENABLE_AUTOVECTORIZE)
+#if XXH32_PREVENT_AUTOVEC
     /*
      * UGLY HACK:
      * A compiler fence is used to prevent GCC and Clang from
@@ -2978,6 +2997,12 @@ static xxh_u32 XXH32_round(xxh_u32 acc, xxh_u32 input)
      *   the SIMD actually serializes this operation: While v1 is rotating, v2
      *   can load data, while v3 can multiply. SSE forces them to operate
      *   together.
+     *
+     * This is also enabled on baseline SSE2 (no SSE4.1), where it matters even
+     * more: without pmulld, each 32-bit vector multiply is emulated with
+     * pmuludq + shuffles, or with long shift/add chains for constants.
+     * GCC 16 does this on XXH32_update(), whose accumulators live in memory
+     * (state->acc), making XXH32 streaming ~6x slower than single-shot.
      *
      * This is also enabled on AArch64, as Clang is *very aggressive* in vectorizing
      * the loop. NEON is only faster on the A53, and with the newer cores, it is less
@@ -3046,12 +3071,22 @@ XXH32_consumeLong(
     XXH_ASSERT(acc != NULL);
     XXH_ASSERT(input != NULL);
     XXH_ASSERT(len >= 16);
-    do {
-        acc[0] = XXH32_round(acc[0], XXH_get32bits(input)); input += 4;
-        acc[1] = XXH32_round(acc[1], XXH_get32bits(input)); input += 4;
-        acc[2] = XXH32_round(acc[2], XXH_get32bits(input)); input += 4;
-        acc[3] = XXH32_round(acc[3], XXH_get32bits(input)); input += 4;
-    } while (input < limit);
+    /*
+     * Accumulators are copied into locals, so that they stay in registers
+     * for the whole loop. When the loop works directly on @p acc,
+     * which is state->acc in streaming mode, Clang stores them back
+     * to memory on every iteration (XXH_COMPILER_GUARD prevents promotion),
+     * costing ~10% on XXH32_update() and XXH64_update().
+     */
+    {   xxh_u32 a0 = acc[0], a1 = acc[1], a2 = acc[2], a3 = acc[3];
+        do {
+            a0 = XXH32_round(a0, XXH_get32bits(input)); input += 4;
+            a1 = XXH32_round(a1, XXH_get32bits(input)); input += 4;
+            a2 = XXH32_round(a2, XXH_get32bits(input)); input += 4;
+            a3 = XXH32_round(a3, XXH_get32bits(input)); input += 4;
+        } while (input < limit);
+        acc[0] = a0; acc[1] = a1; acc[2] = a2; acc[3] = a3;
+    }
 
     return input;
 }
@@ -3064,8 +3099,20 @@ XXH_FORCE_INLINE XXH_PUREF xxh_u32
 XXH32_mergeAccs(const xxh_u32 *acc)
 {
     XXH_ASSERT(acc != NULL);
-    return XXH_rotl32(acc[0], 1)  + XXH_rotl32(acc[1], 7)
-         + XXH_rotl32(acc[2], 12) + XXH_rotl32(acc[3], 18);
+    {   xxh_u32 a0 = acc[0], a1 = acc[1], a2 = acc[2], a3 = acc[3];
+#if XXH32_PREVENT_AUTOVEC
+        /*
+         * Prevent vectorization of this merge (GCC and Clang do it with AVX2).
+         * In XXH32_digest(), it results in a single 16-byte load of state->acc,
+         * which was just written by 4-byte stores: store-to-load forwarding fails,
+         * making XXH32 streaming of small inputs up to ~2x slower.
+         */
+        XXH_COMPILER_GUARD(a0); XXH_COMPILER_GUARD(a1);
+        XXH_COMPILER_GUARD(a2); XXH_COMPILER_GUARD(a3);
+#endif
+        return XXH_rotl32(a0, 1)  + XXH_rotl32(a1, 7)
+             + XXH_rotl32(a2, 12) + XXH_rotl32(a3, 18);
+    }
 }
 
 /*!
@@ -3498,7 +3545,7 @@ static xxh_u64 XXH64_round(xxh_u64 acc, xxh_u64 input)
     acc += input * XXH_PRIME64_2;
     acc  = XXH_rotl64(acc, 31);
     acc *= XXH_PRIME64_1;
-#if (defined(__AVX512F__)) && !defined(XXH_ENABLE_AUTOVECTORIZE)
+#if (defined(__SSE2__)) && !defined(XXH_ENABLE_AUTOVECTORIZE)
     /*
      * DISABLE AUTOVECTORIZATION:
      * A compiler fence is used to prevent GCC and Clang from
@@ -3507,8 +3554,13 @@ static xxh_u64 XXH64_round(xxh_u64 acc, xxh_u64 input)
      *
      * Autovectorization of XXH64 tends to be detrimental,
      * though the exact outcome may change depending on exact cpu and compiler version.
-     * For information, it has been reported as detrimental for Skylake-X,
+     * For information, it has been reported as detrimental for Skylake-X and Zen5,
      * but possibly beneficial for Zen4.
+     *
+     * This is also enabled below AVX512: without vpmullq,
+     * each 64-bit vector multiply is emulated with 3x pmuludq + shifts.
+     * Clang 22 vectorizes XXH64_update() this way with AVX2,
+     * making XXH64 streaming ~3x slower.
      *
      * The default is to disable auto-vectorization,
      * but you can select to enable it instead using `XXH_ENABLE_AUTOVECTORIZE` build variable.
@@ -3573,21 +3625,26 @@ XXH64_consumeLong(
     XXH_ASSERT(acc != NULL);
     XXH_ASSERT(input != NULL);
     XXH_ASSERT(len >= 32);
-    do {
+    if (sizeof(void *) < sizeof(xxh_u64)) {
         /* reroll on 32-bit */
-        if (sizeof(void *) < sizeof(xxh_u64)) {
+        do {
             size_t i;
             for (i = 0; i < 4; i++) {
                 acc[i] = XXH64_round(acc[i], XXH_get64bits(input));
                 input += 8;
             }
-        } else {
-            acc[0] = XXH64_round(acc[0], XXH_get64bits(input)); input += 8;
-            acc[1] = XXH64_round(acc[1], XXH_get64bits(input)); input += 8;
-            acc[2] = XXH64_round(acc[2], XXH_get64bits(input)); input += 8;
-            acc[3] = XXH64_round(acc[3], XXH_get64bits(input)); input += 8;
-        }
-    } while (input < limit);
+        } while (input < limit);
+    } else {
+        /* see XXH32_consumeLong() */
+        xxh_u64 a0 = acc[0], a1 = acc[1], a2 = acc[2], a3 = acc[3];
+        do {
+            a0 = XXH64_round(a0, XXH_get64bits(input)); input += 8;
+            a1 = XXH64_round(a1, XXH_get64bits(input)); input += 8;
+            a2 = XXH64_round(a2, XXH_get64bits(input)); input += 8;
+            a3 = XXH64_round(a3, XXH_get64bits(input)); input += 8;
+        } while (input < limit);
+        acc[0] = a0; acc[1] = a1; acc[2] = a2; acc[3] = a3;
+    }
 
     return input;
 }
@@ -5775,7 +5832,6 @@ XXH3_accumulate_512_lsx( void* XXH_RESTRICT acc,
             __m128i const data_key = __lsx_vxor_v(data_vec, key_vec);
             /* data_key_lo = data_key >> 32; */
             __m128i const data_key_lo = __lsx_vsrli_d(data_key, 32);
-            // __m128i const data_key_lo = __lsx_vsrli_d(data_key, 32);
             /* product = (data_key & 0xffffffff) * (data_key_lo & 0xffffffff); */
             __m128i const product = __lsx_vmulwev_d_wu(data_key, data_key_lo);
             /* xacc[i] += swap(data_vec); */
@@ -5839,7 +5895,6 @@ XXH3_accumulate_512_lasx( void* XXH_RESTRICT acc,
             __m256i const data_key = __lasx_xvxor_v(data_vec, key_vec);
             /* data_key_lo = data_key >> 32; */
             __m256i const data_key_lo = __lasx_xvsrli_d(data_key, 32);
-            // __m256i const data_key_lo = __lasx_xvsrli_d(data_key, 32);
             /* product = (data_key & 0xffffffff) * (data_key_lo & 0xffffffff); */
             __m256i const product = __lasx_xvmulwev_d_wu(data_key, data_key_lo);
             /* xacc[i] += swap(data_vec); */
@@ -5897,8 +5952,8 @@ XXH3_accumulate_512_rvv(  void* XXH_RESTRICT acc,
 {
     XXH_ASSERT((((size_t)acc) & 63) == 0);
     {
-        // Try to set vector lenght to 512 bits.
-        // If this length is unavailable, then maximum available will be used
+        /* Try to set vector length to 512 bits.
+         * If this length is unavailable, then maximum available will be used */
         size_t vl = XXH_RVOP(vsetvl_e64m2)(8);
 
         uint64_t*       xacc    = (uint64_t*) acc;
@@ -5979,11 +6034,11 @@ XXH3_initCustomSecret_rvv(void* XXH_RESTRICT customSecret, xxh_u64 seed64)
         const int64_t* kSecret = (const int64_t*)(const void*)XXH3_kSecret;
 
 #if __riscv_v_intrinsic >= 1000000
-        // ratified v1.0 intrinics version
+        /* ratified v1.0 intrinsics version */
         vbool32_t mneg = XXH_RVCAST(u8m1_b32)(
                          XXH_RVOP(vmv_v_x_u8m1)(0xaa, XXH_RVOP(vsetvlmax_e8m1)()));
 #else
-        // support pre-ratification intrinics, which lack mask to vector casts
+        /* support pre-ratification intrinsics, which lack mask to vector casts */
         size_t vlmax = XXH_RVOP(vsetvlmax_e8m1)();
         vbool32_t mneg = XXH_RVOP(vmseq_vx_u8mf4_b32)(
                          XXH_RVOP(vand_vx_u8mf4)(
