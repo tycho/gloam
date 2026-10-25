@@ -28,6 +28,14 @@ const LIB_NAMES: &[&str] = &[
     "libvulkan.1.dylib",
     #[cfg(target_os = "macos")]
     "libMoltenVK.dylib",
+    // Recent macOS dyld no longer falls back to /usr/local/lib for bare
+    // names, which is where the LunarG SDK installer puts the loader (and
+    // /opt/homebrew/lib is Homebrew's on Apple Silicon); try them by path
+    // so DYLD_LIBRARY_PATH isn't required.
+    #[cfg(target_os = "macos")]
+    "/usr/local/lib/libvulkan.1.dylib",
+    #[cfg(target_os = "macos")]
+    "/opt/homebrew/lib/libvulkan.1.dylib",
     #[cfg(all(unix, not(target_os = "macos")))]
     "libvulkan.so.1",
     #[cfg(all(unix, not(target_os = "macos")))]

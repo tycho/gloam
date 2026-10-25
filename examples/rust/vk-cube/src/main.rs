@@ -6,8 +6,8 @@
 //! rendering, per-frame synchronization (acquire/render semaphores plus
 //! in-flight fences), and push-constant transforms.  Windowing is the
 //! Rust-native winit; the surface comes from the generated loader's own
-//! platform commands (`vkCreateWin32SurfaceKHR` / Xlib / Wayland, selected
-//! from the winit window handle).
+//! platform commands (`vkCreateWin32SurfaceKHR` / Xlib / Wayland / Metal,
+//! selected from the winit window handle).
 //!
 //! Loading follows the phased contract on an owned context (`Vk::initialize`
 //! → `load_instance` → `load_device_from_query`).  Extension presence is
@@ -163,6 +163,14 @@ const LIB_NAMES: &[&str] = &[
     "libvulkan.1.dylib",
     #[cfg(target_os = "macos")]
     "libMoltenVK.dylib",
+    // Recent macOS dyld no longer falls back to /usr/local/lib for bare
+    // names, which is where the LunarG SDK installer puts the loader (and
+    // /opt/homebrew/lib is Homebrew's on Apple Silicon); try them by path
+    // so DYLD_LIBRARY_PATH isn't required.
+    #[cfg(target_os = "macos")]
+    "/usr/local/lib/libvulkan.1.dylib",
+    #[cfg(target_os = "macos")]
+    "/opt/homebrew/lib/libvulkan.1.dylib",
     #[cfg(all(unix, not(target_os = "macos")))]
     "libvulkan.so.1",
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -793,17 +801,18 @@ impl ApplicationHandler for App {
         let window = event_loop.create_window(attrs).expect("window");
 
         match unsafe { setup(window, self.ci) } {
-            Ok(ctx) => {
-                self.ctx = Some(ctx);
+            Ok(mut ctx) => {
                 if self.ci {
-                    let ctx = self.ctx.as_mut().unwrap();
+                    // Never stored: AppKit can still deliver a redraw after
+                    // exit(), which must not find a destroyed context.
                     unsafe {
                         ctx.draw();
                         ctx.destroy();
                     }
                     event_loop.exit();
                 } else {
-                    self.ctx.as_ref().unwrap().window.request_redraw();
+                    ctx.window.request_redraw();
+                    self.ctx = Some(ctx);
                 }
             }
             Err(code) => {
@@ -820,7 +829,11 @@ impl ApplicationHandler for App {
         };
         match event {
             WindowEvent::CloseRequested => {
-                unsafe { ctx.destroy() };
+                // Taken, not just destroyed: AppKit can still deliver a
+                // redraw after exit().
+                if let Some(mut ctx) = self.ctx.take() {
+                    unsafe { ctx.destroy() };
+                }
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
@@ -875,6 +888,7 @@ unsafe fn setup(window: Window, ci: bool) -> Result<Ctx, i32> {
             Ok(RawDisplayHandle::Windows(_)) => (c"VK_KHR_win32_surface", inst_avail.KHR_win32_surface()),
             Ok(RawDisplayHandle::Xlib(_)) => (c"VK_KHR_xlib_surface", inst_avail.KHR_xlib_surface()),
             Ok(RawDisplayHandle::Wayland(_)) => (c"VK_KHR_wayland_surface", inst_avail.KHR_wayland_surface()),
+            Ok(RawDisplayHandle::AppKit(_)) => (c"VK_EXT_metal_surface", inst_avail.EXT_metal_surface()),
             other => {
                 eprintln!("vk-cube-rs: unsupported display system {other:?} (skip)");
                 return Err(77);
@@ -1175,6 +1189,18 @@ unsafe fn create_surface(
             ci.display = d.display.as_ptr() as *mut vk::wl_display;
             ci.surface = w.surface.as_ptr() as *mut vk::wl_surface;
             unsafe { vkc.CreateWaylandSurfaceKHR(instance, &ci, ptr::null(), &mut surface) }
+        }
+        #[cfg(target_os = "macos")]
+        (RawDisplayHandle::AppKit(_), RawWindowHandle::AppKit(w)) => {
+            // An NSView has no CAMetalLayer of its own; raw-window-metal
+            // attaches one as a sublayer that tracks the view's bounds and
+            // scale factor.  The view and MoltenVK both retain it, so our
+            // reference can drop once the surface exists.
+            let layer = unsafe { raw_window_metal::Layer::from_ns_view(w.ns_view) };
+            let mut ci: vk::VkMetalSurfaceCreateInfoEXT = unsafe { std::mem::zeroed() };
+            ci.sType = vk::VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
+            ci.pLayer = layer.as_ptr().as_ptr() as *const vk::CAMetalLayer;
+            unsafe { vkc.CreateMetalSurfaceEXT(instance, &ci, ptr::null(), &mut surface) }
         }
         other => panic!("unsupported window system: {other:?}"),
     };

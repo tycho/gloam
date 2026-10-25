@@ -13,8 +13,10 @@ layer, this example uses the owned-context form: `Vk::new()` →
 command dispatched as a method on the `Vk` value. The window comes from the
 Rust-native [`winit`](https://crates.io/crates/winit), and the surface is
 created through the loader's *own* platform commands
-(`vkCreateWin32SurfaceKHR` / Xlib / Wayland, selected from the
-`raw-window-handle` at runtime) — no windowing-library Vulkan glue involved.
+(`vkCreateWin32SurfaceKHR` / Xlib / Wayland / `vkCreateMetalSurfaceEXT`,
+selected from the `raw-window-handle` at runtime; on macOS,
+[`raw-window-metal`](https://crates.io/crates/raw-window-metal) gives the
+winit `NSView` the `CAMetalLayer` that `VK_EXT_metal_surface` needs) — no windowing-library Vulkan glue involved.
 The counterpart C example ([../../c/vk-cube](../../c/vk-cube/)) goes the
 other way and lets SDL3 create the surface.
 
@@ -48,7 +50,7 @@ glslc -O shaders/cube.frag -o shaders/cube.frag.spv
 The checked-in `gloam/` crate was generated with:
 
 ```sh
-gloam --api vk=1.3 --extensions VK_KHR_surface,VK_KHR_swapchain,VK_KHR_win32_surface,VK_KHR_xlib_surface,VK_KHR_wayland_surface,VK_KHR_get_physical_device_properties2,VK_KHR_portability_enumeration,VK_KHR_portability_subset --out-path examples/rust/vk-cube/gloam rust --alias
+gloam --api vk=1.3 --extensions VK_KHR_surface,VK_KHR_swapchain,VK_KHR_win32_surface,VK_KHR_xlib_surface,VK_KHR_wayland_surface,VK_EXT_metal_surface,VK_KHR_get_physical_device_properties2,VK_KHR_portability_enumeration,VK_KHR_portability_subset --out-path examples/rust/vk-cube/gloam rust --alias
 ```
 
 and can be refreshed in place with `cargo xtask regen examples`.
