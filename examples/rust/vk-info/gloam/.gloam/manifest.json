@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.3",
-    "describe": "0.7.3+52cdcce.dirty",
-    "commit": "52cdcce2d94939cd4da05037893c9f85acfcd0bf",
+    "version": "0.7.4",
+    "describe": "0.7.4+c0e9607.dirty",
+    "commit": "c0e96072dc6bdd6965a0f9b5349a96ec481b4854",
     "command_line": "gloam --api vk=1.3 --extensions VK_KHR_swapchain,VK_KHR_get_physical_device_properties2,VK_EXT_debug_utils,VK_KHR_timeline_semaphore,VK_KHR_synchronization2,VK_KHR_portability_enumeration --out-path examples/rust/vk-info/gloam rust --alias --mx-global"
   },
   "provenance": {
@@ -25,8 +25,8 @@
       "repo": "Cyan4973/xxHash",
       "repo_url": "https://github.com/Cyan4973/xxHash",
       "path_in_repo": "xxhash.h",
-      "commit": "215108c62f84a9a94d1e821800b29963f544a602",
-      "blob": "081eca2fb63c7b719a284c3b0cc447343b4d7c51"
+      "commit": "e7bfdc8fe8d37dbeb0dbf8393650180211bf915d",
+      "blob": "f6ddcbb9cac8af260773fa3ec9d6ec4231601fc2"
     }
   },
   "output": [
@@ -46,7 +46,7 @@
     },
     {
       "path": "src/vk.rs",
-      "blob": "dfbf6823f04127739add3532e1769d10467a9b5a",
+      "blob": "4c70892c7cbac353ffd26a8d6db97e0da25d37f3",
       "derived_from": [
         "vk.xml",
         "vulkan/vk_platform.h",

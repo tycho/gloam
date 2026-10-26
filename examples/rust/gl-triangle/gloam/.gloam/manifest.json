@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.3",
-    "describe": "0.7.3+52cdcce.dirty",
-    "commit": "52cdcce2d94939cd4da05037893c9f85acfcd0bf",
+    "version": "0.7.4",
+    "describe": "0.7.4+c0e9607.dirty",
+    "commit": "c0e96072dc6bdd6965a0f9b5349a96ec481b4854",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0 --merge --out-path examples/rust/gl-triangle/gloam rust --alias --mx-global"
   },
   "provenance": {
@@ -39,8 +39,8 @@
       "repo": "Cyan4973/xxHash",
       "repo_url": "https://github.com/Cyan4973/xxHash",
       "path_in_repo": "xxhash.h",
-      "commit": "215108c62f84a9a94d1e821800b29963f544a602",
-      "blob": "081eca2fb63c7b719a284c3b0cc447343b4d7c51"
+      "commit": "e7bfdc8fe8d37dbeb0dbf8393650180211bf915d",
+      "blob": "f6ddcbb9cac8af260773fa3ec9d6ec4231601fc2"
     }
   },
   "output": [
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/gl.rs",
-      "blob": "574b0103b4c09c75857dbfaee592030928575a7b",
+      "blob": "fb55ab9feb596562f976439bcf45fe41ffa1bda2",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
