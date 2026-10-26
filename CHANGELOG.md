@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.5](https://github.com/tycho/gloam/compare/0.7.4...0.7.5) - 2026-10-26
+
+### Added
+
+- *(examples)* AppKit/Metal surface support in vk-cube-rs
+
+### Fixed
+
+- *(c)* find the Vulkan SDK loader on macOS without DYLD_LIBRARY_PATH
+
+### Other
+
+- update bundled specs, headers, and provenance
+
 ## [0.7.4](https://github.com/tycho/gloam/compare/0.7.3...0.7.4) - 2026-10-25
 
 ### Other
