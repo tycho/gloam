@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.4",
-    "describe": "0.7.4+c0e9607.dirty",
-    "commit": "c0e96072dc6bdd6965a0f9b5349a96ec481b4854",
+    "version": "0.7.5",
+    "describe": "0.7.5+b9dcc90.dirty",
+    "commit": "b9dcc903c46a8477c131d1838e3eb9c2aefc44aa",
     "command_line": "gloam --api egl --out-path examples/rust/egl-info/gloam rust --alias"
   },
   "provenance": {
@@ -32,15 +32,15 @@
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/egl_angle_ext.xml",
-      "commit": "756d31051f12e93630ae51fd5e0d03deb6958739",
-      "blob": "e1d9b360f39a8069e3015f432899f9f23d70e802"
+      "commit": "35c36ada5387bd5b101927eaf84279257f867b3f",
+      "blob": "8e0552967066755410d122b9f3e3d41ad94e89e4"
     },
     "xxhash.h": {
       "repo": "Cyan4973/xxHash",
       "repo_url": "https://github.com/Cyan4973/xxHash",
       "path_in_repo": "xxhash.h",
-      "commit": "e7bfdc8fe8d37dbeb0dbf8393650180211bf915d",
-      "blob": "f6ddcbb9cac8af260773fa3ec9d6ec4231601fc2"
+      "commit": "2ec67caeb18ec15ae60c0853174331089acddfc0",
+      "blob": "744b6cbc4df6b944fce649405fd2755ee5ba7a3a"
     }
   },
   "output": [
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/egl.rs",
-      "blob": "a60d141ec38217fe35901e70646a64d0e6b98b67",
+      "blob": "df77392206fd2ac84aa43fd93c30e634498cb529",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
