@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.4",
-    "describe": "0.7.4+c0e9607.dirty",
-    "commit": "c0e96072dc6bdd6965a0f9b5349a96ec481b4854",
+    "version": "0.7.5",
+    "describe": "0.7.5+b9dcc90.dirty",
+    "commit": "b9dcc903c46a8477c131d1838e3eb9c2aefc44aa",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0 --merge --out-path examples/rust/gl-triangle/gloam rust --alias --mx-global"
   },
   "provenance": {
@@ -25,7 +25,7 @@
       "repo": "angle/angle",
       "repo_url": "https://chromium.googlesource.com/angle/angle",
       "path_in_repo": "scripts/gl_angle_ext.xml",
-      "commit": "756d31051f12e93630ae51fd5e0d03deb6958739",
+      "commit": "35c36ada5387bd5b101927eaf84279257f867b3f",
       "blob": "67eca0d0344a1d2d136de08c32a6fc544ff55fbb"
     },
     "glsl_exts.xml": {
@@ -39,8 +39,8 @@
       "repo": "Cyan4973/xxHash",
       "repo_url": "https://github.com/Cyan4973/xxHash",
       "path_in_repo": "xxhash.h",
-      "commit": "e7bfdc8fe8d37dbeb0dbf8393650180211bf915d",
-      "blob": "f6ddcbb9cac8af260773fa3ec9d6ec4231601fc2"
+      "commit": "2ec67caeb18ec15ae60c0853174331089acddfc0",
+      "blob": "744b6cbc4df6b944fce649405fd2755ee5ba7a3a"
     }
   },
   "output": [
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/gl.rs",
-      "blob": "fb55ab9feb596562f976439bcf45fe41ffa1bda2",
+      "blob": "161f119f59db178e9e0477ffb7e637d8fdcfaf6d",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
