@@ -1378,8 +1378,8 @@ pub const VK_GOOGLE_EXTENSION_666_SPEC_VERSION: u32 = 0;
 pub const VK_GOOGLE_EXTENSION_666_EXTENSION_NAME: &core::ffi::CStr = c"VK_GOOGLE_extension_666";
 pub const VK_HUAWEI_EXTENSION_667_SPEC_VERSION: u32 = 0;
 pub const VK_HUAWEI_EXTENSION_667_EXTENSION_NAME: &core::ffi::CStr = c"VK_HUAWEI_extension_667";
-pub const VK_NV_EXTENSION_668_SPEC_VERSION: u32 = 0;
-pub const VK_NV_EXTENSION_668_EXTENSION_NAME: &core::ffi::CStr = c"VK_NV_extension_668";
+pub const VK_NV_INTERNAL_HANDLE_SPEC_VERSION: u32 = 1;
+pub const VK_NV_INTERNAL_HANDLE_EXTENSION_NAME: &core::ffi::CStr = c"VK_NV_internal_handle";
 pub const VK_KHR_EXTENDED_FLAGS_SPEC_VERSION: u32 = 1;
 pub const VK_KHR_EXTENDED_FLAGS_EXTENSION_NAME: &core::ffi::CStr = c"VK_KHR_extended_flags";
 pub const VK_NV_EXTENSION_670_SPEC_VERSION: u32 = 0;
@@ -1402,10 +1402,10 @@ pub const VK_EXT_EXTENSION_678_SPEC_VERSION: u32 = 0;
 pub const VK_EXT_EXTENSION_678_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_678";
 pub const VK_EXT_PRIMITIVE_RESTART_INDEX_SPEC_VERSION: u32 = 1;
 pub const VK_EXT_PRIMITIVE_RESTART_INDEX_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_primitive_restart_index";
-pub const VK_EXT_EXTENSION_680_SPEC_VERSION: u32 = 0;
-pub const VK_EXT_EXTENSION_680_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_extension_680";
-pub const VK_KHR_EXTENSION_681_SPEC_VERSION: u32 = 0;
-pub const VK_KHR_EXTENSION_681_EXTENSION_NAME: &core::ffi::CStr = c"VK_KHR_extension_681";
+pub const VK_EXT_VERTEX_ADDRESS_BINDING_UNRESTRICTED_SPEC_VERSION: u32 = 1;
+pub const VK_EXT_VERTEX_ADDRESS_BINDING_UNRESTRICTED_EXTENSION_NAME: &core::ffi::CStr = c"VK_EXT_vertex_address_binding_unrestricted";
+pub const VK_KHR_MAINTENANCE_12_SPEC_VERSION: u32 = 1;
+pub const VK_KHR_MAINTENANCE_12_EXTENSION_NAME: &core::ffi::CStr = c"VK_KHR_maintenance12";
 pub const VK_VALVE_EXTENSION_682_SPEC_VERSION: u32 = 0;
 pub const VK_VALVE_EXTENSION_682_EXTENSION_NAME: &core::ffi::CStr = c"VK_VALVE_extension_682";
 pub const VK_EXT_EXTENSION_683_SPEC_VERSION: u32 = 0;
@@ -1480,6 +1480,30 @@ pub const VK_NV_EXTENSION_718_SPEC_VERSION: u32 = 0;
 pub const VK_NV_EXTENSION_718_EXTENSION_NAME: &core::ffi::CStr = c"VK_NV_extension_718";
 pub const VK_GOOGLE_HDR_SMPTE_ST_209450_METADATA_SPEC_VERSION: u32 = 1;
 pub const VK_GOOGLE_HDR_SMPTE_ST_209450_METADATA_EXTENSION_NAME: &core::ffi::CStr = c"VK_GOOGLE_hdr_smpte_st_209450_metadata";
+pub const VK_ARM_EXTENSION_720_SPEC_VERSION: u32 = 0;
+pub const VK_ARM_EXTENSION_720_EXTENSION_NAME: &core::ffi::CStr = c"VK_ARM_extension_720";
+pub const VK_LYNX_EXTENSION_721_SPEC_VERSION: u32 = 0;
+pub const VK_LYNX_EXTENSION_721_EXTENSION_NAME: &core::ffi::CStr = c"VK_LYNX_extension_721";
+pub const VK_LYNX_EXTENSION_722_SPEC_VERSION: u32 = 0;
+pub const VK_LYNX_EXTENSION_722_EXTENSION_NAME: &core::ffi::CStr = c"VK_LYNX_extension_722";
+pub const VK_LYNX_EXTENSION_723_SPEC_VERSION: u32 = 0;
+pub const VK_LYNX_EXTENSION_723_EXTENSION_NAME: &core::ffi::CStr = c"VK_LYNX_extension_723";
+pub const VK_LYNX_EXTENSION_724_SPEC_VERSION: u32 = 0;
+pub const VK_LYNX_EXTENSION_724_EXTENSION_NAME: &core::ffi::CStr = c"VK_LYNX_extension_724";
+pub const VK_LYNX_EXTENSION_725_SPEC_VERSION: u32 = 0;
+pub const VK_LYNX_EXTENSION_725_EXTENSION_NAME: &core::ffi::CStr = c"VK_LYNX_extension_725";
+pub const VK_KHR_EXTENSION_726_SPEC_VERSION: u32 = 0;
+pub const VK_KHR_EXTENSION_726_EXTENSION_NAME: &core::ffi::CStr = c"VK_KHR_extension_726";
+pub const VK_NV_EXTENSION_727_SPEC_VERSION: u32 = 0;
+pub const VK_NV_EXTENSION_727_EXTENSION_NAME: &core::ffi::CStr = c"VK_NV_extension_727";
+pub const VK_NV_EXTENSION_728_SPEC_VERSION: u32 = 0;
+pub const VK_NV_EXTENSION_728_EXTENSION_NAME: &core::ffi::CStr = c"VK_NV_extension_728";
+pub const VK_ARM_EXTENSION_729_SPEC_VERSION: u32 = 0;
+pub const VK_ARM_EXTENSION_729_EXTENSION_NAME: &core::ffi::CStr = c"VK_ARM_extension_729";
+pub const VK_ARM_EXTENSION_730_SPEC_VERSION: u32 = 0;
+pub const VK_ARM_EXTENSION_730_EXTENSION_NAME: &core::ffi::CStr = c"VK_ARM_extension_730";
+pub const VK_ARM_EXTENSION_731_SPEC_VERSION: u32 = 0;
+pub const VK_ARM_EXTENSION_731_EXTENSION_NAME: &core::ffi::CStr = c"VK_ARM_extension_731";
 
 // ── Enum groups ─────────────────────────────────────────────
 #[repr(transparent)]
@@ -3546,6 +3570,9 @@ pub const VK_STRUCTURE_TYPE_DATA_GRAPH_PIPELINE_NEURAL_STATISTICS_CREATE_INFO_AR
 pub const VK_STRUCTURE_TYPE_DATA_GRAPH_PIPELINE_SESSION_NEURAL_STATISTICS_CREATE_INFO_ARM: VkStructureType = VkStructureType(1000676001);
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DATA_GRAPH_NEURAL_ACCELERATOR_STATISTICS_FEATURES_ARM: VkStructureType = VkStructureType(1000676002);
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVE_RESTART_INDEX_FEATURES_EXT: VkStructureType = VkStructureType(1000678000);
+pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ADDRESS_BINDING_UNRESTRICTED_FEATURES_EXT: VkStructureType = VkStructureType(1000679000);
+pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_12_FEATURES_KHR: VkStructureType = VkStructureType(1000680000);
+pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_12_PROPERTIES_KHR: VkStructureType = VkStructureType(1000680001);
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_TILING_CONTROL_FEATURES_EXT: VkStructureType = VkStructureType(1000687000);
 pub const VK_STRUCTURE_TYPE_IMAGE_TILING_CONTROL_CREATE_INFO_EXT: VkStructureType = VkStructureType(1000687001);
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_DECODE_VECTOR_FEATURES_NV: VkStructureType = VkStructureType(1000689000);
@@ -4259,7 +4286,6 @@ pub const VK_BUFFER_USAGE_2_TILE_MEMORY_BIT_QCOM: VkBufferUsageFlagBits2 = 0x000
 pub const VK_BUFFER_USAGE_2_MEMORY_DECOMPRESSION_BIT_EXT: VkBufferUsageFlagBits2 = 0x0000000100000000;
 pub const VK_BUFFER_USAGE_2_PREPROCESS_BUFFER_BIT_EXT: VkBufferUsageFlagBits2 = 0x0000000080000000;
 pub const VK_BUFFER_USAGE_2_RESERVED_18_BIT_EXT: VkBufferUsageFlagBits2 = 0x0000000000040000;
-pub const VK_BUFFER_USAGE_2_RESERVED_30_BIT_EXT: VkBufferUsageFlagBits2 = 0x0000000040000000;
 pub const VK_BUFFER_USAGE_2_RESERVED_35_BIT_KHR: VkBufferUsageFlagBits2 = 0x0000000800000000;
 pub const VK_BUFFER_USAGE_2_RESERVED_36_BIT_KHR: VkBufferUsageFlagBits2 = 0x0000001000000000;
 pub const VK_BUFFER_USAGE_2_RESERVED_37_BIT_HUAWEI: VkBufferUsageFlagBits2 = 0x0000002000000000;
@@ -4283,6 +4309,7 @@ pub const VK_BUFFER_CREATE_PROTECTED_BIT: VkBufferCreateFlagBits = 0x00000000000
 pub const VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT: VkBufferCreateFlagBits = 0x0000000000000010;
 pub const VK_BUFFER_CREATE_RESERVED_7_BIT_IMG: VkBufferCreateFlagBits = 0x0000000000000080;
 pub const VK_BUFFER_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT: VkBufferCreateFlagBits = 0x0000000000000020;
+pub const VK_BUFFER_CREATE_RESERVED_8_BIT_LYNX: VkBufferCreateFlagBits = 0x0000000000000100;
 pub const VK_BUFFER_CREATE_VIDEO_PROFILE_INDEPENDENT_BIT_KHR: VkBufferCreateFlagBits = 0x0000000000000040;
 pub const VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT: VkBufferCreateFlagBits = 0x0000000000000010;
 pub const VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR: VkBufferCreateFlagBits = 0x0000000000000010;
@@ -5453,6 +5480,7 @@ pub const VK_DRIVER_ID_RESERVED_31: VkDriverId = VkDriverId(31);
 pub const VK_DRIVER_ID_APEX: VkDriverId = VkDriverId(32);
 pub const VK_DRIVER_ID_NIKKI: VkDriverId = VkDriverId(33);
 pub const VK_DRIVER_ID_MOMOTEN: VkDriverId = VkDriverId(34);
+pub const VK_DRIVER_ID_AURORA_BOREALIS: VkDriverId = VkDriverId(35);
 pub const VK_DRIVER_ID_AMD_PROPRIETARY_KHR: VkDriverId = VkDriverId(1);
 pub const VK_DRIVER_ID_AMD_OPEN_SOURCE_KHR: VkDriverId = VkDriverId(2);
 pub const VK_DRIVER_ID_MESA_RADV_KHR: VkDriverId = VkDriverId(3);
@@ -7302,6 +7330,7 @@ pub const VK_IMAGE_TILING_CONTROL_MIN_SIZE_EXT: VkImageTilingControlEXT = VkImag
 pub const VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT: VkImageTilingControlEXT = VkImageTilingControlEXT(2);
 
 // ── Types ───────────────────────────────────────────────────
+pub type VkInternalHandleNV = *mut VkInternalObjectNV;
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct VkInstance(pub *mut c_void);
@@ -11259,6 +11288,15 @@ pub struct VkAccelerationStructureBuildGeometryInfoKHR {
     pub pGeometries: *const VkAccelerationStructureGeometryKHR,
     pub ppGeometries: *const *const VkAccelerationStructureGeometryKHR,
     pub scratchData: VkDeviceOrHostAddressKHR,
+}
+
+// ── Opaque struct types ─────────────────────────────────────
+// Incomplete C struct types the spec references only by pointer
+// (C declares the tag at its first mention).  Zero-sized so
+// pointers to them stay distinct types, exactly as in C.
+#[repr(C)]
+pub struct VkInternalObjectNV {
+    _opaque: [u8; 0],
 }
 
 // ── Platform types ──────────────────────────────────────────
