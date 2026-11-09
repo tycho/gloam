@@ -70,6 +70,73 @@ fn cond_to_cfg(cond: &str) -> Result<&'static str> {
     }
 }
 
+/// Incomplete C struct types a module references: pointers to tags the spec
+/// never defines (`struct __GLsync *`, Vulkan's `typedef struct
+/// VkInternalObjectNV* VkInternalHandleNV`), plus outright forward
+/// declarations (`struct _cl_context;`).  C declares such a tag at its first
+/// mention; Rust needs an item, so each becomes a zero-sized `#[repr(C)]`
+/// struct — pointers to different tags then stay distinct types, exactly as
+/// in C.  Shared by every spec's emitter so the construct prints identically
+/// wherever a registry uses it.
+#[derive(Default)]
+pub(super) struct OpaqueTags(indexmap::IndexSet<String>);
+
+impl OpaqueTags {
+    /// Record a tag the spec declares outright (a forward declaration, or
+    /// the `NAME__` tag behind `DECLARE_HANDLE(NAME)`).
+    pub(super) fn insert(&mut self, tag: impl Into<String>) {
+        self.0.insert(tag.into());
+    }
+
+    /// Record the tag of a declarator written with the `struct` keyword whose
+    /// tag this module doesn't define, returning whether it did.  A tag that
+    /// names a defined type (WGL's `struct _GPU_DEVICE`, Vulkan's `struct
+    /// VkBaseInStructure *`) is a plain reference, and a declarator without
+    /// the keyword is never an implicit declaration: both return `false` for
+    /// the caller to classify.  An undefined tag used by value is an error —
+    /// C rejects by-value use of an incomplete type, so the spec has gained
+    /// a definition this module doesn't know about.
+    pub(super) fn record_ref(
+        &mut self,
+        ty: &TypeRef,
+        defined: &std::collections::HashSet<&str>,
+    ) -> Result<bool> {
+        if !ty.struct_kw || defined.contains(ty.base.as_str()) {
+            return Ok(false);
+        }
+        if ty.pointers.is_empty() {
+            bail!(
+                "'struct {}' is used by value, but no definition of it is \
+                 known (an incomplete type can only be used through a pointer)",
+                ty.base
+            );
+        }
+        self.0.insert(ty.base.clone());
+        Ok(true)
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[cfg(test)]
+    pub(super) fn contains(&self, tag: &str) -> bool {
+        self.0.contains(tag)
+    }
+
+    /// Print one zero-sized declaration per recorded tag, in first-seen
+    /// order.  Section headers are the caller's (each module has its own
+    /// layout style).
+    pub(super) fn emit(&self, s: &mut String) {
+        for tag in &self.0 {
+            let _ = writeln!(
+                s,
+                "#[repr(C)]\npub struct {tag} {{\n    _opaque: [u8; 0],\n}}"
+            );
+        }
+    }
+}
+
 /// Print a typedef-target `TypeRef` as a Rust type: base through the ABI map
 /// (or verbatim when it names another emitted type), pointer levels wrapped
 /// per constness.  `defined` is the full set of names this module defines;
@@ -79,19 +146,14 @@ fn cond_to_cfg(cond: &str) -> Result<&'static str> {
 fn rust_target_type(
     ty: &TypeRef,
     defined: &std::collections::HashSet<&str>,
-    opaque: &mut indexmap::IndexSet<String>,
+    opaque: &mut OpaqueTags,
     platform: &mut PlatformSweep<'_>,
 ) -> Result<String> {
     let base: String = if ty.struct_kw {
-        // `struct`-keyword base: when the tag names a type this module
-        // defines (WGL's `typedef struct _GPU_DEVICE GPU_DEVICE`, whose
-        // `_GPU_DEVICE` is a real emitted struct), use it directly;
-        // otherwise it's a pointer to an incomplete struct (e.g.
-        // `struct __GLsync *`) — synthesize an opaque type so the pointer
-        // stays distinct.
-        if !defined.contains(ty.base.as_str()) {
-            opaque.insert(ty.base.clone());
-        }
+        // `struct`-keyword base: either a tag naming a type this module
+        // defines (used directly) or an incomplete struct (synthesized
+        // opaque) — see `OpaqueTags::record_ref`.
+        opaque.record_ref(ty, defined)?;
         ty.base.clone()
     } else if let Some(scalar) = abi_scalar(&ty.base) {
         scalar.to_string()
@@ -158,7 +220,7 @@ pub(super) fn emit_base_types(
         fs.types.iter().map(|t| t.name.as_str()).collect();
     defined.extend(newtype_skip);
 
-    let mut opaque: indexmap::IndexSet<String> = indexmap::IndexSet::new();
+    let mut opaque = OpaqueTags::default();
     let mut platform = PlatformSweep {
         decl: platform_decl,
         used: indexmap::IndexSet::new(),
@@ -229,9 +291,7 @@ pub(super) fn emit_base_types(
                     .map(str::trim)
                     .filter(|tag| tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
                 match fwd {
-                    Some(tag) => {
-                        opaque.insert(tag.to_string());
-                    }
+                    Some(tag) => opaque.insert(tag),
                     None => bail!(
                         "type '{}' has no structured form for Rust emission \
                          (raw C: '{}')",
@@ -301,12 +361,7 @@ pub(super) fn emit_base_types(
             "\n// Opaque C struct types (incomplete in the spec).  Zero-sized so\n\
              // pointers to them stay distinct types, exactly as in C.\n",
         );
-        for tag in &opaque {
-            let _ = writeln!(
-                s,
-                "#[repr(C)]\npub struct {tag} {{\n    _opaque: [u8; 0],\n}}"
-            );
-        }
+        opaque.emit(s);
     }
     if !platform.used.is_empty() {
         s.push_str(
@@ -330,7 +385,7 @@ fn emit_typedef_arms(
     name: &str,
     arms: &[crate::ir::TypedefArm],
     defined: &std::collections::HashSet<&str>,
-    opaque: &mut indexmap::IndexSet<String>,
+    opaque: &mut OpaqueTags,
     platform: &mut PlatformSweep<'_>,
 ) -> Result<()> {
     let targets = arms

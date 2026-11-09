@@ -28,7 +28,7 @@ use std::fmt::Write as _;
 use anyhow::{Result, bail};
 use indexmap::IndexSet;
 
-use super::abi::abi_scalar;
+use super::abi::{OpaqueTags, abi_scalar};
 use crate::ir::{RawMember, TypeCategory, TypePayload, TypedefArm};
 use crate::parse::ctype::TypeRef;
 use crate::resolve::{EnumGroup, FeatureSet, TypeDef};
@@ -406,13 +406,14 @@ pub(super) fn emit_vk_types(
 
     s.push_str("// ── Types ───────────────────────────────────────────────────\n");
     let mut platform: IndexSet<&str> = IndexSet::new();
+    let mut opaque = OpaqueTags::default();
     let mut seen: HashSet<&str> = HashSet::new();
     for t in &fs.types {
         if t.category == TypeCategory::Include || !seen.insert(t.name.as_str()) {
             continue;
         }
         let mut body = String::new();
-        emit_type(t, &mut body, &defined, &mut platform)?;
+        emit_type(t, &mut body, &defined, &mut platform, &mut opaque)?;
         if body.is_empty() {
             continue;
         }
@@ -422,15 +423,25 @@ pub(super) fn emit_vk_types(
         push_guarded(s, &t.protect.0, &body);
     }
 
-    // Commands reference platform types too (vkGetPhysicalDeviceXlib-
-    // PresentationSupportKHR takes a VisualID); sweep their signatures so
-    // the platform section covers the dispatch methods as well.
+    // Command signatures print through the same type printer as struct
+    // members, so validate their bases the same way.  This also records
+    // what only commands reference: platform types (vkGetPhysicalDevice-
+    // XlibPresentationSupportKHR takes a VisualID) and opaque struct tags.
     for cmd in &fs.commands {
         for ty in cmd.params.iter().map(|p| &p.ty).chain([&cmd.return_ty]) {
-            if platform_type_decl(&ty.base).is_some() {
-                record_platform(&ty.base, &mut platform);
-            }
+            check_base(ty, &defined, &mut platform, &mut opaque)
+                .map_err(|e| e.context(format!("command '{}'", cmd.name)))?;
         }
+    }
+
+    if !opaque.is_empty() {
+        s.push_str(
+            "\n// ── Opaque struct types ─────────────────────────────────────\n\
+             // Incomplete C struct types the spec references only by pointer\n\
+             // (C declares the tag at its first mention).  Zero-sized so\n\
+             // pointers to them stay distinct types, exactly as in C.\n",
+        );
+        opaque.emit(s);
     }
 
     if !platform.is_empty() {
@@ -498,6 +509,7 @@ fn emit_type(
     s: &mut String,
     defined: &HashSet<&str>,
     platform: &mut IndexSet<&'static str>,
+    opaque: &mut OpaqueTags,
 ) -> Result<()> {
     // Platform types (forward declarations, #ifdef __OBJC__ bodies) are
     // declared by the platform table, whatever payload shape they parsed
@@ -529,8 +541,12 @@ fn emit_type(
                 t.name
             );
         }
-        TypePayload::Typedef(arms) => emit_vk_typedef(t, arms, s, defined, platform)?,
+        TypePayload::Typedef(arms) => emit_vk_typedef(t, arms, s, defined, platform, opaque)?,
         TypePayload::Funcpointer(sig) => {
+            for ty in sig.params.iter().map(|(_, ty)| ty).chain([&sig.ret]) {
+                check_base(ty, defined, platform, opaque)
+                    .map_err(|e| e.context(format!("funcpointer '{}'", t.name)))?;
+            }
             let params = sig
                 .params
                 .iter()
@@ -548,7 +564,9 @@ fn emit_type(
                 t.name
             );
         }
-        TypePayload::Members(members) => emit_vk_struct(t, members, s, defined, platform)?,
+        TypePayload::Members(members) => {
+            emit_vk_struct(t, members, s, defined, platform, opaque)?;
+        }
         TypePayload::Opaque => {
             // `#define X Y` aliases (bitmask/handle/enum aliases whose
             // targets are typedef'd integers in C).  In Rust a type alias
@@ -579,6 +597,7 @@ fn emit_vk_typedef(
     s: &mut String,
     defined: &HashSet<&str>,
     platform: &mut IndexSet<&'static str>,
+    opaque: &mut OpaqueTags,
 ) -> Result<()> {
     let [arm] = arms else {
         bail!(
@@ -587,21 +606,29 @@ fn emit_vk_typedef(
             arms.len()
         );
     };
-    let target = check_base(&arm.ty, defined, platform)
+    let target = check_base(&arm.ty, defined, platform, opaque)
         .map(|()| vk_type(&arm.ty))
         .map_err(|e| e.context(format!("typedef '{}'", t.name)))?;
     let _ = writeln!(s, "pub type {} = {target};", t.name);
     Ok(())
 }
 
-/// Validate a declarator base: an ABI scalar, a name defined in this module,
-/// or a known platform type (recorded for the platform section).  Anything
-/// else — e.g. the vk_video `StdVideo*` types, which live outside vk.xml —
-/// is a hard error naming the base.
+/// Validate a declarator base: an ABI scalar, a known platform type
+/// (recorded for the platform section), a name defined in this module, or —
+/// only when written with the `struct` keyword — an incomplete struct tag
+/// (recorded for the opaque section).  Anything else — e.g. the vk_video
+/// `StdVideo*` types, which live outside vk.xml — is a hard error naming the
+/// base.
+///
+/// The order matters: vk.xml spells platform types with the keyword too
+/// (`struct ANativeWindow*`, `struct wl_display*`), and those must resolve
+/// to the platform table's declarations rather than gain a second, opaque
+/// one; likewise `struct VkBaseInStructure*` names a real emitted struct.
 fn check_base(
     ty: &TypeRef,
     defined: &HashSet<&str>,
     platform: &mut IndexSet<&'static str>,
+    opaque: &mut OpaqueTags,
 ) -> Result<()> {
     if abi_scalar(&ty.base).is_some() {
         return Ok(());
@@ -611,6 +638,9 @@ fn check_base(
         return Ok(());
     }
     if defined.contains(ty.base.as_str()) {
+        return Ok(());
+    }
+    if opaque.record_ref(ty, defined)? {
         return Ok(());
     }
     if ty.base.starts_with("StdVideo") {
@@ -701,6 +731,7 @@ fn emit_vk_struct(
     s: &mut String,
     defined: &HashSet<&str>,
     platform: &mut IndexSet<&'static str>,
+    opaque: &mut OpaqueTags,
 ) -> Result<()> {
     let is_union = t.category == TypeCategory::Union;
     let kw = if is_union { "union" } else { "struct" };
@@ -713,7 +744,7 @@ fn emit_vk_struct(
     }
     let mut fields: Vec<Field<'_>> = Vec::new();
     for m in members {
-        check_base(&m.ty, defined, platform)
+        check_base(&m.ty, defined, platform, opaque)
             .map_err(|e| e.context(format!("{} member '{}'", t.name, m.name)))?;
         if let Some(width) = m.ty.bitfield {
             if let Some(Field::Packed(run)) = fields.last_mut() {
@@ -824,7 +855,8 @@ mod tests {
         let t = typedef(&raw.name, raw.category, &raw.raw_c, raw.payload.clone());
         let mut s = String::new();
         let mut platform = IndexSet::new();
-        emit_type(&t, &mut s, defined, &mut platform).unwrap();
+        let mut opaque = OpaqueTags::default();
+        emit_type(&t, &mut s, defined, &mut platform, &mut opaque).unwrap();
         s
     }
 
@@ -915,7 +947,8 @@ mod tests {
         );
         let mut s = String::new();
         let mut platform = IndexSet::new();
-        emit_type(&t, &mut s, &defined, &mut platform).unwrap();
+        let mut opaque = OpaqueTags::default();
+        emit_type(&t, &mut s, &defined, &mut platform, &mut opaque).unwrap();
         assert!(platform.contains("HANDLE"));
         assert!(s.contains("pub handle: HANDLE,"));
     }
@@ -942,7 +975,8 @@ mod tests {
             let t = typedef(&raw.name, raw.category, &raw.raw_c, raw.payload.clone());
             let mut s = String::new();
             let mut platform = IndexSet::new();
-            match emit_type(&t, &mut s, &defined, &mut platform) {
+            let mut opaque = OpaqueTags::default();
+            match emit_type(&t, &mut s, &defined, &mut platform, &mut opaque) {
                 Ok(()) => emitted += 1,
                 Err(e) => {
                     let msg = format!("{e:#}");
@@ -959,5 +993,110 @@ mod tests {
             failures.len(),
             failures.join("\n")
         );
+    }
+
+    /// Emit one synthetic type against a fixed `defined` set, returning the
+    /// output alongside the platform and opaque sweeps.
+    fn emit_synthetic(
+        t: &TypeDef,
+        defined: &[&str],
+    ) -> Result<(String, IndexSet<&'static str>, OpaqueTags)> {
+        let defined: HashSet<&str> = defined.iter().copied().collect();
+        let mut s = String::new();
+        let mut platform = IndexSet::new();
+        let mut opaque = OpaqueTags::default();
+        emit_type(t, &mut s, &defined, &mut platform, &mut opaque)?;
+        Ok((s, platform, opaque))
+    }
+
+    fn pointer_typedef(name: &str, target: &str) -> TypeDef {
+        typedef(
+            name,
+            TypeCategory::Basetype,
+            &format!("typedef {target} {name};"),
+            TypePayload::Typedef(vec![TypedefArm {
+                condition: None,
+                ty: TypeRef::parse(target).unwrap(),
+            }]),
+        )
+    }
+
+    fn one_member_struct(name: &str, member_ty: &str) -> TypeDef {
+        typedef(
+            name,
+            TypeCategory::Struct,
+            "",
+            TypePayload::Members(vec![RawMember {
+                raw_c: format!("{member_ty} m"),
+                name: "m".to_string(),
+                ty: TypeRef::parse(member_ty).unwrap(),
+                values: None,
+            }]),
+        )
+    }
+
+    /// A `struct`-keyword pointer to a tag no one defines (vk.xml's
+    /// `typedef struct VkInternalObjectNV* VkInternalHandleNV`) declares an
+    /// incomplete type, as in C: the tag is synthesized opaque and the
+    /// typedef points at it.
+    #[test]
+    fn undefined_struct_tag_pointer_becomes_opaque() {
+        let t = pointer_typedef("VkInternalHandleNV", "struct VkInternalObjectNV*");
+        let (s, platform, opaque) = emit_synthetic(&t, &[]).unwrap();
+        assert_eq!(
+            s,
+            "pub type VkInternalHandleNV = *mut VkInternalObjectNV;\n"
+        );
+        assert!(opaque.contains("VkInternalObjectNV"));
+        assert!(platform.is_empty());
+
+        let mut decl = String::new();
+        opaque.emit(&mut decl);
+        assert_eq!(
+            decl,
+            "#[repr(C)]\npub struct VkInternalObjectNV {\n    _opaque: [u8; 0],\n}\n"
+        );
+    }
+
+    /// An incomplete type can't be used by value in C, so a by-value use of
+    /// an unknown tag means the spec grew a definition we don't know about.
+    #[test]
+    fn undefined_struct_tag_by_value_is_an_error() {
+        let t = one_member_struct("VkFoo", "struct VkInternalObjectNV");
+        let err = emit_synthetic(&t, &[])
+            .err()
+            .expect("by-value use must fail");
+        assert!(format!("{err:#}").contains("used by value"), "{err:#}");
+    }
+
+    /// Without the `struct` keyword an unknown base is still a hard error —
+    /// the opaque rule never papers over a missing definition.
+    #[test]
+    fn unknown_bare_base_is_still_an_error() {
+        let t = pointer_typedef("VkInternalHandleNV", "VkInternalObjectNV*");
+        let err = emit_synthetic(&t, &[])
+            .err()
+            .expect("unknown base must fail");
+        assert!(
+            format!("{err:#}").contains("is not an ABI scalar"),
+            "{err:#}"
+        );
+    }
+
+    /// Platform and defined names win over the opaque rule even when spelled
+    /// with the keyword: `struct ANativeWindow*` uses the platform table's
+    /// declaration, `struct VkBaseInStructure*` the real emitted struct.
+    #[test]
+    fn struct_keyword_prefers_platform_and_defined_types() {
+        let t = one_member_struct("VkFoo", "struct ANativeWindow*");
+        let (_, platform, opaque) = emit_synthetic(&t, &[]).unwrap();
+        assert!(platform.contains("ANativeWindow"));
+        assert!(opaque.is_empty());
+
+        let t = one_member_struct("VkFoo", "const struct VkBaseInStructure*");
+        let (s, platform, opaque) = emit_synthetic(&t, &["VkBaseInStructure"]).unwrap();
+        assert!(s.contains("pub m: *const VkBaseInStructure,"), "{s}");
+        assert!(platform.is_empty());
+        assert!(opaque.is_empty());
     }
 }
