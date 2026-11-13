@@ -1,7 +1,13 @@
 version: 2
 updates:
   - package-ecosystem: cargo
-    directory: /
+    # The Rust examples are standalone workspaces with their own lockfiles,
+    # so the root entry doesn't reach them. `*` matches one level only, so
+    # the generated `gloam/` crates inside each example aren't scanned
+    # separately (they're path deps covered by the example's lockfile).
+    directories:
+      - /
+      - /examples/rust/*
     schedule:
       interval: weekly
       day: monday
