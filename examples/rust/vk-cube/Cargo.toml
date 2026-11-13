@@ -23,7 +23,7 @@ gloam_vk = { path = "gloam", features = [
 winit = "0.30"
 raw-window-handle = "0.6"
 # Opens vulkan-1.dll / libvulkan.so.1 for vkGetInstanceProcAddr.
-libloading = "0.8"
+libloading = "0.9"
 
 # VK_EXT_metal_surface takes a CAMetalLayer, which a winit NSView doesn't
 # have; this attaches one (pure Rust over objc2, no C libraries).
