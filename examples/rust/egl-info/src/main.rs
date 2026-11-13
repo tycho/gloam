@@ -35,7 +35,7 @@ fn open_egl() -> Option<libloading::Library> {
     }
     LIB_NAMES
         .iter()
-        .find_map(|name| unsafe { libloading::Library::new(name).ok() })
+        .find_map(|name| unsafe { libloading::Library::new(*name).ok() })
 }
 
 /// GetProcAddress-style loader over the library: dlsym first, then

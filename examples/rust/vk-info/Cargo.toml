@@ -12,7 +12,7 @@ path = "src/main.rs"
 # The gloam-generated Vulkan loader crate (regenerate with the command in README.md).
 gloam_vk = { path = "gloam" }
 # Loads the platform Vulkan library to bootstrap vkGetInstanceProcAddr.
-libloading = "0.8"
+libloading = "0.9"
 
 # Standalone workspace so this example stays out of the main gloam
 # workspace's build and lockfile.

@@ -854,7 +854,7 @@ impl ApplicationHandler for App {
 unsafe fn setup(window: Window, ci: bool) -> Result<Ctx, i32> {
     let Some(lib) = LIB_NAMES
         .iter()
-        .find_map(|n| unsafe { libloading::Library::new(n).ok() })
+        .find_map(|n| unsafe { libloading::Library::new(*n).ok() })
     else {
         eprintln!("vk-cube-rs: no Vulkan runtime found (skip)");
         return Err(77);

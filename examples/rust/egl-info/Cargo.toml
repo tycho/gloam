@@ -12,7 +12,7 @@ path = "src/main.rs"
 # The gloam-generated EGL loader crate (regenerate with the command in README.md).
 gloam_egl = { path = "gloam" }
 # Loads libEGL to bootstrap the proc-address source.
-libloading = "0.8"
+libloading = "0.9"
 
 # Standalone workspace so this example stays out of the main gloam
 # workspace's build and lockfile.

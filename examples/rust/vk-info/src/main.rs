@@ -45,7 +45,7 @@ const LIB_NAMES: &[&str] = &[
 fn open_vulkan() -> Option<libloading::Library> {
     LIB_NAMES
         .iter()
-        .find_map(|name| unsafe { libloading::Library::new(name).ok() })
+        .find_map(|name| unsafe { libloading::Library::new(*name).ok() })
 }
 
 fn version_string(v: u32) -> String {
