@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.5",
-    "describe": "0.7.5+bd032c1.dirty",
-    "commit": "bd032c1cab0c32d2fd718fdead65ad5233b17fc6",
+    "version": "0.7.6",
+    "describe": "0.7.6+165cd43.dirty",
+    "commit": "165cd439d4c2a4d9e9f054469a097d7c046ea38f",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0,egl=1.5 --merge --extensions GL_KHR_debug,GL_EXT_texture_filter_anisotropic,EGL_ANGLE_platform_angle,EGL_ANGLE_platform_angle_d3d,EGL_ANGLE_platform_angle_metal,EGL_ANGLE_platform_angle_opengl,EGL_ANGLE_platform_angle_vulkan --out-path gl-triangle/gloam c --alias"
   },
   "provenance": {
@@ -83,7 +83,7 @@
     },
     {
       "path": "include/gloam/egl.h",
-      "blob": "3dc63b6c5846db1f02ec24e7aa43255609f991f7",
+      "blob": "566cf7796ee375e36c9159ad5b37f2c4fbcc2c1c",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
@@ -94,7 +94,7 @@
     },
     {
       "path": "include/gloam/gl.h",
-      "blob": "ec8266ef816f34e440e1b70009fde9b26604f478",
+      "blob": "36edc39fc5b760247875b9702db9cca79bf5a7dc",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
@@ -113,7 +113,7 @@
     },
     {
       "path": "src/egl.c",
-      "blob": "660428beb013329e786029b0cd3c96545f7c6189",
+      "blob": "39181d7ee16c8a313e508dec3e1db998fb82128c",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
@@ -124,7 +124,7 @@
     },
     {
       "path": "src/gl.c",
-      "blob": "d86494c61f251730a7a938604f17bb1f9af26cc1",
+      "blob": "0c0de6a62855a52f68b296520095e338ede3061b",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
