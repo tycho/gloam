@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.7](https://github.com/tycho/gloam/compare/0.7.6...0.7.7) - 2026-11-19
+
+### Other
+
+- *(cargo)* update dependencies
+- *(deps)* bump rusqlite from 0.41.1 to 0.42.0
+- update bundled specs, headers, and provenance
+- *(dependabot)* also match dependency changes in Rust examples
+- *(cargo)* update locked dependencies
+
 ## [0.7.6](https://github.com/tycho/gloam/compare/0.7.5...0.7.6) - 2026-11-09
 
 ### Fixed
