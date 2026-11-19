@@ -1644,6 +1644,8 @@ extern "C" {
 #define VK_ARM_EXTENSION_730_EXTENSION_NAME "VK_ARM_extension_730"
 #define VK_ARM_EXTENSION_731_SPEC_VERSION 0
 #define VK_ARM_EXTENSION_731_EXTENSION_NAME "VK_ARM_extension_731"
+#define VK_RFIVE_VIEW_SURFACE_SPEC_VERSION 0
+#define VK_RFIVE_VIEW_SURFACE_EXTENSION_NAME "VK_RFIVE_view_surface"
 
 /* ---- Vulkan enum groups -------------------------------------------------- */
 

@@ -1504,6 +1504,8 @@ pub const VK_ARM_EXTENSION_730_SPEC_VERSION: u32 = 0;
 pub const VK_ARM_EXTENSION_730_EXTENSION_NAME: &core::ffi::CStr = c"VK_ARM_extension_730";
 pub const VK_ARM_EXTENSION_731_SPEC_VERSION: u32 = 0;
 pub const VK_ARM_EXTENSION_731_EXTENSION_NAME: &core::ffi::CStr = c"VK_ARM_extension_731";
+pub const VK_RFIVE_VIEW_SURFACE_SPEC_VERSION: u32 = 0;
+pub const VK_RFIVE_VIEW_SURFACE_EXTENSION_NAME: &core::ffi::CStr = c"VK_RFIVE_view_surface";
 
 // ── Enum groups ─────────────────────────────────────────────
 #[repr(transparent)]
