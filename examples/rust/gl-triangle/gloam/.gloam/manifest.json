@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.6",
-    "describe": "0.7.6+165cd43.dirty",
-    "commit": "165cd439d4c2a4d9e9f054469a097d7c046ea38f",
+    "version": "0.7.7",
+    "describe": "0.7.7+50dfe90.dirty",
+    "commit": "50dfe905865bbecf2aeb83b96fb49cc2bdd904e5",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0 --merge --out-path examples/rust/gl-triangle/gloam rust --alias --mx-global"
   },
   "provenance": {
@@ -11,7 +11,7 @@
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/KHR/khrplatform.h",
-      "commit": "8e56e86e65687697ef54114cdb1afabdfac756bf",
+      "commit": "aa39a34729e6d20b0b982e279c351976a5c91075",
       "blob": "01646449caedc958effc3b450360aefd260671ab"
     },
     "gl.xml": {
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/gl.rs",
-      "blob": "b7d444328bcada17911c670612eb165fe1da1121",
+      "blob": "1455d57c33b4cad7e756dbc714f03c07fbbca759",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",

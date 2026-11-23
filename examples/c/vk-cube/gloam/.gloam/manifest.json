@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.6",
-    "describe": "0.7.6+165cd43.dirty",
-    "commit": "165cd439d4c2a4d9e9f054469a097d7c046ea38f",
+    "version": "0.7.7",
+    "describe": "0.7.7+50dfe90.dirty",
+    "commit": "50dfe905865bbecf2aeb83b96fb49cc2bdd904e5",
     "command_line": "gloam --api vk=1.3 --extensions VK_KHR_surface,VK_KHR_swapchain,VK_KHR_get_physical_device_properties2,VK_KHR_portability_enumeration,VK_KHR_portability_subset --out-path examples/c/vk-cube/gloam c --loader"
   },
   "provenance": {
@@ -11,8 +11,8 @@
       "repo": "KhronosGroup/Vulkan-Docs",
       "repo_url": "https://github.com/KhronosGroup/Vulkan-Docs",
       "path_in_repo": "xml/vk.xml",
-      "commit": "f7de774cace1509af0f10b8d859c973b5354ff62",
-      "blob": "c99ffb17d2a4bc6f8dd94dda6537a0c11a3fb8b3"
+      "commit": "f0fe740e3ec9f3c060a5eb7ea11de0e2fdca85dc",
+      "blob": "8f8561bb5870622a16e74a1cea072a7aa4944619"
     },
     "vulkan/vk_platform.h": {
       "repo": "KhronosGroup/Vulkan-Headers",
@@ -32,7 +32,7 @@
   "output": [
     {
       "path": "include/gloam/vk.h",
-      "blob": "10895be39c753352488afba1d2a42eb103620ca7",
+      "blob": "7afa8eca9cf3a92d84643c416df9bac89ef8dd34",
       "derived_from": [
         "vk.xml",
         "vulkan/vk_platform.h",
@@ -57,7 +57,7 @@
     },
     {
       "path": "src/vk.c",
-      "blob": "151b871a2abce9648e8adbcfdbcb209a76f1cd6b",
+      "blob": "ee9f8ae856ff7089373b461cf82b1c961aa7249d",
       "derived_from": [
         "vk.xml",
         "vulkan/vk_platform.h",
