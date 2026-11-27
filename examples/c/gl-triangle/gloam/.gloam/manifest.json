@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.6",
-    "describe": "0.7.6+165cd43.dirty",
-    "commit": "165cd439d4c2a4d9e9f054469a097d7c046ea38f",
+    "version": "0.7.7",
+    "describe": "0.7.7+50dfe90.dirty",
+    "commit": "50dfe905865bbecf2aeb83b96fb49cc2bdd904e5",
     "command_line": "gloam --api gl:core=3.3,gles2=3.0,egl=1.5 --merge --extensions GL_KHR_debug,GL_EXT_texture_filter_anisotropic,EGL_ANGLE_platform_angle,EGL_ANGLE_platform_angle_d3d,EGL_ANGLE_platform_angle_metal,EGL_ANGLE_platform_angle_opengl,EGL_ANGLE_platform_angle_vulkan --out-path gl-triangle/gloam c --alias"
   },
   "provenance": {
@@ -11,22 +11,22 @@
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/EGL/eglplatform.h",
-      "commit": "8e56e86e65687697ef54114cdb1afabdfac756bf",
+      "commit": "aa39a34729e6d20b0b982e279c351976a5c91075",
       "blob": "6786afd90b685895efa25b302afba68fc8296941"
     },
     "KHR/khrplatform.h": {
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/KHR/khrplatform.h",
-      "commit": "8e56e86e65687697ef54114cdb1afabdfac756bf",
+      "commit": "aa39a34729e6d20b0b982e279c351976a5c91075",
       "blob": "01646449caedc958effc3b450360aefd260671ab"
     },
     "egl.xml": {
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/egl.xml",
-      "commit": "8e56e86e65687697ef54114cdb1afabdfac756bf",
-      "blob": "d7ab67d267eedad03becccb6a26384a4e24ffaf5"
+      "commit": "aa39a34729e6d20b0b982e279c351976a5c91075",
+      "blob": "d575e4b3d748a8c9089f7c0fc7f875195482eb96"
     },
     "egl_angle_ext.xml": {
       "repo": "angle/angle",
@@ -83,7 +83,7 @@
     },
     {
       "path": "include/gloam/egl.h",
-      "blob": "566cf7796ee375e36c9159ad5b37f2c4fbcc2c1c",
+      "blob": "71ffeaa627d61ddd51f34253bb05b59f98b6f43d",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
@@ -94,7 +94,7 @@
     },
     {
       "path": "include/gloam/gl.h",
-      "blob": "36edc39fc5b760247875b9702db9cca79bf5a7dc",
+      "blob": "684a2e9525c92104045ae38b368f002fb03bce6a",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",
@@ -113,7 +113,7 @@
     },
     {
       "path": "src/egl.c",
-      "blob": "39181d7ee16c8a313e508dec3e1db998fb82128c",
+      "blob": "e4156d2cf36a3470afbe544e426a211d9dcf6a73",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
@@ -124,7 +124,7 @@
     },
     {
       "path": "src/gl.c",
-      "blob": "0c0de6a62855a52f68b296520095e338ede3061b",
+      "blob": "34b6d561edaf3db77ecc51dea6995710f67741fc",
       "derived_from": [
         "KHR/khrplatform.h",
         "gl.xml",

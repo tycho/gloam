@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "gloam": {
-    "version": "0.7.6",
-    "describe": "0.7.6+165cd43.dirty",
-    "commit": "165cd439d4c2a4d9e9f054469a097d7c046ea38f",
+    "version": "0.7.7",
+    "describe": "0.7.7+50dfe90.dirty",
+    "commit": "50dfe905865bbecf2aeb83b96fb49cc2bdd904e5",
     "command_line": "gloam --api egl --out-path examples/rust/egl-info/gloam rust --alias"
   },
   "provenance": {
@@ -11,22 +11,22 @@
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/EGL/eglplatform.h",
-      "commit": "8e56e86e65687697ef54114cdb1afabdfac756bf",
+      "commit": "aa39a34729e6d20b0b982e279c351976a5c91075",
       "blob": "6786afd90b685895efa25b302afba68fc8296941"
     },
     "KHR/khrplatform.h": {
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/KHR/khrplatform.h",
-      "commit": "8e56e86e65687697ef54114cdb1afabdfac756bf",
+      "commit": "aa39a34729e6d20b0b982e279c351976a5c91075",
       "blob": "01646449caedc958effc3b450360aefd260671ab"
     },
     "egl.xml": {
       "repo": "KhronosGroup/EGL-Registry",
       "repo_url": "https://github.com/KhronosGroup/EGL-Registry",
       "path_in_repo": "api/egl.xml",
-      "commit": "8e56e86e65687697ef54114cdb1afabdfac756bf",
-      "blob": "d7ab67d267eedad03becccb6a26384a4e24ffaf5"
+      "commit": "aa39a34729e6d20b0b982e279c351976a5c91075",
+      "blob": "d575e4b3d748a8c9089f7c0fc7f875195482eb96"
     },
     "egl_angle_ext.xml": {
       "repo": "angle/angle",
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/egl.rs",
-      "blob": "40964a56971632a701231857851ade65a36ad924",
+      "blob": "8e4c3d0f05a7f10a2a8f73d48a51d4ef6f705293",
       "derived_from": [
         "EGL/eglplatform.h",
         "KHR/khrplatform.h",
